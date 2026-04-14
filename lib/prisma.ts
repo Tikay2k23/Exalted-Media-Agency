@@ -36,27 +36,44 @@ function isPlaceholderDatabaseUrl(value: string) {
   }
 }
 
-const connectionString = databaseUrlKeys
-  .map((key) => process.env[key])
-  .find((value) => typeof value === "string" && value.length > 0 && !isPlaceholderDatabaseUrl(value));
-
-if (!connectionString) {
-  throw new Error(
-    "A valid database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
-  );
+function resolveConnectionString() {
+  return databaseUrlKeys
+    .map((key) => process.env[key])
+    .find((value) => typeof value === "string" && value.length > 0 && !isPlaceholderDatabaseUrl(value));
 }
 
-const adapter =
-  globalForPrisma.adapter ?? new PrismaPg({ connectionString });
+function getPrismaClient() {
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+  const connectionString = resolveConnectionString();
+
+  if (!connectionString) {
+    throw new Error(
+      "A valid database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
+    );
+  }
+
+  const adapter = globalForPrisma.adapter ?? new PrismaPg({ connectionString });
+  const prismaClient = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.adapter = adapter;
-  globalForPrisma.prisma = prisma;
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.adapter = adapter;
+    globalForPrisma.prisma = prismaClient;
+  }
+
+  return prismaClient;
 }
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property, receiver) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, property, receiver);
+
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
