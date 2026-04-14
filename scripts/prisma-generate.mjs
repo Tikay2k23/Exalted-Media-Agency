@@ -8,11 +8,34 @@ const fallbackKeys = [
   "POSTGRES_URL",
 ];
 
+function isPlaceholderDatabaseUrl(value) {
+  if (value.toLowerCase().includes("placeholder")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    const username = decodeURIComponent(parsed.username).toLowerCase();
+    const password = decodeURIComponent(parsed.password).toLowerCase();
+    const databaseName = parsed.pathname.replace(/^\//, "").toLowerCase();
+
+    return (
+      hostname === "host"
+      || username === "user"
+      || password === "password"
+      || databaseName === "dbname"
+    );
+  } catch {
+    return false;
+  }
+}
+
 const resolvedUrl = fallbackKeys
   .map((key) => process.env[key])
-  .find((value) => typeof value === "string" && value.length > 0);
+  .find((value) => typeof value === "string" && value.length > 0 && !isPlaceholderDatabaseUrl(value));
 
-if (!process.env.DATABASE_URL && resolvedUrl) {
+if ((!process.env.DATABASE_URL || isPlaceholderDatabaseUrl(process.env.DATABASE_URL)) && resolvedUrl) {
   process.env.DATABASE_URL = resolvedUrl;
 }
 

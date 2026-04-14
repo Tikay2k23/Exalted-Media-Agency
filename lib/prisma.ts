@@ -6,15 +6,43 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
-const connectionString =
-  process.env.DATABASE_URL
-  ?? process.env.POSTGRES_URL_NON_POOLING
-  ?? process.env.POSTGRES_PRISMA_URL
-  ?? process.env.POSTGRES_URL;
+const databaseUrlKeys = [
+  "DATABASE_URL",
+  "POSTGRES_URL_NON_POOLING",
+  "POSTGRES_PRISMA_URL",
+  "POSTGRES_URL",
+] as const;
+
+function isPlaceholderDatabaseUrl(value: string) {
+  if (value.toLowerCase().includes("placeholder")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    const username = decodeURIComponent(parsed.username).toLowerCase();
+    const password = decodeURIComponent(parsed.password).toLowerCase();
+    const databaseName = parsed.pathname.replace(/^\//, "").toLowerCase();
+
+    return (
+      hostname === "host"
+      || username === "user"
+      || password === "password"
+      || databaseName === "dbname"
+    );
+  } catch {
+    return false;
+  }
+}
+
+const connectionString = databaseUrlKeys
+  .map((key) => process.env[key])
+  .find((value) => typeof value === "string" && value.length > 0 && !isPlaceholderDatabaseUrl(value));
 
 if (!connectionString) {
   throw new Error(
-    "A database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
+    "A valid database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
   );
 }
 
