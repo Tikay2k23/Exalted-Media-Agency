@@ -73,20 +73,13 @@ const defaultStageSeed = [
 ] satisfies Prisma.PipelineStageCreateManyInput[];
 
 async function bootstrapDemoWorkspace() {
-  const [userCount, stageCount] = await Promise.all([
-    prisma.user.count(),
-    prisma.pipelineStage.count(),
-  ]);
+  const stageCount = await prisma.pipelineStage.count();
 
   if (stageCount === 0) {
     await prisma.pipelineStage.createMany({
       data: defaultStageSeed,
       skipDuplicates: true,
     });
-  }
-
-  if (userCount > 0) {
-    return;
   }
 
   const passwordHash = await hash("Agency123!", 12);

@@ -1,6 +1,8 @@
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
+  adapter?: PrismaPg;
   prisma?: PrismaClient;
 };
 
@@ -64,39 +66,28 @@ function resolveConnectionString() {
     .find((value) => typeof value === "string" && value.length > 0 && !isInvalidDatabaseUrl(value));
 }
 
-function getPrismaClient() {
-  if (globalForPrisma.prisma) {
-    return globalForPrisma.prisma;
-  }
+const connectionString = resolveConnectionString();
 
-  const connectionString = resolveConnectionString();
+if (!connectionString) {
+  throw new Error(
+    "A valid database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
+  );
+}
 
-  if (!connectionString) {
-    throw new Error(
-      "A valid database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
-    );
-  }
+if (process.env.DATABASE_URL !== connectionString) {
+  process.env.DATABASE_URL = connectionString;
+}
 
-  if (process.env.DATABASE_URL !== connectionString) {
-    process.env.DATABASE_URL = connectionString;
-  }
+const adapter = globalForPrisma.adapter ?? new PrismaPg({ connectionString });
 
-  const prismaClient = new PrismaClient({
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = prismaClient;
-  }
-
-  return prismaClient;
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.adapter = adapter;
+  globalForPrisma.prisma = prisma;
 }
-
-export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, property, receiver) {
-    const client = getPrismaClient();
-    const value = Reflect.get(client, property, receiver);
-
-    return typeof value === "function" ? value.bind(client) : value;
-  },
-});
