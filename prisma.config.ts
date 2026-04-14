@@ -8,6 +8,8 @@ const databaseUrlKeys = [
   "POSTGRES_URL",
 ] as const;
 
+const isVercelDeployment = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+
 function isPlaceholderDatabaseUrl(value: string) {
   if (value.toLowerCase().includes("placeholder")) {
     return true;
@@ -45,7 +47,7 @@ function isInvalidDatabaseUrl(value: string) {
     return true;
   }
 
-  if (process.env.VERCEL && isLocalDatabaseUrl(value)) {
+  if (isVercelDeployment && isLocalDatabaseUrl(value)) {
     return true;
   }
 
