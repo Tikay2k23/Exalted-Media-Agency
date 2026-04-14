@@ -3,6 +3,7 @@ import { compare } from "bcryptjs";
 import { getServerSession, type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
+import { ensureDemoWorkspaceInitialized } from "@/lib/demo-bootstrap";
 import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validators";
 
@@ -33,6 +34,8 @@ export const authOptions: NextAuthOptions = {
         if (!parsed.success) {
           return null;
         }
+
+        await ensureDemoWorkspaceInitialized();
 
         const user = await prisma.user.findUnique({
           where: {
