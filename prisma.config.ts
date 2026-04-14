@@ -31,9 +31,30 @@ function isPlaceholderDatabaseUrl(value: string) {
   }
 }
 
+function isLocalDatabaseUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function isInvalidDatabaseUrl(value: string) {
+  if (isPlaceholderDatabaseUrl(value)) {
+    return true;
+  }
+
+  if (process.env.VERCEL && isLocalDatabaseUrl(value)) {
+    return true;
+  }
+
+  return false;
+}
+
 const resolvedDatabaseUrl = databaseUrlKeys
   .map((key) => process.env[key])
-  .find((value) => typeof value === "string" && value.length > 0 && !isPlaceholderDatabaseUrl(value));
+  .find((value) => typeof value === "string" && value.length > 0 && !isInvalidDatabaseUrl(value));
 
 const fallbackDatabaseUrl =
   resolvedDatabaseUrl

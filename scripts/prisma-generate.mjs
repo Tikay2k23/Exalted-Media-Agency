@@ -31,11 +31,32 @@ function isPlaceholderDatabaseUrl(value) {
   }
 }
 
+function isLocalDatabaseUrl(value) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function isInvalidDatabaseUrl(value) {
+  if (isPlaceholderDatabaseUrl(value)) {
+    return true;
+  }
+
+  if (process.env.VERCEL && isLocalDatabaseUrl(value)) {
+    return true;
+  }
+
+  return false;
+}
+
 const resolvedUrl = fallbackKeys
   .map((key) => process.env[key])
-  .find((value) => typeof value === "string" && value.length > 0 && !isPlaceholderDatabaseUrl(value));
+  .find((value) => typeof value === "string" && value.length > 0 && !isInvalidDatabaseUrl(value));
 
-if ((!process.env.DATABASE_URL || isPlaceholderDatabaseUrl(process.env.DATABASE_URL)) && resolvedUrl) {
+if ((!process.env.DATABASE_URL || isInvalidDatabaseUrl(process.env.DATABASE_URL)) && resolvedUrl) {
   process.env.DATABASE_URL = resolvedUrl;
 }
 
