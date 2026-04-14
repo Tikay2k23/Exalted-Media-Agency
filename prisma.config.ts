@@ -2,10 +2,10 @@ import "dotenv/config";
 import { defineConfig, env } from "prisma/config";
 
 const databaseUrlKeys = [
-  "DATABASE_URL",
-  "POSTGRES_URL_NON_POOLING",
   "PRISMA_DATABASE_URL",
+  "POSTGRES_URL_NON_POOLING",
   "POSTGRES_PRISMA_URL",
+  "DATABASE_URL",
   "POSTGRES_URL",
 ] as const;
 
