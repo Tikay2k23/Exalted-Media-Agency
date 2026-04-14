@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 const fallbackKeys = [
   "DATABASE_URL",
   "POSTGRES_URL_NON_POOLING",
+  "PRISMA_DATABASE_URL",
   "POSTGRES_PRISMA_URL",
   "POSTGRES_URL",
 ];

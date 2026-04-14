@@ -9,6 +9,7 @@ const globalForPrisma = globalThis as unknown as {
 const databaseUrlKeys = [
   "DATABASE_URL",
   "POSTGRES_URL_NON_POOLING",
+  "PRISMA_DATABASE_URL",
   "POSTGRES_PRISMA_URL",
   "POSTGRES_URL",
 ] as const;
