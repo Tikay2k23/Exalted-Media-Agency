@@ -7,11 +7,12 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const databaseUrlKeys = [
-  "PRISMA_DATABASE_URL",
-  "POSTGRES_URL_NON_POOLING",
-  "POSTGRES_PRISMA_URL",
   "DATABASE_URL",
   "POSTGRES_URL",
+  "DIRECT_URL",
+  "PRISMA_DATABASE_URL",
+  "POSTGRES_PRISMA_URL",
+  "POSTGRES_URL_NON_POOLING",
 ] as const;
 
 const isVercelDeployment = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
@@ -66,28 +67,42 @@ function resolveConnectionString() {
     .find((value) => typeof value === "string" && value.length > 0 && !isInvalidDatabaseUrl(value));
 }
 
-const connectionString = resolveConnectionString();
+function getPrismaClient() {
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
 
-if (!connectionString) {
-  throw new Error(
-    "A valid database connection string is not configured. Set DATABASE_URL or a supported POSTGRES_* environment variable.",
-  );
-}
+  const connectionString = resolveConnectionString();
 
-if (process.env.DATABASE_URL !== connectionString) {
-  process.env.DATABASE_URL = connectionString;
-}
+  if (!connectionString) {
+    throw new Error(
+      "A valid database connection string is not configured. Set DATABASE_URL, PRISMA_DATABASE_URL, or a supported POSTGRES_* environment variable.",
+    );
+  }
 
-const adapter = globalForPrisma.adapter ?? new PrismaPg({ connectionString });
+  if (process.env.DATABASE_URL !== connectionString) {
+    process.env.DATABASE_URL = connectionString;
+  }
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+  const adapter = globalForPrisma.adapter ?? new PrismaPg({ connectionString });
+  const prismaClient = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.adapter = adapter;
-  globalForPrisma.prisma = prisma;
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.adapter = adapter;
+    globalForPrisma.prisma = prismaClient;
+  }
+
+  return prismaClient;
 }
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property, receiver) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, property, receiver);
+
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { spawnSync } from "node:child_process";
 
 const fallbackKeys = [
+  "DIRECT_URL",
   "PRISMA_DATABASE_URL",
   "POSTGRES_URL_NON_POOLING",
   "POSTGRES_PRISMA_URL",

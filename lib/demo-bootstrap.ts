@@ -88,10 +88,20 @@ async function bootstrapDemoWorkspace() {
     demoUserSeed.map((user) =>
       prisma.user.upsert({
         where: { email: user.email },
-        update: {},
+        update: {
+          name: user.name,
+          passwordHash,
+          role: user.role,
+          department: user.department,
+          jobTitle: user.jobTitle,
+          weeklyCapacityHours: user.weeklyCapacityHours,
+          avatarUrl: user.avatarUrl,
+          isActive: true,
+        },
         create: {
           ...user,
           passwordHash,
+          isActive: true,
         },
       }),
     ),
