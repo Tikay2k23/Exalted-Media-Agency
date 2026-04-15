@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import {
   ActivityEntityType,
@@ -15,10 +16,18 @@ import {
 import { hash } from "bcryptjs";
 import { addDays, startOfWeek, subDays } from "date-fns";
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString =
+  process.env.DIRECT_URL
+  ?? process.env.PRISMA_DATABASE_URL
+  ?? process.env.POSTGRES_PRISMA_URL
+  ?? process.env.POSTGRES_URL_NON_POOLING
+  ?? process.env.DATABASE_URL
+  ?? process.env.POSTGRES_URL;
 
 if (!connectionString) {
-  throw new Error("DATABASE_URL is not configured.");
+  throw new Error(
+    "A database connection string is not configured for seeding. Set DIRECT_URL, PRISMA_DATABASE_URL, or another supported PostgreSQL URL.",
+  );
 }
 
 const prisma = new PrismaClient({
