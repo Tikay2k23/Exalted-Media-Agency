@@ -100,8 +100,9 @@ DEFAULT_MANAGER_PASSWORD=...
 Build behavior on Vercel:
 
 - Prisma client is generated during install
-- `prisma db push` runs during build
-- a safe bootstrap seed runs during build to synchronize required workspace records
+- the default build should be `npm run build`
+- `vercel.json` explicitly pins the Vercel build command to `npm run build`, overriding any stale dashboard override
+- database schema sync should be run separately when needed using `npm run db:push` or `npm run db:bootstrap`
 
 ## Project Structure
 
