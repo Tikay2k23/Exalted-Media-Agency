@@ -7,7 +7,7 @@ Internal operations platform for a professional digital marketing agency, built 
 - Role-based authentication for admins, managers, and team members
 - Client account management with pipeline history
 - Weekly work tracking with daily EOD updates attached to each task
-- Internal task assignment for delivery teams
+- Internal task assignment for delivery teamss
 - Admin user management
 - Personal profile settings with editable account details and profile photo upload
 
