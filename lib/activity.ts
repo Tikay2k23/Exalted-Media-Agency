@@ -17,13 +17,17 @@ export async function logActivity({
   entityId,
   metadataJson,
 }: LogActivityInput) {
-  await prisma.activityLog.create({
-    data: {
-      actorId: actorId ?? undefined,
-      action,
-      entityType,
-      entityId,
-      metadataJson: metadataJson as Prisma.InputJsonValue | undefined,
-    },
-  });
+  try {
+    await prisma.activityLog.create({
+      data: {
+        actorId: actorId ?? undefined,
+        action,
+        entityType,
+        entityId,
+        metadataJson: metadataJson as Prisma.InputJsonValue | undefined,
+      },
+    });
+  } catch (error) {
+    console.error("[activity] Failed to write activity log.", error);
+  }
 }

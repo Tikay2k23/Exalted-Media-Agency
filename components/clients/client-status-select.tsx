@@ -2,7 +2,7 @@
 
 import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 
 import { Select } from "@/components/ui/select";
 
@@ -23,38 +23,67 @@ export function ClientStatusSelect({
   disabled?: boolean;
 }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [localValue, setLocalValue] = useState(value);
 
+  useEffect(() => {
+    setLocalValue(value);
+    setError(null);
+  }, [value]);
+
+  async function handleChange(nextValue: string) {
+    const previousValue = localValue;
+    setError(null);
+    setLocalValue(nextValue);
+    setIsSaving(true);
+
+    try {
+      const response = await fetch(`/api/clients/${clientId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ status: nextValue }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        setLocalValue(previousValue);
+        setError(data?.error ?? "Unable to update status.");
+        return;
+      }
+
+      router.refresh();
+    } catch (updateError) {
+      console.error("[client-status-select] Failed to update status.", updateError);
+      setLocalValue(previousValue);
+      setError("Unable to update status.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={localValue}
-        disabled={disabled || isPending}
-        onChange={(event) => {
-          const nextValue = event.target.value;
-          setLocalValue(nextValue);
-
-          startTransition(async () => {
-            await fetch(`/api/clients/${clientId}`, {
-              method: "PATCH",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ status: nextValue }),
-            });
-
-            router.refresh();
-          });
-        }}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
-      {isPending ? <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" /> : null}
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Select
+          value={localValue}
+          disabled={disabled || isSaving}
+          onChange={(event) => {
+            void handleChange(event.target.value);
+          }}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" /> : null}
+      </div>
+      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
     </div>
   );
 }

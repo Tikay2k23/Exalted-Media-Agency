@@ -37,20 +37,25 @@ async function bootstrapWorkspace() {
       );
     }
 
-    await prisma.user.upsert({
-      where: {
-        email: userData.email,
-      },
-      update: {
-        name: userData.name,
-        role: userData.role,
-        department: userData.department,
-        jobTitle: userData.jobTitle,
-        weeklyCapacityHours: userData.weeklyCapacityHours,
-        isActive: true,
-        ...(password ? { passwordHash: await hash(password, 12) } : {}),
-      },
-      create: {
+    if (existing) {
+      await prisma.user.update({
+        where: {
+          email: userData.email,
+        },
+        data: {
+          name: userData.name,
+          role: userData.role,
+          department: userData.department,
+          jobTitle: userData.jobTitle,
+          weeklyCapacityHours: userData.weeklyCapacityHours,
+          isActive: true,
+        },
+      });
+      continue;
+    }
+
+    await prisma.user.create({
+      data: {
         ...userData,
         passwordHash: await hash(password!, 12),
         isActive: true,

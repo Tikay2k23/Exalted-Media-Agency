@@ -2,7 +2,7 @@
 
 import { LoaderCircle, Plus, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { type FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,14 +43,17 @@ export function ClientForm({
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditMode = Boolean(client);
 
-  function handleSubmit(formData: FormData) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
     setError(null);
     setMessage(null);
+    setIsSubmitting(true);
 
-    startTransition(async () => {
+    try {
       const payload = {
         clientName: formData.get("clientName"),
         companyName: formData.get("companyName"),
@@ -73,13 +76,18 @@ export function ClientForm({
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as { error?: string } | null;
-        setError(data?.error ?? "Unable to create client right now.");
+        setError(data?.error ?? "Unable to save this client right now.");
         return;
       }
 
       setMessage(client ? "Client updated successfully." : "Client created successfully.");
       router.refresh();
-    });
+    } catch (submitError) {
+      console.error("[client-form] Failed to save client.", submitError);
+      setError("Unable to save this client right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -93,7 +101,7 @@ export function ClientForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={handleSubmit} className="grid gap-4 md:grid-cols-2">
+        <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-medium text-slate-600">Primary contact</span>
             <Input
@@ -188,8 +196,8 @@ export function ClientForm({
           </label>
 
           <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-            <Button type="submit" className="gap-2" disabled={isPending}>
-              {isPending ? (
+            <Button type="submit" className="gap-2" disabled={isSubmitting}>
+              {isSubmitting ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />
               ) : isEditMode ? (
                 <Save className="h-4 w-4" />

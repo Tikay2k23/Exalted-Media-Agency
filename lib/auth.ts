@@ -36,7 +36,9 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          await ensureRequiredWorkspaceInitialized();
+          await ensureRequiredWorkspaceInitialized().catch((error) => {
+            console.error("[auth] Workspace bootstrap failed during login.", error);
+          });
 
           const user = await prisma.user.findUnique({
             where: {
@@ -73,40 +75,45 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-      }
+      try {
+        if (user) {
+          token.id = user.id;
+          token.role = user.role;
+        }
 
-      if (!token.id) {
+        if (!token.id) {
+          return token;
+        }
+
+        const currentUser = await prisma.user.findUnique({
+          where: {
+            id: token.id,
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            avatarUrl: true,
+            isActive: true,
+          },
+        });
+
+        if (!currentUser || !currentUser.isActive) {
+          return {};
+        }
+
+        token.id = currentUser.id;
+        token.name = currentUser.name;
+        token.email = currentUser.email;
+        token.role = currentUser.role;
+        token.picture = currentUser.avatarUrl ?? null;
+
+        return token;
+      } catch (error) {
+        console.error("[auth] Failed to refresh JWT payload.", error);
         return token;
       }
-
-      const currentUser = await prisma.user.findUnique({
-        where: {
-          id: token.id,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          avatarUrl: true,
-          isActive: true,
-        },
-      });
-
-      if (!currentUser || !currentUser.isActive) {
-        return {};
-      }
-
-      token.id = currentUser.id;
-      token.name = currentUser.name;
-      token.email = currentUser.email;
-      token.role = currentUser.role;
-      token.picture = currentUser.avatarUrl ?? null;
-
-      return token;
     },
     async session({ session, token }) {
       if (session.user) {
@@ -119,12 +126,43 @@ export const authOptions: NextAuthOptions = {
 
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      const fallbackUrl = `${baseUrl}/dashboard`;
+
+      if (!url) {
+        return fallbackUrl;
+      }
+
+      const normalizePathname = (pathname: string) => pathname === "/login" || pathname.startsWith("/api/auth");
+
+      if (url.startsWith("/")) {
+        return normalizePathname(url) ? fallbackUrl : `${baseUrl}${url}`;
+      }
+
+      try {
+        const parsed = new URL(url);
+
+        if (parsed.origin !== baseUrl) {
+          return fallbackUrl;
+        }
+
+        return normalizePathname(parsed.pathname) ? fallbackUrl : parsed.toString();
+      } catch {
+        return fallbackUrl;
+      }
+    },
   },
 };
 
 export async function getServerAuthSession() {
   try {
-    return await getServerSession(authOptions);
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id || !session.user.email) {
+      return null;
+    }
+
+    return session;
   } catch (error) {
     console.error("[auth] Failed to resolve server session.", error);
     return null;

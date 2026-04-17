@@ -2,7 +2,7 @@
 
 import { LoaderCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -15,9 +15,9 @@ export function DeleteClientButton({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  function handleDelete() {
+  async function handleDelete() {
     const confirmed = window.confirm(
       `Delete ${companyName}? This will remove the client profile and associated pipeline history.`,
     );
@@ -27,23 +27,35 @@ export function DeleteClientButton({
     }
 
     setError(null);
+    setIsDeleting(true);
 
-    startTransition(async () => {
+    try {
       const response = await fetch(`/api/clients/${clientId}`, {
         method: "DELETE",
+        credentials: "same-origin",
       });
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        setError(data?.error ?? "Unable to delete client right now.");
+        setError(
+          data?.error
+          ?? (response.status === 401
+            ? "Your session expired. Please sign in again."
+            : "Unable to delete this client right now."),
+        );
         return;
       }
 
-      router.push("/clients");
+      router.replace("/clients");
       router.refresh();
-    });
+    } catch (deleteError) {
+      console.error("[delete-client-button] Failed to delete client.", deleteError);
+      setError("Unable to delete this client right now.");
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -52,10 +64,10 @@ export function DeleteClientButton({
         type="button"
         variant="danger"
         onClick={handleDelete}
-        disabled={isPending}
+        disabled={isDeleting}
         className="gap-2"
       >
-        {isPending ? (
+        {isDeleting ? (
           <LoaderCircle className="h-4 w-4 animate-spin" />
         ) : (
           <Trash2 className="h-4 w-4" />

@@ -2,39 +2,73 @@
 
 import { ArrowRight, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { type FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
+function normalizeCallbackUrl(rawValue: string | null) {
+  if (!rawValue) {
+    return "/dashboard";
+  }
+
+  try {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    const parsed = new URL(rawValue, origin);
+
+    if (parsed.origin !== origin) {
+      return "/dashboard";
+    }
+
+    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+
+    if (parsed.pathname === "/login" || parsed.pathname.startsWith("/api/auth")) {
+      return "/dashboard";
+    }
+
+    return path || "/dashboard";
+  } catch {
+    return "/dashboard";
+  }
+}
+
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const callbackUrl = normalizeCallbackUrl(searchParams.get("callbackUrl"));
 
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
     setError(null);
+    setIsSubmitting(true);
 
-    startTransition(async () => {
+    try {
       const response = await signIn("credentials", {
         email: formData.get("email"),
         password: formData.get("password"),
         redirect: false,
+        callbackUrl,
       });
 
-      if (!response?.ok) {
+      if (!response?.ok || response.error) {
         setError("Invalid email or password. Please try again.");
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
-    });
+      const destination = response.url ?? callbackUrl;
+      window.location.assign(destination);
+    } catch (submitError) {
+      console.error("[login-form] Sign in failed.", submitError);
+      setError("We couldn't complete sign-in right now. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -47,7 +81,7 @@ export function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <form action={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-slate-600">Email</span>
             <div className="relative">
@@ -81,8 +115,8 @@ export function LoginForm() {
             </div>
           ) : null}
 
-          <Button type="submit" className="w-full gap-2" size="lg" disabled={isPending}>
-            {isPending ? (
+          <Button type="submit" className="w-full gap-2" size="lg" disabled={isSubmitting}>
+            {isSubmitting ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             ) : (
               <ArrowRight className="h-4 w-4" />
