@@ -6,6 +6,204 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id                     String                 @id @default(cuid())
+  name                   String
+  email                  String                 @unique
+  passwordHash           String
+  role                   Role
+  avatarUrl              String?
+  isActive               Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  department             Department             @default(CONTENT)
+  jobTitle               String?
+  weeklyCapacityHours    Int                    @default(40)
+  accounts               Account[]
+  activityLogs           ActivityLog[]          @relation("ActivityActor")
+  assignedClients        Client[]               @relation("ClientAssignee")
+  stageChanges           ClientStageHistory[]   @relation("StageChangedBy")
+  assignedAgencyTasks    EmployeeTask[]         @relation("EmployeeTaskAssignee")
+  createdAgencyTasks     EmployeeTask[]         @relation("EmployeeTaskCreator")
+  employeeTaskEodEntries EmployeeTaskEodEntry[]
+  sessions               Session[]
+  assignedSocialTasks    SocialMediaTask[]      @relation("TaskAssignee")
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model PipelineStage {
+  id            String               @id @default(cuid())
+  name          String
+  slug          String               @unique
+  color         String
+  position      Int                  @unique
+  isDefault     Boolean              @default(false)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  clients       Client[]
+  historiesFrom ClientStageHistory[] @relation("HistoryFromStage")
+  historiesTo   ClientStageHistory[] @relation("HistoryToStage")
+
+  @@index([position])
+}
+
+model Client {
+  id             String               @id @default(cuid())
+  clientName     String
+  companyName    String
+  contactEmail   String
+  contactPhone   String?
+  assignedUserId String?
+  status         ClientStatus         @default(ACTIVE)
+  dateAdded      DateTime             @default(now())
+  notes          String?
+  serviceType    ServiceType
+  currentStageId String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  assignedUser   User?                @relation("ClientAssignee", fields: [assignedUserId], references: [id])
+  currentStage   PipelineStage        @relation(fields: [currentStageId], references: [id])
+  stageHistory   ClientStageHistory[]
+  agencyTasks    EmployeeTask[]
+  socialTasks    SocialMediaTask[]
+
+  @@index([assignedUserId])
+  @@index([status])
+  @@index([currentStageId])
+}
+
+model ClientStageHistory {
+  id          String         @id @default(cuid())
+  clientId    String
+  fromStageId String?
+  toStageId   String
+  changedById String?
+  note        String?
+  changedAt   DateTime       @default(now())
+  changedBy   User?          @relation("StageChangedBy", fields: [changedById], references: [id])
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fromStage   PipelineStage? @relation("HistoryFromStage", fields: [fromStageId], references: [id])
+  toStage     PipelineStage  @relation("HistoryToStage", fields: [toStageId], references: [id])
+
+  @@index([clientId])
+  @@index([changedById])
+  @@index([changedAt])
+}
+
+model SocialMediaTask {
+  id             String           @id @default(cuid())
+  clientId       String
+  platform       SocialPlatform
+  plannedPosts   Int
+  completedPosts Int              @default(0)
+  dueDate        DateTime
+  status         SocialTaskStatus @default(NOT_STARTED)
+  assignedUserId String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  assignedUser   User?            @relation("TaskAssignee", fields: [assignedUserId], references: [id])
+  client         Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([assignedUserId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+model EmployeeTask {
+  id             String                 @id @default(cuid())
+  title          String
+  note           String?
+  status         EmployeeTaskStatus     @default(TODO)
+  priority       TaskPriority           @default(MEDIUM)
+  dueDate        DateTime
+  assignedToId   String
+  createdById    String?
+  clientId       String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  category       TaskCategory           @default(INTERNAL_OPERATIONS)
+  estimatedHours Int                    @default(2)
+  weekStartDate  DateTime               @default(now())
+  assignedTo     User                   @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
+  client         Client?                @relation(fields: [clientId], references: [id])
+  createdBy      User?                  @relation("EmployeeTaskCreator", fields: [createdById], references: [id])
+  eodEntries     EmployeeTaskEodEntry[]
+
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([weekStartDate])
+}
+
+model EmployeeTaskEodEntry {
+  id        String       @id @default(cuid())
+  taskId    String
+  authorId  String
+  entryDate DateTime
+  summary   String
+  blockers  String?
+  nextSteps String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  author    User         @relation(fields: [authorId], references: [id])
+  task      EmployeeTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, authorId, entryDate])
+  @@index([taskId, entryDate])
+  @@index([authorId, entryDate])
+}
+
+model ActivityLog {
+  id           String             @id @default(cuid())
+  actorId      String?
+  action       String
+  entityType   ActivityEntityType
+  entityId     String
+  metadataJson Json?
+  createdAt    DateTime           @default(now())
+  actor        User?              @relation("ActivityActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
 enum Role {
   ADMIN
   MANAGER
@@ -91,205 +289,7 @@ enum ActivityEntityType {
   CLIENT
   PIPELINE
   SOCIAL_TASK
-  EMPLOYEE_TASK
   AUTH
   REPORT
-}
-
-model User {
-  id                  String               @id @default(cuid())
-  name                String
-  email               String               @unique
-  passwordHash        String
-  role                Role
-  department          Department           @default(CONTENT)
-  jobTitle            String?
-  weeklyCapacityHours Int                  @default(40)
-  avatarUrl           String?
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  assignedClients     Client[]             @relation("ClientAssignee")
-  assignedSocialTasks SocialMediaTask[]    @relation("TaskAssignee")
-  assignedAgencyTasks EmployeeTask[]       @relation("EmployeeTaskAssignee")
-  createdAgencyTasks  EmployeeTask[]       @relation("EmployeeTaskCreator")
-  employeeTaskEodEntries EmployeeTaskEodEntry[]
-  stageChanges        ClientStageHistory[] @relation("StageChangedBy")
-  activityLogs        ActivityLog[]        @relation("ActivityActor")
-  accounts            Account[]
-  sessions            Session[]
-
-  @@index([role])
-  @@index([isActive])
-}
-
-model PipelineStage {
-  id            String               @id @default(cuid())
-  name          String
-  slug          String               @unique
-  color         String
-  position      Int                  @unique
-  isDefault     Boolean              @default(false)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  clients       Client[]
-  historiesFrom ClientStageHistory[] @relation("HistoryFromStage")
-  historiesTo   ClientStageHistory[] @relation("HistoryToStage")
-
-  @@index([position])
-}
-
-model Client {
-  id             String               @id @default(cuid())
-  clientName     String
-  companyName    String
-  contactEmail   String
-  contactPhone   String?
-  assignedUserId String?
-  assignedUser   User?                @relation("ClientAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  status         ClientStatus         @default(ACTIVE)
-  dateAdded      DateTime             @default(now())
-  notes          String?              @db.Text
-  serviceType    ServiceType
-  currentStageId String
-  currentStage   PipelineStage        @relation(fields: [currentStageId], references: [id])
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  stageHistory   ClientStageHistory[]
-  socialTasks    SocialMediaTask[]
-  agencyTasks    EmployeeTask[]
-
-  @@index([assignedUserId])
-  @@index([status])
-  @@index([currentStageId])
-}
-
-model ClientStageHistory {
-  id          String         @id @default(cuid())
-  clientId    String
-  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  fromStageId String?
-  fromStage   PipelineStage? @relation("HistoryFromStage", fields: [fromStageId], references: [id], onDelete: SetNull)
-  toStageId   String
-  toStage     PipelineStage  @relation("HistoryToStage", fields: [toStageId], references: [id], onDelete: Restrict)
-  changedById String?
-  changedBy   User?          @relation("StageChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
-  note        String?        @db.Text
-  changedAt   DateTime       @default(now())
-
-  @@index([clientId])
-  @@index([changedById])
-  @@index([changedAt])
-}
-
-model SocialMediaTask {
-  id             String           @id @default(cuid())
-  clientId       String
-  client         Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  platform       SocialPlatform
-  plannedPosts   Int
-  completedPosts Int              @default(0)
-  dueDate        DateTime
-  status         SocialTaskStatus @default(NOT_STARTED)
-  assignedUserId String?
-  assignedUser   User?            @relation("TaskAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-
-  @@index([clientId])
-  @@index([assignedUserId])
-  @@index([dueDate])
-  @@index([status])
-}
-
-model EmployeeTask {
-  id            String               @id @default(cuid())
-  title         String
-  note          String?              @db.Text
-  status        EmployeeTaskStatus   @default(TODO)
-  priority      TaskPriority         @default(MEDIUM)
-  category      TaskCategory         @default(INTERNAL_OPERATIONS)
-  estimatedHours Int                 @default(2)
-  weekStartDate DateTime             @default(now())
-  dueDate       DateTime
-  assignedToId  String
-  assignedTo    User                 @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
-  createdById   String?
-  createdBy     User?                @relation("EmployeeTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  clientId      String?
-  client        Client?              @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  eodEntries    EmployeeTaskEodEntry[]
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-
-  @@index([assignedToId])
-  @@index([createdById])
-  @@index([clientId])
-  @@index([status])
-  @@index([dueDate])
-  @@index([weekStartDate])
-}
-
-model EmployeeTaskEodEntry {
-  id        String       @id @default(cuid())
-  taskId     String
-  task       EmployeeTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  authorId   String
-  author     User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  entryDate  DateTime
-  summary    String       @db.Text
-  blockers   String?      @db.Text
-  nextSteps  String?      @db.Text
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-
-  @@unique([taskId, authorId, entryDate])
-  @@index([taskId, entryDate])
-  @@index([authorId, entryDate])
-}
-
-model ActivityLog {
-  id           String             @id @default(cuid())
-  actorId      String?
-  actor        User?              @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
-  action       String
-  entityType   ActivityEntityType
-  entityId     String
-  metadataJson Json?
-  createdAt    DateTime           @default(now())
-
-  @@index([entityType, entityId])
-  @@index([createdAt])
-}
-
-model Account {
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@id([provider, providerAccountId])
-}
-
-model Session {
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@id([identifier, token])
+  EMPLOYEE_TASK
 }
