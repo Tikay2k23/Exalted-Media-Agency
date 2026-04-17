@@ -77,40 +77,52 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const session = await getServerAuthSession();
+  try {
+    const session = await getServerAuthSession();
 
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!canManageUsers(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const payload = await request.json();
+    const parsed = userUpdateSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid update payload" }, { status: 400 });
+    }
+
+    if (parsed.data.id === session.user.id && (!parsed.data.isActive || parsed.data.role !== Role.ADMIN)) {
+      return NextResponse.json(
+        { error: "You cannot deactivate or remove admin access from the account you are currently using." },
+        { status: 400 },
+      );
+    }
+
+    const user = await prisma.user.update({
+      where: { id: parsed.data.id },
+      data: {
+        role: parsed.data.role,
+        department: parsed.data.department,
+        jobTitle: parsed.data.jobTitle || null,
+        weeklyCapacityHours: parsed.data.weeklyCapacityHours,
+        isActive: parsed.data.isActive,
+      },
+    });
+
+    await logActivity({
+      actorId: session.user.id,
+      action: `Updated user ${user.name}`,
+      entityType: ActivityEntityType.USER,
+      entityId: user.id,
+    });
+
+    return NextResponse.json(user);
+  } catch (error) {
+    console.error("[api/admin/users] Failed to update user.", error);
+    return NextResponse.json({ error: "Unable to update this user right now." }, { status: 500 });
   }
-
-  if (!canManageUsers(session.user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const payload = await request.json();
-  const parsed = userUpdateSchema.safeParse(payload);
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid update payload" }, { status: 400 });
-  }
-
-  const user = await prisma.user.update({
-    where: { id: parsed.data.id },
-    data: {
-      role: parsed.data.role,
-      department: parsed.data.department,
-      jobTitle: parsed.data.jobTitle || null,
-      weeklyCapacityHours: parsed.data.weeklyCapacityHours,
-      isActive: parsed.data.isActive,
-    },
-  });
-
-  await logActivity({
-    actorId: session.user.id,
-    action: `Updated user ${user.name}`,
-    entityType: ActivityEntityType.USER,
-    entityId: user.id,
-  });
-
-  return NextResponse.json(user);
 }

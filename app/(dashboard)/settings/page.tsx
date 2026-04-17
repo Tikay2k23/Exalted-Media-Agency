@@ -1,5 +1,3 @@
-import { notFound } from "next/navigation";
-
 import { ProfileSettingsForm } from "@/components/settings/profile-settings-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,25 +11,56 @@ export const runtime = "nodejs";
 
 export default async function SettingsPage() {
   const sessionUser = await requireUser();
-  const user = await prisma.user.findUnique({
-    where: {
-      id: sessionUser.id,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      department: true,
-      jobTitle: true,
-      weeklyCapacityHours: true,
-      avatarUrl: true,
-      isActive: true,
-    },
-  });
+  let user:
+    | {
+        id: string;
+        name: string;
+        email: string;
+        role: keyof typeof roleLabels;
+        department: string;
+        jobTitle: string | null;
+        weeklyCapacityHours: number;
+        avatarUrl: string | null;
+        isActive: boolean;
+      }
+    | null;
+
+  try {
+    user = await prisma.user.findUnique({
+      where: {
+        id: sessionUser.id,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        department: true,
+        jobTitle: true,
+        weeklyCapacityHours: true,
+        avatarUrl: true,
+        isActive: true,
+      },
+    });
+  } catch (error) {
+    console.error("[settings-page] Failed to load profile.", error);
+    user = null;
+  }
 
   if (!user) {
-    notFound();
+    return (
+      <div className="space-y-6">
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle>Profile details are temporarily unavailable</CardTitle>
+            <CardDescription>
+              We could not load your full account record right now. Refresh this page in a moment
+              to try again.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
   }
 
   return (

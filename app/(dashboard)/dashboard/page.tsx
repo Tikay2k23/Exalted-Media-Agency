@@ -32,6 +32,18 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {data.isDegraded ? (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle>Live data is temporarily unavailable</CardTitle>
+            <CardDescription>
+              We kept the dashboard online, but one or more data sources did not respond in time.
+              Refresh the page in a moment to load the latest workspace information.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard
           title="Client accounts"

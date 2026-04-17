@@ -18,6 +18,18 @@ export default async function TeamPage() {
 
   return (
     <div className="space-y-6">
+      {data.isDegraded ? (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle>Some team data is temporarily unavailable</CardTitle>
+            <CardDescription>
+              The workspace stayed online, but one or more team data queries failed. Refresh this
+              page shortly to try again.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
       <AgencyTaskPanel
         tasks={data.agencyTasks}
         users={data.taskOptions.users}

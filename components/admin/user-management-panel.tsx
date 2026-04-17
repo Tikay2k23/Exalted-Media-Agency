@@ -52,10 +52,18 @@ const departmentOptions = [
   "OPERATIONS",
 ];
 
-export function UserManagementPanel({ users }: { users: UserRow[] }) {
+export function UserManagementPanel({
+  users,
+  currentUserId,
+}: {
+  users: UserRow[];
+  currentUserId: string;
+}) {
   const router = useRouter();
   const [createError, setCreateError] = useState<string | null>(null);
   const [createMessage, setCreateMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -95,26 +103,44 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
   }
 
   function handleSave(userId: string, formData: FormData) {
+    setSaveError(null);
+    setSaveMessage(null);
     setActiveUserId(userId);
 
     startTransition(async () => {
-      await fetch("/api/admin/users", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: userId,
-          role: formData.get("role"),
-          department: formData.get("department"),
-          jobTitle: formData.get("jobTitle"),
-          weeklyCapacityHours: formData.get("weeklyCapacityHours"),
-          isActive: formData.get("isActive") === "true",
-        }),
-      });
+      try {
+        const response = await fetch("/api/admin/users", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: userId,
+            role: formData.get("role"),
+            department: formData.get("department"),
+            jobTitle: formData.get("jobTitle"),
+            weeklyCapacityHours: formData.get("weeklyCapacityHours"),
+            isActive: formData.get("isActive") === "true",
+          }),
+        });
 
-      setActiveUserId(null);
-      router.refresh();
+        if (!response.ok) {
+          const data = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          setSaveError(data?.error ?? "Unable to update team member.");
+          setActiveUserId(null);
+          return;
+        }
+
+        setSaveMessage("Team member updated successfully.");
+        setActiveUserId(null);
+        router.refresh();
+      } catch (saveRequestError) {
+        console.error("[user-management-panel] Failed to update team member.", saveRequestError);
+        setSaveError("Unable to update team member.");
+        setActiveUserId(null);
+      }
     });
   }
 
@@ -194,6 +220,10 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            {saveMessage ? <p className="text-sm text-emerald-600">{saveMessage}</p> : null}
+            {saveError ? <p className="text-sm text-rose-600">{saveError}</p> : null}
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -212,6 +242,7 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
             <TableBody>
               {users.map((user) => {
                 const saving = isPending && activeUserId === user.id;
+                const isCurrentUser = user.id === currentUserId;
                 const bookedHours = user.assignedAgencyTasks
                   .filter((task) => task.status !== "DONE")
                   .reduce((total, task) => total + task.estimatedHours, 0);
@@ -236,7 +267,7 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
                         action={(formData) => handleSave(user.id, formData)}
                         className="grid gap-3"
                       >
-                        <Select name="role" defaultValue={user.role}>
+                        <Select name="role" defaultValue={user.role} disabled={isCurrentUser}>
                           <option value="ADMIN">Admin</option>
                           <option value="MANAGER">Manager</option>
                           <option value="TEAM_MEMBER">Team Member</option>
@@ -278,6 +309,7 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
                         form={`user-${user.id}`}
                         name="isActive"
                         defaultValue={String(user.isActive)}
+                        disabled={isCurrentUser}
                       >
                         <option value="true">Active</option>
                         <option value="false">Inactive</option>
@@ -286,6 +318,9 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
                     <TableCell>{user.assignedClients.length}</TableCell>
                     <TableCell>
                       {bookedHours}h / {user.weeklyCapacityHours}h
+                      {isCurrentUser ? (
+                        <p className="mt-1 text-xs text-slate-400">Current session</p>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

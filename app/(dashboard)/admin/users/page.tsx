@@ -11,5 +11,5 @@ export default async function AdminUsersPage() {
   const user = await requireRole([Role.ADMIN]);
   const data = await getAdminUsersData(user);
 
-  return <UserManagementPanel users={data?.users ?? []} />;
+  return <UserManagementPanel users={data?.users ?? []} currentUserId={user.id} />;
 }

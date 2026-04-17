@@ -206,319 +206,402 @@ function getAttentionRank(client: { status: string; assignedUserId: string | nul
 }
 
 export async function getSharedOptions() {
-  const [stages, users] = await Promise.all([
-    prisma.pipelineStage.findMany({
-      orderBy: {
-        position: "asc",
-      },
-    }),
-    prisma.user.findMany({
-      where: { isActive: true },
-      orderBy: [{ role: "asc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        role: true,
-        department: true,
-        jobTitle: true,
-        weeklyCapacityHours: true,
-      },
-    }),
-  ]);
+  try {
+    const [stages, users] = await Promise.all([
+      prisma.pipelineStage.findMany({
+        orderBy: {
+          position: "asc",
+        },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true },
+        orderBy: [{ role: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          department: true,
+          jobTitle: true,
+          weeklyCapacityHours: true,
+        },
+      }),
+    ]);
 
-  return { stages, users };
+    return { stages, users };
+  } catch (error) {
+    console.error("[queries] Failed to load shared options.", error);
+    return { stages: [], users: [] };
+  }
 }
 
 export async function getDashboardData(user: AppUser) {
-  const [clients, stages, performanceUsers, visibleAgencyTasks, featuredAgencyTasks] = await Promise.all([
-    prisma.client.findMany({
-      where: getClientVisibilityWhere(user),
-      include: {
-        assignedUser: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-          },
-        },
-        currentStage: true,
-        agencyTasks: {
-          select: {
-            id: true,
-            status: true,
-            dueDate: true,
-          },
-        },
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    }),
-    prisma.pipelineStage.findMany({
-      orderBy: {
-        position: "asc",
-      },
-    }),
-    prisma.user.findMany({
-      where: canViewAllAgencyData(user.role)
-        ? { isActive: true }
-        : { id: user.id, isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        role: true,
-        department: true,
-        jobTitle: true,
-        weeklyCapacityHours: true,
-        assignedClients: {
-          select: { id: true },
-        },
-        assignedAgencyTasks: {
-          select: {
-            status: true,
-            estimatedHours: true,
-            dueDate: true,
-          },
-        },
-      },
-    }),
-    prisma.employeeTask.findMany({
-      where: getEmployeeTaskVisibilityWhere(user),
-      select: {
-        id: true,
-        status: true,
-        dueDate: true,
-        estimatedHours: true,
-      },
-    }),
-    prisma.employeeTask.findMany({
-      where: {
-        ...getEmployeeTaskVisibilityWhere(user),
-        status: {
-          not: "DONE",
-        },
-      },
-      include: {
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            department: true,
-          },
-        },
-        client: {
-          select: {
-            id: true,
-            companyName: true,
-          },
-        },
-      },
-      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-      take: 6,
-    }),
-  ]);
-
-  const clientIds = clients.map((client) => client.id);
-  const taskIds = visibleAgencyTasks.map((task) => task.id);
-  const activities = await prisma.activityLog.findMany({
-    where: canViewAllAgencyData(user.role)
-      ? {}
-      : {
-          OR: [
-            { actorId: user.id },
-            ...(clientIds.length ? [{ entityId: { in: clientIds } }] : []),
-            ...(taskIds.length ? [{ entityId: { in: taskIds } }] : []),
-          ],
-        },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 8,
-    include: {
-      actor: {
-        select: {
-          id: true,
-          name: true,
-          role: true,
-        },
-      },
-    },
-  });
-
-  const teamPerformance = performanceUsers
-    .map((member) => {
-      const bookedHours = getOpenAgencyTaskHours(member.assignedAgencyTasks);
-      return {
-        id: member.id,
-        name: member.name,
-        role: member.role,
-        department: member.department,
-        jobTitle: member.jobTitle,
-        assignedClients: member.assignedClients.length,
-        activeTasks: countOpenAgencyTasks(member.assignedAgencyTasks),
-        weeklyCapacityHours: member.weeklyCapacityHours,
-        bookedHours,
-        utilizationRate: getUtilizationRate(bookedHours, member.weeklyCapacityHours),
-        overdueTasks: countOverdueAgencyTasks(member.assignedAgencyTasks),
-      };
-    })
-    .sort((left, right) => {
-      if (right.overdueTasks !== left.overdueTasks) {
-        return right.overdueTasks - left.overdueTasks;
-      }
-
-      return right.utilizationRate - left.utilizationRate;
-    });
-
-  return {
-    metrics: {
-      existingClientsCount: clients.length,
-      newClientsCount: clients.filter((client) => client.dateAdded >= subDays(new Date(), 30)).length,
-      activeClientsCount: clients.filter((client) => client.status === "ACTIVE").length,
-      openAgencyTasksCount: countOpenAgencyTasks(visibleAgencyTasks),
-      overdueAgencyTasksCount: countOverdueAgencyTasks(visibleAgencyTasks),
-      teamUtilizationRate: teamPerformance.length
-        ? Math.round(
-            teamPerformance.reduce((sum, member) => sum + member.utilizationRate, 0)
-            / teamPerformance.length,
-          )
-        : 0,
-    },
-    pipelineOverview: stages.map((stage) => ({
-      id: stage.id,
-      name: stage.name,
-      color: stage.color,
-      count: clients.filter((client) => client.currentStageId === stage.id).length,
-    })),
-    attentionClients: clients
-      .filter((client) => getAttentionRank(client) > 0)
-      .sort((left, right) => {
-        const rankDifference = getAttentionRank(right) - getAttentionRank(left);
-
-        if (rankDifference !== 0) {
-          return rankDifference;
-        }
-
-        return +new Date(right.updatedAt) - +new Date(left.updatedAt);
-      })
-      .slice(0, 5)
-      .map((client) => ({
-        id: client.id,
-        companyName: client.companyName,
-        status: client.status,
-        stageName: client.currentStage.name,
-        assignedUserName: client.assignedUser?.name ?? null,
-      })),
-    recentActivity: activities,
-    teamPerformance,
-    agencyTasks: featuredAgencyTasks,
-    departmentLoad: Object.values(
-      performanceUsers.reduce<
-        Record<
-          string,
-          {
-            department: Department;
-            members: number;
-            openHours: number;
-            capacityHours: number;
-            utilizationRate: number;
-          }
-        >
-      >((accumulator, member) => {
-        const current =
-          accumulator[member.department]
-          ?? {
-            department: member.department,
-            members: 0,
-            openHours: 0,
-            capacityHours: 0,
-            utilizationRate: 0,
-          };
-
-        current.members += 1;
-        current.openHours += getOpenAgencyTaskHours(member.assignedAgencyTasks);
-        current.capacityHours += member.weeklyCapacityHours;
-        current.utilizationRate = getUtilizationRate(current.openHours, current.capacityHours);
-        accumulator[member.department] = current;
-
-        return accumulator;
-      }, {}),
-    ).sort((left, right) => right.utilizationRate - left.utilizationRate),
-  };
-}
-
-export async function getClientsData(user: AppUser, filters?: ClientFilters) {
-  const [clients, options] = await Promise.all([
-    prisma.client.findMany({
-      where: buildClientFilters(user, filters),
-      include: {
-        assignedUser: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            department: true,
-          },
-        },
-        currentStage: true,
-        agencyTasks: {
-          select: {
-            id: true,
-            status: true,
-            dueDate: true,
-          },
-        },
-      },
-      orderBy: [{ dateAdded: "desc" }, { companyName: "asc" }],
-    }),
-    getSharedOptions(),
-  ]);
-
-  return {
-    clients: clients.map((client) => ({
-      ...client,
-      openTaskCount: countOpenAgencyTasks(client.agencyTasks),
-      overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
-    })),
-    ...options,
-  };
-}
-
-export async function getClientDetail(user: AppUser, clientId: string) {
-  const client = await prisma.client.findFirst({
-    where: {
-      id: clientId,
-      ...getClientVisibilityWhere(user),
-    },
-    include: {
-      assignedUser: {
-        select: {
-          id: true,
-          name: true,
-          role: true,
-          email: true,
-        },
-      },
-      currentStage: true,
-      agencyTasks: {
+  try {
+    const [clients, stages, performanceUsers, visibleAgencyTasks, featuredAgencyTasks] = await Promise.all([
+      prisma.client.findMany({
+        where: getClientVisibilityWhere(user),
         include: {
-          assignedTo: {
+          assignedUser: {
             select: {
               id: true,
               name: true,
               role: true,
             },
           },
+          currentStage: true,
+          agencyTasks: {
+            select: {
+              id: true,
+              status: true,
+              dueDate: true,
+            },
+          },
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+      }),
+      prisma.pipelineStage.findMany({
+        orderBy: {
+          position: "asc",
+        },
+      }),
+      prisma.user.findMany({
+        where: canViewAllAgencyData(user.role)
+          ? { isActive: true }
+          : { id: user.id, isActive: true },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          department: true,
+          jobTitle: true,
+          weeklyCapacityHours: true,
+          assignedClients: {
+            select: { id: true },
+          },
+          assignedAgencyTasks: {
+            select: {
+              status: true,
+              estimatedHours: true,
+              dueDate: true,
+            },
+          },
+        },
+      }),
+      prisma.employeeTask.findMany({
+        where: getEmployeeTaskVisibilityWhere(user),
+        select: {
+          id: true,
+          status: true,
+          dueDate: true,
+          estimatedHours: true,
+        },
+      }),
+      prisma.employeeTask.findMany({
+        where: {
+          ...getEmployeeTaskVisibilityWhere(user),
+          status: {
+            not: "DONE",
+          },
+        },
+        include: {
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+              department: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              companyName: true,
+            },
+          },
         },
         orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        take: 6,
+      }),
+    ]);
+
+    const clientIds = clients.map((client) => client.id);
+    const taskIds = visibleAgencyTasks.map((task) => task.id);
+    const activities = await prisma.activityLog.findMany({
+      where: canViewAllAgencyData(user.role)
+        ? {}
+        : {
+            OR: [
+              { actorId: user.id },
+              ...(clientIds.length ? [{ entityId: { in: clientIds } }] : []),
+              ...(taskIds.length ? [{ entityId: { in: taskIds } }] : []),
+            ],
+          },
+      orderBy: {
+        createdAt: "desc",
       },
-      stageHistory: {
+      take: 8,
+      include: {
+        actor: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    const teamPerformance = performanceUsers
+      .map((member) => {
+        const bookedHours = getOpenAgencyTaskHours(member.assignedAgencyTasks);
+        return {
+          id: member.id,
+          name: member.name,
+          role: member.role,
+          department: member.department,
+          jobTitle: member.jobTitle,
+          assignedClients: member.assignedClients.length,
+          activeTasks: countOpenAgencyTasks(member.assignedAgencyTasks),
+          weeklyCapacityHours: member.weeklyCapacityHours,
+          bookedHours,
+          utilizationRate: getUtilizationRate(bookedHours, member.weeklyCapacityHours),
+          overdueTasks: countOverdueAgencyTasks(member.assignedAgencyTasks),
+        };
+      })
+      .sort((left, right) => {
+        if (right.overdueTasks !== left.overdueTasks) {
+          return right.overdueTasks - left.overdueTasks;
+        }
+
+        return right.utilizationRate - left.utilizationRate;
+      });
+
+    return {
+      isDegraded: false,
+      metrics: {
+        existingClientsCount: clients.length,
+        newClientsCount: clients.filter((client) => client.dateAdded >= subDays(new Date(), 30)).length,
+        activeClientsCount: clients.filter((client) => client.status === "ACTIVE").length,
+        openAgencyTasksCount: countOpenAgencyTasks(visibleAgencyTasks),
+        overdueAgencyTasksCount: countOverdueAgencyTasks(visibleAgencyTasks),
+        teamUtilizationRate: teamPerformance.length
+          ? Math.round(
+              teamPerformance.reduce((sum, member) => sum + member.utilizationRate, 0)
+              / teamPerformance.length,
+            )
+          : 0,
+      },
+      pipelineOverview: stages.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        color: stage.color,
+        count: clients.filter((client) => client.currentStageId === stage.id).length,
+      })),
+      attentionClients: clients
+        .filter((client) => getAttentionRank(client) > 0)
+        .sort((left, right) => {
+          const rankDifference = getAttentionRank(right) - getAttentionRank(left);
+
+          if (rankDifference !== 0) {
+            return rankDifference;
+          }
+
+          return +new Date(right.updatedAt) - +new Date(left.updatedAt);
+        })
+        .slice(0, 5)
+        .map((client) => ({
+          id: client.id,
+          companyName: client.companyName,
+          status: client.status,
+          stageName: client.currentStage.name,
+          assignedUserName: client.assignedUser?.name ?? null,
+        })),
+      recentActivity: activities,
+      teamPerformance,
+      agencyTasks: featuredAgencyTasks,
+      departmentLoad: Object.values(
+        performanceUsers.reduce<
+          Record<
+            string,
+            {
+              department: Department;
+              members: number;
+              openHours: number;
+              capacityHours: number;
+              utilizationRate: number;
+            }
+          >
+        >((accumulator, member) => {
+          const current =
+            accumulator[member.department]
+            ?? {
+              department: member.department,
+              members: 0,
+              openHours: 0,
+              capacityHours: 0,
+              utilizationRate: 0,
+            };
+
+          current.members += 1;
+          current.openHours += getOpenAgencyTaskHours(member.assignedAgencyTasks);
+          current.capacityHours += member.weeklyCapacityHours;
+          current.utilizationRate = getUtilizationRate(current.openHours, current.capacityHours);
+          accumulator[member.department] = current;
+
+          return accumulator;
+        }, {}),
+      ).sort((left, right) => right.utilizationRate - left.utilizationRate),
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load dashboard data.", error);
+    return {
+      isDegraded: true,
+      metrics: {
+        existingClientsCount: 0,
+        newClientsCount: 0,
+        activeClientsCount: 0,
+        openAgencyTasksCount: 0,
+        overdueAgencyTasksCount: 0,
+        teamUtilizationRate: 0,
+      },
+      pipelineOverview: [],
+      attentionClients: [],
+      recentActivity: [],
+      teamPerformance: [],
+      agencyTasks: [],
+      departmentLoad: [],
+    };
+  }
+}
+
+export async function getClientsData(user: AppUser, filters?: ClientFilters) {
+  try {
+    const [clients, options] = await Promise.all([
+      prisma.client.findMany({
+        where: buildClientFilters(user, filters),
         include: {
-          fromStage: true,
-          toStage: true,
-          changedBy: {
+          assignedUser: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+              department: true,
+            },
+          },
+          currentStage: true,
+          agencyTasks: {
+            select: {
+              id: true,
+              status: true,
+              dueDate: true,
+            },
+          },
+        },
+        orderBy: [{ dateAdded: "desc" }, { companyName: "asc" }],
+      }),
+      getSharedOptions(),
+    ]);
+
+    return {
+      clients: clients.map((client) => ({
+        ...client,
+        openTaskCount: countOpenAgencyTasks(client.agencyTasks),
+        overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
+      })),
+      ...options,
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load clients data.", error);
+    const options = await getSharedOptions();
+    return {
+      clients: [],
+      ...options,
+    };
+  }
+}
+
+export async function getClientDetail(user: AppUser, clientId: string) {
+  try {
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        ...getClientVisibilityWhere(user),
+      },
+      include: {
+        assignedUser: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            email: true,
+          },
+        },
+        currentStage: true,
+        agencyTasks: {
+          include: {
+            assignedTo: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+              },
+            },
+          },
+          orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        },
+        stageHistory: {
+          include: {
+            fromStage: true,
+            toStage: true,
+            changedBy: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+              },
+            },
+          },
+          orderBy: {
+            changedAt: "desc",
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      return null;
+    }
+
+    return {
+      ...client,
+      openTaskCount: countOpenAgencyTasks(client.agencyTasks),
+      overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load client detail.", error);
+    return null;
+  }
+}
+
+export async function getPipelineData(user: AppUser, assigneeId?: string | "ALL") {
+  try {
+    const [stages, clients, users] = await Promise.all([
+      prisma.pipelineStage.findMany({
+        orderBy: {
+          position: "asc",
+        },
+      }),
+      prisma.client.findMany({
+        where: {
+          ...getClientVisibilityWhere(user),
+          ...(assigneeId && assigneeId !== "ALL" && canViewAllAgencyData(user.role)
+            ? { assignedUserId: assigneeId }
+            : {}),
+        },
+        include: {
+          assignedUser: {
             select: {
               id: true,
               name: true,
@@ -527,64 +610,30 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           },
         },
         orderBy: {
-          changedAt: "desc",
+          updatedAt: "desc",
         },
-      },
-    },
-  });
+      }),
+      prisma.user.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, role: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
 
-  if (!client) {
-    return null;
+    return {
+      stages: stages.map((stage) => ({
+        ...stage,
+        clients: clients.filter((client) => client.currentStageId === stage.id),
+      })),
+      users,
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load pipeline data.", error);
+    return {
+      stages: [],
+      users: [],
+    };
   }
-
-  return {
-    ...client,
-    openTaskCount: countOpenAgencyTasks(client.agencyTasks),
-    overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
-  };
-}
-
-export async function getPipelineData(user: AppUser, assigneeId?: string | "ALL") {
-  const [stages, clients, users] = await Promise.all([
-    prisma.pipelineStage.findMany({
-      orderBy: {
-        position: "asc",
-      },
-    }),
-    prisma.client.findMany({
-      where: {
-        ...getClientVisibilityWhere(user),
-        ...(assigneeId && assigneeId !== "ALL" && canViewAllAgencyData(user.role)
-          ? { assignedUserId: assigneeId }
-          : {}),
-      },
-      include: {
-        assignedUser: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    }),
-    prisma.user.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
-
-  return {
-    stages: stages.map((stage) => ({
-      ...stage,
-      clients: clients.filter((client) => client.currentStageId === stage.id),
-    })),
-    users,
-  };
 }
 
 export async function getWeeklyTaskTrackerData(user: AppUser, filters?: WeeklyTaskTrackerFilters) {
@@ -634,133 +683,287 @@ export async function getWeeklyTaskTrackerData(user: AppUser, filters?: WeeklyTa
     });
   }
 
-  const [tasks, clients] = await Promise.all([
-    prisma.employeeTask.findMany({
-      where: {
-        AND: whereClauses,
-      },
-      include: {
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            department: true,
-            jobTitle: true,
-          },
+  try {
+    const [tasks, clients] = await Promise.all([
+      prisma.employeeTask.findMany({
+        where: {
+          AND: whereClauses,
         },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-          },
-        },
-        client: {
-          select: {
-            id: true,
-            companyName: true,
-            clientName: true,
-          },
-        },
-        eodEntries: {
-          where: {
-            entryDate: {
-              gte: weekStart,
-              lte: weekEnd,
+        include: {
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              department: true,
+              jobTitle: true,
             },
           },
-          include: {
-            author: {
-              select: {
-                id: true,
-                name: true,
-                role: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              companyName: true,
+              clientName: true,
+            },
+          },
+          eodEntries: {
+            where: {
+              entryDate: {
+                gte: weekStart,
+                lte: weekEnd,
               },
             },
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  role: true,
+                },
+              },
+            },
+            orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
           },
-          orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
         },
-      },
-      orderBy: [{ dueDate: "asc" }, { priority: "desc" }, { createdAt: "desc" }],
-    }),
-    prisma.client.findMany({
-      where: getClientVisibilityWhere(user),
-      orderBy: { companyName: "asc" },
-      select: {
-        id: true,
-        companyName: true,
-      },
-    }),
-  ]);
+        orderBy: [{ dueDate: "asc" }, { priority: "desc" }, { createdAt: "desc" }],
+      }),
+      prisma.client.findMany({
+        where: getClientVisibilityWhere(user),
+        orderBy: { companyName: "asc" },
+        select: {
+          id: true,
+          companyName: true,
+        },
+      }),
+    ]);
 
-  const totalEodEntries = tasks.reduce((sum, task) => sum + task.eodEntries.length, 0);
-  const tasksWithUpdates = tasks.filter((task) => task.eodEntries.length > 0).length;
-  const clientsInView = new Set(
-    tasks.map((task) => task.client?.id).filter((clientId): clientId is string => Boolean(clientId)),
-  ).size;
+    const totalEodEntries = tasks.reduce((sum, task) => sum + task.eodEntries.length, 0);
+    const tasksWithUpdates = tasks.filter((task) => task.eodEntries.length > 0).length;
+    const clientsInView = new Set(
+      tasks.map((task) => task.client?.id).filter((clientId): clientId is string => Boolean(clientId)),
+    ).size;
 
-  const dailyDigest = eachDayOfInterval({
-    start: weekStart,
-    end: weekEnd,
-  }).map((day) => {
-    const dayEntries = tasks.flatMap((task) =>
-      task.eodEntries.filter((entry) => isSameDay(entry.entryDate, day)),
-    );
-
-    return {
-      date: day,
-      label: format(day, "EEE"),
-      updates: dayEntries.length,
-      tasksTouched: new Set(dayEntries.map((entry) => entry.taskId)).size,
-      dueTasks: tasks.filter((task) => isSameDay(task.dueDate, day)).length,
-    };
-  });
-
-  return {
-    tasks,
-    clients,
-    week: {
+    const dailyDigest = eachDayOfInterval({
       start: weekStart,
       end: weekEnd,
-      label: `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`,
-    },
-    filters: {
-      weekStart: format(weekStart, "yyyy-MM-dd"),
-      date: selectedDate ? format(selectedDate, "yyyy-MM-dd") : "",
-      clientId: filters?.clientId && filters.clientId !== "ALL" ? filters.clientId : "ALL",
-      search: normalizedSearch ?? "",
-    },
-    summary: {
-      taskCount: tasks.length,
-      completedCount: tasks.filter((task) => task.status === "DONE").length,
-      clientsInView,
-      totalEodEntries,
-      tasksWithUpdates,
-      selectedDateEntryCount:
-        selectedDateStart && selectedDateEnd
-          ? tasks.reduce(
-              (sum, task) =>
-                sum +
-                task.eodEntries.filter(
-                  (entry) => entry.entryDate >= selectedDateStart && entry.entryDate <= selectedDateEnd,
-                ).length,
-              0,
-            )
-          : null,
-    },
-    dailyDigest,
-  };
+    }).map((day) => {
+      const dayEntries = tasks.flatMap((task) =>
+        task.eodEntries.filter((entry) => isSameDay(entry.entryDate, day)),
+      );
+
+      return {
+        date: day,
+        label: format(day, "EEE"),
+        updates: dayEntries.length,
+        tasksTouched: new Set(dayEntries.map((entry) => entry.taskId)).size,
+        dueTasks: tasks.filter((task) => isSameDay(task.dueDate, day)).length,
+      };
+    });
+
+    return {
+      tasks,
+      clients,
+      week: {
+        start: weekStart,
+        end: weekEnd,
+        label: `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`,
+      },
+      filters: {
+        weekStart: format(weekStart, "yyyy-MM-dd"),
+        date: selectedDate ? format(selectedDate, "yyyy-MM-dd") : "",
+        clientId: filters?.clientId && filters.clientId !== "ALL" ? filters.clientId : "ALL",
+        search: normalizedSearch ?? "",
+      },
+      summary: {
+        taskCount: tasks.length,
+        completedCount: tasks.filter((task) => task.status === "DONE").length,
+        clientsInView,
+        totalEodEntries,
+        tasksWithUpdates,
+        selectedDateEntryCount:
+          selectedDateStart && selectedDateEnd
+            ? tasks.reduce(
+                (sum, task) =>
+                  sum +
+                  task.eodEntries.filter(
+                    (entry) => entry.entryDate >= selectedDateStart && entry.entryDate <= selectedDateEnd,
+                  ).length,
+                0,
+              )
+            : null,
+      },
+      dailyDigest,
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load weekly task tracker data.", error);
+    return {
+      tasks: [],
+      clients: [],
+      week: {
+        start: weekStart,
+        end: weekEnd,
+        label: `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`,
+      },
+      filters: {
+        weekStart: format(weekStart, "yyyy-MM-dd"),
+        date: selectedDate ? format(selectedDate, "yyyy-MM-dd") : "",
+        clientId: filters?.clientId && filters.clientId !== "ALL" ? filters.clientId : "ALL",
+        search: normalizedSearch ?? "",
+      },
+      summary: {
+        taskCount: 0,
+        completedCount: 0,
+        clientsInView: 0,
+        totalEodEntries: 0,
+        tasksWithUpdates: 0,
+        selectedDateEntryCount: selectedDateStart && selectedDateEnd ? 0 : null,
+      },
+      dailyDigest: eachDayOfInterval({
+        start: weekStart,
+        end: weekEnd,
+      }).map((day) => ({
+        date: day,
+        label: format(day, "EEE"),
+        updates: 0,
+        tasksTouched: 0,
+        dueTasks: 0,
+      })),
+    };
+  }
 }
 
 export async function getTeamViewData(user: AppUser) {
   const dashboardData = await getDashboardData(user);
+  try {
+    const [users, agencyTasks, clients, assignableUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: canViewAllAgencyData(user.role) ? { isActive: true } : { id: user.id },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          role: true,
+          department: true,
+          jobTitle: true,
+          weeklyCapacityHours: true,
+          assignedClients: {
+            select: {
+              id: true,
+              companyName: true,
+              status: true,
+            },
+          },
+        },
+      }),
+      prisma.employeeTask.findMany({
+        where: getEmployeeTaskVisibilityWhere(user),
+        include: {
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+              department: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+              department: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              companyName: true,
+            },
+          },
+        },
+        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+      }),
+      canManageEmployeeTasks(user.role)
+        ? prisma.client.findMany({
+            orderBy: { companyName: "asc" },
+            select: {
+              id: true,
+              companyName: true,
+            },
+          })
+        : Promise.resolve([]),
+      canManageEmployeeTasks(user.role)
+        ? prisma.user.findMany({
+            where: { isActive: true },
+            orderBy: { name: "asc" },
+            select: {
+              id: true,
+              name: true,
+              role: true,
+              department: true,
+              jobTitle: true,
+              weeklyCapacityHours: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
 
-  const [users, agencyTasks, clients, assignableUsers] = await Promise.all([
-    prisma.user.findMany({
-      where: canViewAllAgencyData(user.role) ? { isActive: true } : { id: user.id },
-      orderBy: { name: "asc" },
+    const agencyTaskSummary = {
+      openCount: countOpenAgencyTasks(agencyTasks),
+      dueSoonCount: agencyTasks.filter(
+        (task) => task.status !== "DONE" && task.dueDate <= subDays(new Date(), -7),
+      ).length,
+      totalEstimatedHours: getOpenAgencyTaskHours(agencyTasks),
+    };
+
+    return {
+      ...dashboardData,
+      members: users,
+      agencyTasks,
+      agencyTaskSummary,
+      taskOptions: {
+        clients,
+        users: assignableUsers,
+      },
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load team view data.", error);
+    return {
+      ...dashboardData,
+      isDegraded: true,
+      members: [],
+      agencyTasks: [],
+      agencyTaskSummary: {
+        openCount: 0,
+        dueSoonCount: 0,
+        totalEstimatedHours: 0,
+      },
+      taskOptions: {
+        clients: [],
+        users: [],
+      },
+    };
+  }
+}
+
+export async function getAdminUsersData(user: AppUser) {
+  if (user.role !== "ADMIN") {
+    return null;
+  }
+
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
       select: {
         id: true,
         name: true,
@@ -770,122 +973,30 @@ export async function getTeamViewData(user: AppUser) {
         department: true,
         jobTitle: true,
         weeklyCapacityHours: true,
+        isActive: true,
+        createdAt: true,
         assignedClients: {
+          select: { id: true },
+        },
+        assignedAgencyTasks: {
           select: {
             id: true,
-            companyName: true,
             status: true,
+            estimatedHours: true,
           },
         },
       },
-    }),
-    prisma.employeeTask.findMany({
-      where: getEmployeeTaskVisibilityWhere(user),
-      include: {
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            department: true,
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            department: true,
-          },
-        },
-        client: {
-          select: {
-            id: true,
-            companyName: true,
-          },
-        },
-      },
-      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-    }),
-    canManageEmployeeTasks(user.role)
-      ? prisma.client.findMany({
-          orderBy: { companyName: "asc" },
-          select: {
-            id: true,
-            companyName: true,
-          },
-        })
-      : Promise.resolve([]),
-    canManageEmployeeTasks(user.role)
-      ? prisma.user.findMany({
-          where: { isActive: true },
-          orderBy: { name: "asc" },
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            department: true,
-            jobTitle: true,
-            weeklyCapacityHours: true,
-          },
-        })
-      : Promise.resolve([]),
-  ]);
+    });
 
-  const agencyTaskSummary = {
-    openCount: countOpenAgencyTasks(agencyTasks),
-    dueSoonCount: agencyTasks.filter(
-      (task) => task.status !== "DONE" && task.dueDate <= subDays(new Date(), -7),
-    ).length,
-    totalEstimatedHours: getOpenAgencyTaskHours(agencyTasks),
-  };
-
-  return {
-    ...dashboardData,
-    members: users,
-    agencyTasks,
-    agencyTaskSummary,
-    taskOptions: {
-      clients,
-      users: assignableUsers,
-    },
-  };
-}
-
-export async function getAdminUsersData(user: AppUser) {
-  if (user.role !== "ADMIN") {
-    return null;
+    return {
+      users,
+    };
+  } catch (error) {
+    console.error("[queries] Failed to load admin users data.", error);
+    return {
+      users: [],
+    };
   }
-
-  const users = await prisma.user.findMany({
-    orderBy: [{ isActive: "desc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      avatarUrl: true,
-      role: true,
-      department: true,
-      jobTitle: true,
-      weeklyCapacityHours: true,
-      isActive: true,
-      createdAt: true,
-      assignedClients: {
-        select: { id: true },
-      },
-      assignedAgencyTasks: {
-        select: {
-          id: true,
-          status: true,
-          estimatedHours: true,
-        },
-      },
-    },
-  });
-
-  return {
-    users,
-  };
 }
 
 export const serviceTypeOptions = Object.values(ServiceType);
