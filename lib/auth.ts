@@ -86,6 +86,11 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-export function getServerAuthSession() {
-  return getServerSession(authOptions);
+export async function getServerAuthSession() {
+  try {
+    return await getServerSession(authOptions);
+  } catch (error) {
+    console.error("[auth] Failed to resolve server session.", error);
+    return null;
+  }
 }
