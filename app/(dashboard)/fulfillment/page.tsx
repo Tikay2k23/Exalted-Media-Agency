@@ -114,7 +114,7 @@ export default async function FulfillmentPage({
         <CardHeader>
           <CardTitle>Weekly Filters</CardTitle>
           <CardDescription>
-            Search tasks, assignees, clients, briefs, and EOD notes. Filter the tracker by week, specific date, or client to review delivery fast.
+            Search tasks, assignees, clients, briefs, and EOD notes. Filter by week, specific date, or client to review delivery efficiently.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -174,7 +174,7 @@ export default async function FulfillmentPage({
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Weekly Task Tracker</CardTitle>
+            <CardTitle>Weekly Work Tracker</CardTitle>
             <CardDescription>
               Review work for {data.week.label}, open a task, and keep each daily EOD log attached to the task it belongs to.
             </CardDescription>

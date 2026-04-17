@@ -18,9 +18,6 @@ export function PerformanceTable({
     department: string;
     jobTitle: string | null;
     assignedClients: number;
-    plannedPosts: number;
-    completedPosts: number;
-    fulfillmentRate: number;
     activeTasks: number;
     weeklyCapacityHours: number;
     bookedHours: number;
@@ -28,18 +25,25 @@ export function PerformanceTable({
     overdueTasks: number;
   }>;
 }) {
+  if (!rows.length) {
+    return (
+      <div className="rounded-3xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
+        Team workload data will appear here once accounts and work assignments are active.
+      </div>
+    );
+  }
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Team member</TableHead>
           <TableHead>Department</TableHead>
-          <TableHead>Assigned clients</TableHead>
-          <TableHead>Social output</TableHead>
+          <TableHead>Assigned accounts</TableHead>
           <TableHead>Open work items</TableHead>
           <TableHead>Booked / capacity</TableHead>
           <TableHead>Overdue</TableHead>
-          <TableHead>Fulfillment</TableHead>
+          <TableHead>Utilization</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -55,9 +59,6 @@ export function PerformanceTable({
             </TableCell>
             <TableCell>{row.department.replaceAll("_", " ")}</TableCell>
             <TableCell>{row.assignedClients}</TableCell>
-            <TableCell>
-              {row.completedPosts} / {row.plannedPosts}
-            </TableCell>
             <TableCell>{row.activeTasks}</TableCell>
             <TableCell>
               {row.bookedHours}h / {row.weeklyCapacityHours}h
@@ -66,8 +67,7 @@ export function PerformanceTable({
             <TableCell>
               <div className="min-w-40 space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>{row.utilizationRate}% utilization</span>
-                  <span>{row.fulfillmentRate}% fulfillment</span>
+                  <span>{row.utilizationRate}% utilized</span>
                 </div>
                 <Progress value={row.utilizationRate} />
               </div>

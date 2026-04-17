@@ -1,6 +1,7 @@
 import { AgencyTaskPanel } from "@/components/team/agency-task-panel";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { PerformanceTable } from "@/components/team/performance-table";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getTeamViewData } from "@/lib/data/queries";
@@ -29,9 +30,9 @@ export default async function TeamPage() {
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Team Performance</CardTitle>
+            <CardTitle>Team Workload</CardTitle>
             <CardDescription>
-              Delivery output across the team based on assigned clients and posting work.
+              Capacity, client ownership, and active delivery workload across the team.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -56,14 +57,15 @@ export default async function TeamPage() {
               className="rounded-3xl border border-slate-100 bg-slate-50 p-5"
             >
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="flex items-center gap-3">
+                  <Avatar src={member.avatarUrl} fallback={member.name} alt={member.name} />
                   <h3 className="text-lg font-semibold text-slate-900">{member.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {member.jobTitle ?? member.email}
-                  </p>
                 </div>
                 <Badge tone="sky">{member.department.replaceAll("_", " ")}</Badge>
               </div>
+              <p className="mt-3 text-sm text-slate-500">
+                {member.jobTitle ?? member.email}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-400">
                 <span>{member.role.replaceAll("_", " ")}</span>
                 <span>{member.weeklyCapacityHours}h weekly capacity</span>

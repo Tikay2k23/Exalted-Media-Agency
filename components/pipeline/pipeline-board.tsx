@@ -17,17 +17,18 @@ import { useState, useSyncExternalStore, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { formatDate, formatEnumLabel } from "@/lib/utils";
 
 type PipelineClient = {
   id: string;
   companyName: string;
   clientName: string;
   status: string;
+  serviceType: string;
+  updatedAt: Date;
   assignedUser: {
     name: string;
   } | null;
-  fulfillmentRate: number;
 };
 
 type StageColumn = {
@@ -75,19 +76,16 @@ function ClientCardBody({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={toneForStatus(client.status)}>{client.status.replaceAll("_", " ")}</Badge>
+          <Badge tone={toneForStatus(client.status)}>{formatEnumLabel(client.status)}</Badge>
+          <Badge tone="slate">{formatEnumLabel(client.serviceType)}</Badge>
           <span className="text-xs text-slate-500">
             {client.assignedUser?.name ?? "Unassigned"}
           </span>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-slate-400">
-            <span>Fulfillment</span>
-            <span>{client.fulfillmentRate}%</span>
-          </div>
-          <Progress value={client.fulfillmentRate} />
-        </div>
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
+          Updated {formatDate(client.updatedAt)}
+        </p>
       </CardContent>
     </Card>
   );

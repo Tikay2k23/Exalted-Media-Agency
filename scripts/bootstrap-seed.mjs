@@ -1,9 +1,8 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
 
 const fallbackKeys = [
+  "DIRECT_URL",
   "PRISMA_DATABASE_URL",
   "POSTGRES_URL_NON_POOLING",
   "POSTGRES_PRISMA_URL",
@@ -94,23 +93,5 @@ function runNpx(args) {
   run("npx", args);
 }
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
-
-try {
-  const [userCount, stageCount, clientCount] = await Promise.all([
-    prisma.user.count(),
-    prisma.pipelineStage.count(),
-    prisma.client.count(),
-  ]);
-
-  if (userCount === 0 && stageCount === 0 && clientCount === 0) {
-    console.log("[bootstrap-seed] Database is empty. Running Prisma seed.");
-    runNpx(["prisma", "db", "seed"]);
-  } else {
-    console.log("[bootstrap-seed] Existing data found. Skipping Prisma seed.");
-  }
-} finally {
-  await prisma.$disconnect();
-}
+console.log("[bootstrap-seed] Synchronizing required workspace data.");
+runNpx(["prisma", "db", "seed"]);

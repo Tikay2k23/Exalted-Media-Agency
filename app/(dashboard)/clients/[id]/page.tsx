@@ -20,10 +20,23 @@ import {
 } from "@/lib/data/queries";
 import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
-import { formatDate, formatDateTime, formatPercent } from "@/lib/utils";
+import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function toneForStatus(status: string): "sky" | "amber" | "rose" | "emerald" {
+  switch (status) {
+    case "AT_RISK":
+      return "rose";
+    case "ON_HOLD":
+      return "amber";
+    case "COMPLETED":
+      return "emerald";
+    default:
+      return "sky";
+  }
+}
 
 export default async function ClientDetailPage({
   params,
@@ -59,11 +72,11 @@ export default async function ClientDetailPage({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Badge tone="violet">{client.currentStage.name}</Badge>
-            <Badge tone="sky">{client.serviceType.replaceAll("_", " ")}</Badge>
-            <Badge tone="emerald">{formatPercent(client.fulfillmentRate)}</Badge>
+            <Badge tone="sky">{formatEnumLabel(client.serviceType)}</Badge>
+            <Badge tone={toneForStatus(client.status)}>{formatEnumLabel(client.status)}</Badge>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-4">
+        <CardContent className="grid gap-4 lg:grid-cols-5">
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Assigned teammate</p>
             <p className="mt-2 text-lg font-semibold text-slate-900">
@@ -83,13 +96,14 @@ export default async function ClientDetailPage({
             </p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Open work items</p>
+            <p className="mt-2 text-lg font-semibold text-slate-900">{client.openTaskCount}</p>
+            <p className="mt-1 text-sm text-slate-500">{client.overdueTaskCount} overdue</p>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Client status</p>
             <div className="mt-2">
-              <ClientStatusSelect
-                clientId={client.id}
-                value={client.status}
-                disabled={!canEditStatus}
-              />
+              <ClientStatusSelect clientId={client.id} value={client.status} disabled={!canEditStatus} />
             </div>
           </div>
         </CardContent>
@@ -138,32 +152,47 @@ export default async function ClientDetailPage({
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Social Posting Tasks</CardTitle>
-            <CardDescription>Per-client delivery commitments and progress.</CardDescription>
+            <CardTitle>Linked Delivery Work</CardTitle>
+            <CardDescription>
+              Internal agency tasks currently tied to this account.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Platform</TableHead>
-                  <TableHead>Planned</TableHead>
-                  <TableHead>Completed</TableHead>
+                  <TableHead>Task</TableHead>
+                  <TableHead>Assignee</TableHead>
                   <TableHead>Due date</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Assignee</TableHead>
+                  <TableHead>Priority</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {client.socialTasks.map((task) => (
-                  <TableRow key={task.id}>
-                    <TableCell>{task.platform.replaceAll("_", " ")}</TableCell>
-                    <TableCell>{task.plannedPosts}</TableCell>
-                    <TableCell>{task.completedPosts}</TableCell>
-                    <TableCell>{formatDate(task.dueDate)}</TableCell>
-                    <TableCell>{task.status.replaceAll("_", " ")}</TableCell>
-                    <TableCell>{task.assignedUser?.name ?? "Unassigned"}</TableCell>
+                {client.agencyTasks.length ? (
+                  client.agencyTasks.map((task) => (
+                    <TableRow key={task.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium text-slate-950">{task.title}</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {formatEnumLabel(task.category)}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{task.assignedTo.name}</TableCell>
+                      <TableCell>{formatDate(task.dueDate)}</TableCell>
+                      <TableCell>{formatEnumLabel(task.status)}</TableCell>
+                      <TableCell>{formatEnumLabel(task.priority)}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                      No internal delivery tasks are linked to this account yet.
+                    </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </CardContent>

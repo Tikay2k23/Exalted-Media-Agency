@@ -13,7 +13,7 @@ export function SignOutButton() {
       onClick={() => signOut({ callbackUrl: "/login" })}
     >
       <LogOut className="h-4 w-4" />
-      Sign Out
+      Sign out
     </Button>
   );
 }

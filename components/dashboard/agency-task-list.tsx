@@ -68,7 +68,7 @@ export function AgencyTaskList({
           ))
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-            No marketing ops tasks assigned yet.
+            No open agency tasks are scheduled in the current view.
           </div>
         )}
       </CardContent>

@@ -9,13 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-const demoAccounts = [
-  "admin@exaltedagency.com",
-  "manager@exaltedagency.com",
-  "sarah@exaltedagency.com",
-  "devon@exaltedagency.com",
-];
-
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -35,7 +28,7 @@ export function LoginForm() {
       });
 
       if (!response?.ok) {
-        setError("Invalid login details. Use one of the seeded accounts below.");
+        setError("Invalid email or password. Please try again.");
         return;
       }
 
@@ -45,12 +38,12 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-md border-slate-200/80 bg-white/90">
+    <Card className="w-full max-w-md border-slate-200/90 bg-white">
       <CardHeader>
-        <p className="text-xs uppercase tracking-[0.35em] text-sky-600">Secure access</p>
-        <CardTitle className="text-3xl">Sign in to Agency Hub</CardTitle>
+        <p className="text-xs uppercase tracking-[0.35em] text-sky-700">Secure access</p>
+        <CardTitle className="text-3xl">Sign in to Exalted Media</CardTitle>
         <CardDescription>
-          Use the seeded credentials to explore the admin, manager, and team views.
+          Access the internal operations workspace using your agency email and password.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -62,7 +55,7 @@ export function LoginForm() {
               <Input
                 name="email"
                 type="email"
-                defaultValue="admin@exaltedagency.com"
+                placeholder="name@theexaltedmedia.com"
                 required
                 className="pl-10"
               />
@@ -76,7 +69,6 @@ export function LoginForm() {
               <Input
                 name="password"
                 type="password"
-                defaultValue="Agency123!"
                 required
                 className="pl-10"
               />
@@ -98,17 +90,9 @@ export function LoginForm() {
             Continue to dashboard
           </Button>
         </form>
-
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-sm font-medium text-slate-700">Seeded demo accounts</p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-500">
-            {demoAccounts.map((account) => (
-              <li key={account}>{account}</li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs uppercase tracking-[0.28em] text-slate-400">
-            Password: Agency123!
-          </p>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-500">
+          This workspace is restricted to authorized team members. Contact the agency administrator
+          if you need account access or password support.
         </div>
       </CardContent>
     </Card>

@@ -34,10 +34,6 @@ export function canAccessAssignedRecord(
   return canViewAllAgencyData(role) || currentUserId === assignedUserId;
 }
 
-export function canUpdatePostingProgress(role: Role) {
-  return role === "ADMIN" || role === "MANAGER" || role === "TEAM_MEMBER";
-}
-
 export function canUpdateEmployeeTask(
   role: Role,
   currentUserId: string,

@@ -19,23 +19,10 @@ import {
 import { getClientsData, serviceTypeOptions } from "@/lib/data/queries";
 import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
-import { formatDate, formatPercent } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function toneForStatus(status: string): "sky" | "amber" | "rose" | "emerald" {
-  switch (status) {
-    case "AT_RISK":
-      return "rose";
-    case "ON_HOLD":
-      return "amber";
-    case "COMPLETED":
-      return "emerald";
-    default:
-      return "sky";
-  }
-}
 
 export default async function ClientsPage({
   searchParams,
@@ -60,9 +47,9 @@ export default async function ClientsPage({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Client Management</CardTitle>
+          <CardTitle>Client Accounts</CardTitle>
           <CardDescription>
-            Track client ownership, status, service type, and pipeline visibility in one place.
+            Review account ownership, service scope, current stage, and workload from one clean directory.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,7 +87,7 @@ export default async function ClientsPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Client Directory</CardTitle>
+          <CardTitle>Account Directory</CardTitle>
           <CardDescription>
             {user.role === "TEAM_MEMBER"
               ? "Only the clients assigned to you are shown here."
@@ -116,53 +103,64 @@ export default async function ClientsPage({
                 <TableHead>Stage</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Service</TableHead>
+                <TableHead>Open work</TableHead>
                 <TableHead>Date added</TableHead>
-                <TableHead>Fulfillment</TableHead>
                 <TableHead className="text-right">
                   {canManageClients(user.role) ? "Manage" : "View"}
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.clients.map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-semibold text-slate-950">{client.companyName}</p>
-                      <p className="mt-1 text-sm text-slate-500">{client.clientName}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>{client.assignedUser?.name ?? "Unassigned"}</TableCell>
-                  <TableCell>
-                    <Badge tone="violet">{client.currentStage.name}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <ClientStatusSelect
-                      clientId={client.id}
-                      value={client.status}
-                      disabled={
-                        !canManageClients(user.role) &&
-                        !canAccessAssignedRecord(user.role, user.id, client.assignedUserId)
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>{client.serviceType.replaceAll("_", " ")}</TableCell>
-                  <TableCell>{formatDate(client.dateAdded)}</TableCell>
-                  <TableCell>
-                    <Badge tone={toneForStatus(client.status)}>
-                      {formatPercent(client.fulfillmentRate)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Link
-                      href={`/clients/${client.id}`}
-                      className="text-sm font-semibold text-sky-600 hover:text-sky-700"
-                    >
-                      {canManageClients(user.role) ? "Open and manage" : "Open profile"}
-                    </Link>
+              {data.clients.length ? (
+                data.clients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-semibold text-slate-950">{client.companyName}</p>
+                        <p className="mt-1 text-sm text-slate-500">{client.clientName}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{client.assignedUser?.name ?? "Unassigned"}</TableCell>
+                    <TableCell>
+                      <Badge tone="violet">{client.currentStage.name}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <ClientStatusSelect
+                        clientId={client.id}
+                        value={client.status}
+                        disabled={
+                          !canManageClients(user.role) &&
+                          !canAccessAssignedRecord(user.role, user.id, client.assignedUserId)
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>{client.serviceType.replaceAll("_", " ")}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-slate-900">{client.openTaskCount}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                          {client.overdueTaskCount} overdue
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{formatDate(client.dateAdded)}</TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        href={`/clients/${client.id}`}
+                        className="text-sm font-semibold text-sky-600 hover:text-sky-700"
+                      >
+                        {canManageClients(user.role) ? "Open and manage" : "Open profile"}
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
+                    No client accounts match the current filters.
                   </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
         </CardContent>

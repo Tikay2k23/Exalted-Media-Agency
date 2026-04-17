@@ -2,6 +2,7 @@ import "dotenv/config";
 import { spawnSync } from "node:child_process";
 
 const fallbackKeys = [
+  "DIRECT_URL",
   "PRISMA_DATABASE_URL",
   "POSTGRES_URL_NON_POOLING",
   "POSTGRES_PRISMA_URL",
@@ -93,7 +94,7 @@ if (isVercelDeployment && process.env.DATABASE_URL && !isInvalidDatabaseUrl(proc
   console.log("[vercel-build] Syncing schema to the hosted database.");
   runNpx(["prisma", "db", "push", "--skip-generate"]);
 
-  console.log("[vercel-build] Bootstrapping seed data if the database is empty.");
+  console.log("[vercel-build] Synchronizing required workspace records.");
   run("node", ["scripts/bootstrap-seed.mjs"]);
 }
 

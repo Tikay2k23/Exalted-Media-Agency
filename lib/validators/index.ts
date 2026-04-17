@@ -4,8 +4,6 @@ import {
   EmployeeTaskStatus,
   Role,
   ServiceType,
-  SocialPlatform,
-  SocialTaskStatus,
   TaskCategory,
   TaskPriority,
 } from "@prisma/client";
@@ -23,8 +21,22 @@ export const userFormSchema = z.object({
   department: z.nativeEnum(Department),
   jobTitle: z.string().max(80).optional().or(z.literal("")),
   weeklyCapacityHours: z.coerce.number().int().min(1).max(80),
-  password: z.string().min(8).optional().or(z.literal("")),
+  password: z.string().min(8),
   isActive: z.coerce.boolean().default(true),
+});
+
+const avatarSchema = z
+  .string()
+  .max(2_800_000)
+  .refine((value) => value === "" || value.startsWith("data:image/"), {
+    message: "Avatar must be a valid image upload.",
+  });
+
+export const profileUpdateSchema = z.object({
+  name: z.string().min(2).max(80),
+  email: z.string().email(),
+  jobTitle: z.string().max(80).optional().or(z.literal("")),
+  avatarUrl: avatarSchema.optional().nullable(),
 });
 
 export const clientFormSchema = z.object({
@@ -47,15 +59,6 @@ export const pipelineMoveSchema = z.object({
   clientId: z.string().min(1),
   stageId: z.string().min(1),
   note: z.string().max(500).optional().or(z.literal("")),
-});
-
-export const socialTaskUpdateSchema = z.object({
-  plannedPosts: z.coerce.number().int().min(1),
-  completedPosts: z.coerce.number().int().min(0),
-  dueDate: z.string().min(1),
-  assignedUserId: z.string().optional().or(z.literal("")),
-  status: z.nativeEnum(SocialTaskStatus),
-  platform: z.nativeEnum(SocialPlatform),
 });
 
 export const employeeTaskFormSchema = z.object({

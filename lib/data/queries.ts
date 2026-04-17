@@ -5,7 +5,6 @@ import {
   Prisma,
   Role,
   ServiceType,
-  type SocialMediaTask,
 } from "@prisma/client";
 import {
   eachDayOfInterval,
@@ -19,12 +18,8 @@ import {
   subDays,
 } from "date-fns";
 
-import {
-  canManageEmployeeTasks,
-  canViewAllAgencyData,
-} from "@/lib/permissions";
+import { canManageEmployeeTasks, canViewAllAgencyData } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { calculateFulfillmentRate } from "@/lib/utils";
 
 export interface AppUser {
   id: string;
@@ -56,22 +51,7 @@ function getClientVisibilityWhere(user: AppUser): Prisma.ClientWhereInput {
   };
 }
 
-function getTaskVisibilityWhere(user: AppUser): Prisma.SocialMediaTaskWhereInput {
-  if (canViewAllAgencyData(user.role)) {
-    return {};
-  }
-
-  return {
-    OR: [
-      { assignedUserId: user.id },
-      { client: { assignedUserId: user.id } },
-    ],
-  };
-}
-
-function getEmployeeTaskVisibilityWhere(
-  user: AppUser,
-): Prisma.EmployeeTaskWhereInput {
+function getEmployeeTaskVisibilityWhere(user: AppUser): Prisma.EmployeeTaskWhereInput {
   if (canViewAllAgencyData(user.role)) {
     return {};
   }
@@ -99,9 +79,7 @@ function getSelectedWeekRange(filters?: WeeklyTaskTrackerFilters) {
   const selectedDate = parseDateInput(filters?.date);
   const explicitWeekStart = parseDateInput(filters?.weekStart);
   const anchorDate = explicitWeekStart ?? selectedDate ?? new Date();
-  const weekStart = startOfDay(
-    startOfWeek(anchorDate, { weekStartsOn: 1 }),
-  );
+  const weekStart = startOfDay(startOfWeek(anchorDate, { weekStartsOn: 1 }));
   const weekEnd = endOfDay(endOfWeek(anchorDate, { weekStartsOn: 1 }));
 
   return {
@@ -111,9 +89,7 @@ function getSelectedWeekRange(filters?: WeeklyTaskTrackerFilters) {
   };
 }
 
-function buildWeeklyTaskSearchWhere(
-  search: string,
-): Prisma.EmployeeTaskWhereInput {
+function buildWeeklyTaskSearchWhere(search: string): Prisma.EmployeeTaskWhereInput {
   return {
     OR: [
       { title: { contains: search, mode: "insensitive" } },
@@ -164,10 +140,7 @@ function buildWeeklyTaskSearchWhere(
   };
 }
 
-function buildClientFilters(
-  user: AppUser,
-  filters?: ClientFilters,
-): Prisma.ClientWhereInput {
+function buildClientFilters(user: AppUser, filters?: ClientFilters): Prisma.ClientWhereInput {
   const clauses: Prisma.ClientWhereInput[] = [getClientVisibilityWhere(user)];
 
   if (filters?.search) {
@@ -184,11 +157,7 @@ function buildClientFilters(
     clauses.push({ status: filters.status });
   }
 
-  if (
-    filters?.assigneeId &&
-    filters.assigneeId !== "ALL" &&
-    canViewAllAgencyData(user.role)
-  ) {
+  if (filters?.assigneeId && filters.assigneeId !== "ALL" && canViewAllAgencyData(user.role)) {
     clauses.push({ assignedUserId: filters.assigneeId });
   }
 
@@ -197,29 +166,16 @@ function buildClientFilters(
   };
 }
 
-function sumTaskRate(tasks: Pick<SocialMediaTask, "plannedPosts" | "completedPosts">[]) {
-  const totals = tasks.reduce(
-    (accumulator, task) => {
-      accumulator.planned += task.plannedPosts;
-      accumulator.completed += task.completedPosts;
-      return accumulator;
-    },
-    { planned: 0, completed: 0 },
-  );
-
-  return {
-    ...totals,
-    rate: calculateFulfillmentRate(totals.completed, totals.planned),
-  };
-}
-
 function countOpenAgencyTasks(tasks: Pick<EmployeeTask, "status">[]) {
   return tasks.filter((task) => task.status !== "DONE").length;
 }
 
-function getOpenAgencyTaskHours(
-  tasks: Pick<EmployeeTask, "status" | "estimatedHours">[],
-) {
+function countOverdueAgencyTasks(tasks: Pick<EmployeeTask, "status" | "dueDate">[]) {
+  const today = new Date();
+  return tasks.filter((task) => task.status !== "DONE" && task.dueDate < today).length;
+}
+
+function getOpenAgencyTaskHours(tasks: Pick<EmployeeTask, "status" | "estimatedHours">[]) {
   return tasks
     .filter((task) => task.status !== "DONE")
     .reduce((total, task) => total + task.estimatedHours, 0);
@@ -231,6 +187,22 @@ function getUtilizationRate(openHours: number, capacityHours: number) {
   }
 
   return Math.min(200, Math.round((openHours / capacityHours) * 100));
+}
+
+function getAttentionRank(client: { status: string; assignedUserId: string | null }) {
+  if (client.status === "AT_RISK") {
+    return 3;
+  }
+
+  if (client.status === "ON_HOLD") {
+    return 2;
+  }
+
+  if (!client.assignedUserId) {
+    return 1;
+  }
+
+  return 0;
 }
 
 export async function getSharedOptions() {
@@ -258,7 +230,7 @@ export async function getSharedOptions() {
 }
 
 export async function getDashboardData(user: AppUser) {
-  const [clients, stages, performanceUsers, agencyTasks] = await Promise.all([
+  const [clients, stages, performanceUsers, visibleAgencyTasks, featuredAgencyTasks] = await Promise.all([
     prisma.client.findMany({
       where: getClientVisibilityWhere(user),
       include: {
@@ -270,7 +242,13 @@ export async function getDashboardData(user: AppUser) {
           },
         },
         currentStage: true,
-        socialTasks: true,
+        agencyTasks: {
+          select: {
+            id: true,
+            status: true,
+            dueDate: true,
+          },
+        },
       },
       orderBy: {
         updatedAt: "desc",
@@ -296,13 +274,6 @@ export async function getDashboardData(user: AppUser) {
         assignedClients: {
           select: { id: true },
         },
-        assignedSocialTasks: {
-          select: {
-            plannedPosts: true,
-            completedPosts: true,
-            status: true,
-          },
-        },
         assignedAgencyTasks: {
           select: {
             status: true,
@@ -314,6 +285,20 @@ export async function getDashboardData(user: AppUser) {
     }),
     prisma.employeeTask.findMany({
       where: getEmployeeTaskVisibilityWhere(user),
+      select: {
+        id: true,
+        status: true,
+        dueDate: true,
+        estimatedHours: true,
+      },
+    }),
+    prisma.employeeTask.findMany({
+      where: {
+        ...getEmployeeTaskVisibilityWhere(user),
+        status: {
+          not: "DONE",
+        },
+      },
       include: {
         assignedTo: {
           select: {
@@ -336,18 +321,15 @@ export async function getDashboardData(user: AppUser) {
   ]);
 
   const clientIds = clients.map((client) => client.id);
-  const allTasks = clients.flatMap((client) => client.socialTasks);
-  const fulfillmentTotals = sumTaskRate(allTasks);
-
+  const taskIds = visibleAgencyTasks.map((task) => task.id);
   const activities = await prisma.activityLog.findMany({
     where: canViewAllAgencyData(user.role)
       ? {}
       : {
           OR: [
             { actorId: user.id },
-            ...(clientIds.length
-              ? [{ entityId: { in: clientIds } }]
-              : []),
+            ...(clientIds.length ? [{ entityId: { in: clientIds } }] : []),
+            ...(taskIds.length ? [{ entityId: { in: taskIds } }] : []),
           ],
         },
     orderBy: {
@@ -365,20 +347,42 @@ export async function getDashboardData(user: AppUser) {
     },
   });
 
+  const teamPerformance = performanceUsers
+    .map((member) => {
+      const bookedHours = getOpenAgencyTaskHours(member.assignedAgencyTasks);
+      return {
+        id: member.id,
+        name: member.name,
+        role: member.role,
+        department: member.department,
+        jobTitle: member.jobTitle,
+        assignedClients: member.assignedClients.length,
+        activeTasks: countOpenAgencyTasks(member.assignedAgencyTasks),
+        weeklyCapacityHours: member.weeklyCapacityHours,
+        bookedHours,
+        utilizationRate: getUtilizationRate(bookedHours, member.weeklyCapacityHours),
+        overdueTasks: countOverdueAgencyTasks(member.assignedAgencyTasks),
+      };
+    })
+    .sort((left, right) => {
+      if (right.overdueTasks !== left.overdueTasks) {
+        return right.overdueTasks - left.overdueTasks;
+      }
+
+      return right.utilizationRate - left.utilizationRate;
+    });
+
   return {
     metrics: {
       existingClientsCount: clients.length,
       newClientsCount: clients.filter((client) => client.dateAdded >= subDays(new Date(), 30)).length,
-      fulfillmentRate: fulfillmentTotals.rate,
-      plannedPosts: fulfillmentTotals.planned,
-      completedPosts: fulfillmentTotals.completed,
-      openAgencyTasksCount: countOpenAgencyTasks(agencyTasks),
-      teamUtilizationRate: performanceUsers.length
+      activeClientsCount: clients.filter((client) => client.status === "ACTIVE").length,
+      openAgencyTasksCount: countOpenAgencyTasks(visibleAgencyTasks),
+      overdueAgencyTasksCount: countOverdueAgencyTasks(visibleAgencyTasks),
+      teamUtilizationRate: teamPerformance.length
         ? Math.round(
-            performanceUsers.reduce((sum, member) => {
-              const openHours = getOpenAgencyTaskHours(member.assignedAgencyTasks);
-              return sum + getUtilizationRate(openHours, member.weeklyCapacityHours);
-            }, 0) / performanceUsers.length,
+            teamPerformance.reduce((sum, member) => sum + member.utilizationRate, 0)
+            / teamPerformance.length,
           )
         : 0,
     },
@@ -388,71 +392,28 @@ export async function getDashboardData(user: AppUser) {
       color: stage.color,
       count: clients.filter((client) => client.currentStageId === stage.id).length,
     })),
-    performanceTrend: stages.map((stage) => {
-      const stageClients = clients.filter((client) => client.currentStageId === stage.id);
-      const stageTotals = sumTaskRate(stageClients.flatMap((client) => client.socialTasks));
+    attentionClients: clients
+      .filter((client) => getAttentionRank(client) > 0)
+      .sort((left, right) => {
+        const rankDifference = getAttentionRank(right) - getAttentionRank(left);
 
-      return {
-        label: stage.name,
-        clients: stageClients.length,
-        fulfillmentRate: stageTotals.rate,
-      };
-    }),
-    platformBreakdown: Object.values(
-      allTasks.reduce<Record<string, { platform: string; planned: number; completed: number; rate: number }>>(
-        (accumulator, task) => {
-          const current =
-            accumulator[task.platform] ??
-            {
-              platform: task.platform,
-              planned: 0,
-              completed: 0,
-              rate: 0,
-            };
+        if (rankDifference !== 0) {
+          return rankDifference;
+        }
 
-          current.planned += task.plannedPosts;
-          current.completed += task.completedPosts;
-          current.rate = calculateFulfillmentRate(current.completed, current.planned);
-          accumulator[task.platform] = current;
-
-          return accumulator;
-        },
-        {},
-      ),
-    ),
-    recentActivity: activities,
-    teamPerformance: performanceUsers
-      .map((member) => {
-        const totals = sumTaskRate(member.assignedSocialTasks);
-        const openAgencyHours = getOpenAgencyTaskHours(member.assignedAgencyTasks);
-
-        return {
-          id: member.id,
-          name: member.name,
-          role: member.role,
-          department: member.department,
-          jobTitle: member.jobTitle,
-          assignedClients: member.assignedClients.length,
-          plannedPosts: totals.planned,
-          completedPosts: totals.completed,
-          fulfillmentRate: totals.rate,
-          weeklyCapacityHours: member.weeklyCapacityHours,
-          bookedHours: openAgencyHours,
-          utilizationRate: getUtilizationRate(
-            openAgencyHours,
-            member.weeklyCapacityHours,
-          ),
-          overdueTasks: member.assignedAgencyTasks.filter(
-            (task) =>
-              task.status !== "DONE" && task.dueDate < new Date(),
-          ).length,
-          activeTasks:
-            member.assignedSocialTasks.filter((task) => task.status !== "COMPLETED").length +
-            member.assignedAgencyTasks.filter((task) => task.status !== "DONE").length,
-        };
+        return +new Date(right.updatedAt) - +new Date(left.updatedAt);
       })
-      .sort((a, b) => b.fulfillmentRate - a.fulfillmentRate),
-    agencyTasks,
+      .slice(0, 5)
+      .map((client) => ({
+        id: client.id,
+        companyName: client.companyName,
+        status: client.status,
+        stageName: client.currentStage.name,
+        assignedUserName: client.assignedUser?.name ?? null,
+      })),
+    recentActivity: activities,
+    teamPerformance,
+    agencyTasks: featuredAgencyTasks,
     departmentLoad: Object.values(
       performanceUsers.reduce<
         Record<
@@ -467,8 +428,8 @@ export async function getDashboardData(user: AppUser) {
         >
       >((accumulator, member) => {
         const current =
-          accumulator[member.department] ??
-          {
+          accumulator[member.department]
+          ?? {
             department: member.department,
             members: 0,
             openHours: 0,
@@ -479,15 +440,12 @@ export async function getDashboardData(user: AppUser) {
         current.members += 1;
         current.openHours += getOpenAgencyTaskHours(member.assignedAgencyTasks);
         current.capacityHours += member.weeklyCapacityHours;
-        current.utilizationRate = getUtilizationRate(
-          current.openHours,
-          current.capacityHours,
-        );
+        current.utilizationRate = getUtilizationRate(current.openHours, current.capacityHours);
         accumulator[member.department] = current;
 
         return accumulator;
       }, {}),
-    ).sort((a, b) => b.utilizationRate - a.utilizationRate),
+    ).sort((left, right) => right.utilizationRate - left.utilizationRate),
   };
 }
 
@@ -505,9 +463,11 @@ export async function getClientsData(user: AppUser, filters?: ClientFilters) {
           },
         },
         currentStage: true,
-        socialTasks: {
-          orderBy: {
-            dueDate: "asc",
+        agencyTasks: {
+          select: {
+            id: true,
+            status: true,
+            dueDate: true,
           },
         },
       },
@@ -519,10 +479,8 @@ export async function getClientsData(user: AppUser, filters?: ClientFilters) {
   return {
     clients: clients.map((client) => ({
       ...client,
-      fulfillmentRate: calculateFulfillmentRate(
-        client.socialTasks.reduce((sum, task) => sum + task.completedPosts, 0),
-        client.socialTasks.reduce((sum, task) => sum + task.plannedPosts, 0),
-      ),
+      openTaskCount: countOpenAgencyTasks(client.agencyTasks),
+      overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
     })),
     ...options,
   };
@@ -540,12 +498,13 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           id: true,
           name: true,
           role: true,
+          email: true,
         },
       },
       currentStage: true,
-      socialTasks: {
+      agencyTasks: {
         include: {
-          assignedUser: {
+          assignedTo: {
             select: {
               id: true,
               name: true,
@@ -553,9 +512,7 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             },
           },
         },
-        orderBy: {
-          dueDate: "asc",
-        },
+        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
       },
       stageHistory: {
         include: {
@@ -582,10 +539,8 @@ export async function getClientDetail(user: AppUser, clientId: string) {
 
   return {
     ...client,
-    fulfillmentRate: calculateFulfillmentRate(
-      client.socialTasks.reduce((sum, task) => sum + task.completedPosts, 0),
-      client.socialTasks.reduce((sum, task) => sum + task.plannedPosts, 0),
-    ),
+    openTaskCount: countOpenAgencyTasks(client.agencyTasks),
+    overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
   };
 }
 
@@ -611,7 +566,6 @@ export async function getPipelineData(user: AppUser, assigneeId?: string | "ALL"
             role: true,
           },
         },
-        socialTasks: true,
       },
       orderBy: {
         updatedAt: "desc",
@@ -627,88 +581,13 @@ export async function getPipelineData(user: AppUser, assigneeId?: string | "ALL"
   return {
     stages: stages.map((stage) => ({
       ...stage,
-      clients: clients
-        .filter((client) => client.currentStageId === stage.id)
-        .map((client) => ({
-          ...client,
-          fulfillmentRate: calculateFulfillmentRate(
-            client.socialTasks.reduce((sum, task) => sum + task.completedPosts, 0),
-            client.socialTasks.reduce((sum, task) => sum + task.plannedPosts, 0),
-          ),
-        })),
+      clients: clients.filter((client) => client.currentStageId === stage.id),
     })),
     users,
   };
 }
 
-export async function getFulfillmentData(user: AppUser) {
-  const tasks = await prisma.socialMediaTask.findMany({
-    where: getTaskVisibilityWhere(user),
-    include: {
-      client: {
-        select: {
-          id: true,
-          companyName: true,
-          assignedUserId: true,
-        },
-      },
-      assignedUser: {
-        select: {
-          id: true,
-          name: true,
-          role: true,
-        },
-      },
-    },
-    orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-  });
-
-  const totals = sumTaskRate(tasks);
-  const dueSoonBoundary = subDays(new Date(), -7);
-
-  return {
-    tasks: tasks.map((task) => ({
-      ...task,
-      fulfillmentRate: calculateFulfillmentRate(task.completedPosts, task.plannedPosts),
-    })),
-    summary: {
-      fulfillmentRate: totals.rate,
-      plannedPosts: totals.planned,
-      completedPosts: totals.completed,
-      dueSoonCount: tasks.filter(
-        (task) => task.dueDate <= dueSoonBoundary && task.status !== "COMPLETED",
-      ).length,
-      completedTaskCount: tasks.filter((task) => task.status === "COMPLETED").length,
-    },
-    byPlatform: Object.values(
-      tasks.reduce<Record<string, { platform: string; planned: number; completed: number; rate: number }>>(
-        (accumulator, task) => {
-          const current =
-            accumulator[task.platform] ??
-            {
-              platform: task.platform,
-              planned: 0,
-              completed: 0,
-              rate: 0,
-            };
-
-          current.planned += task.plannedPosts;
-          current.completed += task.completedPosts;
-          current.rate = calculateFulfillmentRate(current.completed, current.planned);
-          accumulator[task.platform] = current;
-
-          return accumulator;
-        },
-        {},
-      ),
-    ),
-  };
-}
-
-export async function getWeeklyTaskTrackerData(
-  user: AppUser,
-  filters?: WeeklyTaskTrackerFilters,
-) {
+export async function getWeeklyTaskTrackerData(user: AppUser, filters?: WeeklyTaskTrackerFilters) {
   const { selectedDate, weekStart, weekEnd } = getSelectedWeekRange(filters);
   const normalizedSearch = filters?.search?.trim();
   const selectedDateStart = selectedDate ? startOfDay(selectedDate) : null;
@@ -816,15 +695,10 @@ export async function getWeeklyTaskTrackerData(
     }),
   ]);
 
-  const totalEodEntries = tasks.reduce(
-    (sum, task) => sum + task.eodEntries.length,
-    0,
-  );
+  const totalEodEntries = tasks.reduce((sum, task) => sum + task.eodEntries.length, 0);
   const tasksWithUpdates = tasks.filter((task) => task.eodEntries.length > 0).length;
   const clientsInView = new Set(
-    tasks
-      .map((task) => task.client?.id)
-      .filter((clientId): clientId is string => Boolean(clientId)),
+    tasks.map((task) => task.client?.id).filter((clientId): clientId is string => Boolean(clientId)),
   ).size;
 
   const dailyDigest = eachDayOfInterval({
@@ -869,9 +743,8 @@ export async function getWeeklyTaskTrackerData(
           ? tasks.reduce(
               (sum, task) =>
                 sum +
-                task.eodEntries.filter((entry) =>
-                  entry.entryDate >= selectedDateStart &&
-                  entry.entryDate <= selectedDateEnd,
+                task.eodEntries.filter(
+                  (entry) => entry.entryDate >= selectedDateStart && entry.entryDate <= selectedDateEnd,
                 ).length,
               0,
             )
@@ -886,14 +759,13 @@ export async function getTeamViewData(user: AppUser) {
 
   const [users, agencyTasks, clients, assignableUsers] = await Promise.all([
     prisma.user.findMany({
-      where: canViewAllAgencyData(user.role)
-        ? { isActive: true }
-        : { id: user.id },
+      where: canViewAllAgencyData(user.role) ? { isActive: true } : { id: user.id },
       orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
         email: true,
+        avatarUrl: true,
         role: true,
         department: true,
         jobTitle: true,
@@ -991,6 +863,7 @@ export async function getAdminUsersData(user: AppUser) {
       id: true,
       name: true,
       email: true,
+      avatarUrl: true,
       role: true,
       department: true,
       jobTitle: true,
@@ -998,9 +871,6 @@ export async function getAdminUsersData(user: AppUser) {
       isActive: true,
       createdAt: true,
       assignedClients: {
-        select: { id: true },
-      },
-      assignedSocialTasks: {
         select: { id: true },
       },
       assignedAgencyTasks: {

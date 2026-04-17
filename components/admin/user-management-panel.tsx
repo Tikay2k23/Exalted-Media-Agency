@@ -4,6 +4,7 @@ import { LoaderCircle, Save, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,6 +28,7 @@ interface UserRow {
   id: string;
   name: string;
   email: string;
+  avatarUrl: string | null;
   role: string;
   department: string;
   jobTitle: string | null;
@@ -34,7 +36,6 @@ interface UserRow {
   isActive: boolean;
   createdAt: Date;
   assignedClients: { id: string }[];
-  assignedSocialTasks: { id: string }[];
   assignedAgencyTasks: { id: string; status: string; estimatedHours: number }[];
 }
 
@@ -129,11 +130,11 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
         </CardHeader>
         <CardContent>
           <form action={handleCreate} className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <Input name="name" placeholder="Jordan Lee" required />
+            <Input name="name" placeholder="Full name" required />
             <Input
               name="email"
               type="email"
-              placeholder="jordan@exaltedagency.com"
+              placeholder="work email"
               required
             />
             <Select name="role" defaultValue="TEAM_MEMBER">
@@ -148,7 +149,7 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
                 </option>
               ))}
             </Select>
-            <Input name="jobTitle" placeholder="Content Strategist" />
+            <Input name="jobTitle" placeholder="Job title" />
             <Input
               name="weeklyCapacityHours"
               type="number"
@@ -160,7 +161,7 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
             <Input
               name="password"
               type="password"
-              defaultValue="Agency123!"
+              placeholder="Temporary password"
               required
               className="xl:col-span-2"
             />
@@ -186,7 +187,7 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Marketing Team Directory</CardTitle>
+          <CardTitle>Agency Team Directory</CardTitle>
           <CardDescription>
             Update role, department, title, and weekly capacity to keep staffing and workload
             planning aligned.
@@ -218,11 +219,14 @@ export function UserManagementPanel({ users }: { users: UserRow[] }) {
                 return (
                   <TableRow key={user.id}>
                     <TableCell>
-                      <div>
-                        <p className="font-medium text-slate-950">{user.name}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                          {user.jobTitle ?? "No title"}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <Avatar src={user.avatarUrl} fallback={user.name} alt={user.name} />
+                        <div>
+                          <p className="font-medium text-slate-950">{user.name}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
+                            {user.jobTitle ?? "No title"}
+                          </p>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{user.email}</TableCell>

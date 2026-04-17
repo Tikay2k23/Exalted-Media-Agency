@@ -8,8 +8,8 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agency Hub",
-  description: "Project management MVP for agencies handling clients, delivery, and social fulfillment.",
+  title: "Exalted Media Operations",
+  description: "Internal operations platform for Exalted Media covering client delivery, weekly work tracking, and team accountability.",
 };
 
 export default function RootLayout({

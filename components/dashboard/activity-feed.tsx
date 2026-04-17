@@ -40,7 +40,7 @@ export function ActivityFeed({
           ))
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-            No recent activity yet.
+            Activity will appear here as the team updates accounts, tasks, and pipeline changes.
           </div>
         )}
       </CardContent>

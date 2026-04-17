@@ -1,14 +1,14 @@
 import {
   BarChart3,
   BriefcaseBusiness,
-  ChartNoAxesColumnIncreasing,
+  Clock3,
   Sparkles,
   UsersRound,
 } from "lucide-react";
 
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { AgencyTaskList } from "@/components/dashboard/agency-task-list";
-import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
+import { PipelineOverview } from "@/components/dashboard/pipeline-overview";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { PerformanceTable } from "@/components/team/performance-table";
 import { Badge } from "@/components/ui/badge";
@@ -34,52 +34,48 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard
-          title="Existing clients"
+          title="Client accounts"
           value={String(data.metrics.existingClientsCount)}
-          description="Active accounts currently visible in your workspace."
+          description="Accounts currently visible in your workspace."
           icon={BriefcaseBusiness}
         />
         <StatCard
-          title="New clients"
+          title="New this month"
           value={String(data.metrics.newClientsCount)}
           description="Accounts added in the last 30 days."
           icon={Sparkles}
         />
         <StatCard
-          title="Fulfillment rate"
-          value={formatPercent(data.metrics.fulfillmentRate)}
-          description={`${data.metrics.completedPosts} of ${data.metrics.plannedPosts} planned posts are complete.`}
-          icon={ChartNoAxesColumnIncreasing}
+          title="Active accounts"
+          value={String(data.metrics.activeClientsCount)}
+          description="Live accounts currently marked active."
+          icon={BarChart3}
         />
         <StatCard
-          title="Pipeline health"
-          value={String(
-            data.pipelineOverview.reduce((sum, stage) => sum + stage.count, 0),
-          )}
-          description="Total accounts distributed across all delivery stages."
-          icon={BarChart3}
+          title="Open work items"
+          value={String(data.metrics.openAgencyTasksCount)}
+          description="Internal delivery tasks that still need action."
+          icon={Clock3}
         />
         <StatCard
           title="Team utilization"
           value={formatPercent(data.metrics.teamUtilizationRate)}
-          description={`${data.metrics.openAgencyTasksCount} open internal marketing tasks are currently booked.`}
+          description={`${data.metrics.overdueAgencyTasksCount} overdue work item${data.metrics.overdueAgencyTasksCount === 1 ? "" : "s"} currently need attention.`}
           icon={UsersRound}
         />
       </section>
 
-      <DashboardCharts
-        pipelineOverview={data.pipelineOverview}
-        platformBreakdown={data.platformBreakdown}
-      />
-
-      <AgencyTaskList tasks={data.agencyTasks} />
+      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+        <PipelineOverview stages={data.pipelineOverview} attentionClients={data.attentionClients} />
+        <AgencyTaskList tasks={data.agencyTasks} />
+      </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Team Performance Summary</CardTitle>
+            <CardTitle>Team Workload Summary</CardTitle>
             <CardDescription>
-              Fulfillment progress across assigned clients and live delivery work.
+              Capacity, active work, and overdue items across the agency team.
             </CardDescription>
           </CardHeader>
           <CardContent>

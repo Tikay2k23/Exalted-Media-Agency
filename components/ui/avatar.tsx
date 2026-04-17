@@ -12,9 +12,18 @@ interface AvatarProps {
 
 export function Avatar({ src, alt, fallback, className }: AvatarProps) {
   if (src) {
+    const isDataUrl = src.startsWith("data:");
+
     return (
       <div className={cn("relative h-10 w-10 overflow-hidden rounded-2xl", className)}>
-        <Image src={src} alt={alt ?? "Avatar"} fill className="object-cover" />
+        <Image
+          src={src}
+          alt={alt ?? "Avatar"}
+          fill
+          sizes="80px"
+          unoptimized={isDataUrl}
+          className="object-cover"
+        />
       </div>
     );
   }

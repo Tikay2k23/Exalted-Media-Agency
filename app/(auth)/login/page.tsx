@@ -1,4 +1,4 @@
-import { ArrowUpRight, BarChart3, KanbanSquare, Users2 } from "lucide-react";
+import { ArrowUpRight, BriefcaseBusiness, ClipboardCheck, KanbanSquare } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/auth/login-form";
@@ -9,19 +9,19 @@ export const dynamic = "force-dynamic";
 
 const highlights = [
   {
-    icon: Users2,
-    title: "Role-aware access",
-    description: "Admins, managers, and delivery teammates each land on the right operational surface.",
+    icon: BriefcaseBusiness,
+    title: "Client delivery clarity",
+    description: "Keep account ownership, pipeline movement, and internal delivery aligned from one workspace.",
   },
   {
     icon: KanbanSquare,
-    title: "Pipeline clarity",
-    description: "Track clients from new lead through review and completion with stage history.",
+    title: "Structured pipeline control",
+    description: "Track every account from onboarding through completion with stage history and clean visibility.",
   },
   {
-    icon: BarChart3,
-    title: "Fulfillment visibility",
-    description: "Monitor planned versus completed posts across clients, platforms, and assignees.",
+    icon: ClipboardCheck,
+    title: "Weekly execution accountability",
+    description: "Review assigned work, daily EOD updates, and operational activity without unnecessary reporting noise.",
   },
 ];
 
@@ -40,16 +40,16 @@ export default async function LoginPage() {
             <div className="rounded-2xl bg-white/10 p-3">
               <ArrowUpRight className="h-5 w-5" />
             </div>
-            <p className="text-xs uppercase tracking-[0.35em]">Exalted Media Agency</p>
+            <p className="text-xs uppercase tracking-[0.35em]">Exalted Media Operations</p>
           </div>
 
           <div className="mt-14 max-w-2xl">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-              Delivery operations for agencies that need clarity without the clutter.
+              An internal operating system built for premium digital marketing delivery.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
-              Manage clients, track the pipeline, and keep posting fulfillment visible from one
-              production-ready workspace.
+              Manage client accounts, weekly work, and internal accountability from one clean,
+              professional workspace designed for real agency operations.
             </p>
           </div>
 

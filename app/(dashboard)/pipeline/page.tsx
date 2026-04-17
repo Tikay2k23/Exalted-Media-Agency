@@ -23,11 +23,11 @@ export default async function PipelinePage({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Pipeline Management</CardTitle>
+          <CardTitle>Account Pipeline</CardTitle>
           <CardDescription>
             {canMovePipeline(user.role)
-              ? "Drag clients between stages to keep the board current. Every move is recorded."
-              : "View the live pipeline for your assigned clients and stay aligned with the team."}
+              ? "Move client accounts between stages to keep the delivery pipeline current. Every move is recorded."
+              : "View the live pipeline for your assigned accounts and stay aligned with the team."}
           </CardDescription>
         </CardHeader>
         <CardContent>

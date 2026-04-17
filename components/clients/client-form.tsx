@@ -85,20 +85,20 @@ export function ClientForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{isEditMode ? "Edit Client" : "Add New Client"}</CardTitle>
+        <CardTitle>{isEditMode ? "Edit Account" : "Add Client Account"}</CardTitle>
         <CardDescription>
           {isEditMode
-            ? "Managers and admins can update client ownership, account details, service scope, and stage from here."
-            : "Managers and admins can onboard new digital marketing accounts directly into the live pipeline."}
+            ? "Update ownership, account details, service scope, and stage from one place."
+            : "Onboard a new client account directly into the live agency pipeline."}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form action={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-600">Client name</span>
+            <span className="text-sm font-medium text-slate-600">Primary contact</span>
             <Input
               name="clientName"
-              placeholder="Leah Morgan"
+              placeholder="Primary contact name"
               defaultValue={client?.clientName}
               required
             />
@@ -108,7 +108,7 @@ export function ClientForm({
             <span className="text-sm font-medium text-slate-600">Company / brand</span>
             <Input
               name="companyName"
-              placeholder="Northstar Fitness"
+              placeholder="Brand or company name"
               defaultValue={client?.companyName}
               required
             />
@@ -119,7 +119,7 @@ export function ClientForm({
             <Input
               name="contactEmail"
               type="email"
-              placeholder="hello@brand.com"
+              placeholder="name@client.com"
               defaultValue={client?.contactEmail}
               required
             />
@@ -129,7 +129,7 @@ export function ClientForm({
             <span className="text-sm font-medium text-slate-600">Contact phone</span>
             <Input
               name="contactPhone"
-              placeholder="+1 555 555 5555"
+              placeholder="Direct contact number"
               defaultValue={client?.contactPhone ?? ""}
             />
           </label>
@@ -182,7 +182,7 @@ export function ClientForm({
             <span className="text-sm font-medium text-slate-600">Notes</span>
             <Textarea
               name="notes"
-              placeholder="Scope, channels, content cadence, paid media goals, reporting requirements, or relationship notes."
+              placeholder="Scope, reporting cadence, current priorities, approvers, blockers, or client relationship notes."
               defaultValue={client?.notes ?? ""}
             />
           </label>

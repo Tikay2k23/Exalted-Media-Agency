@@ -38,7 +38,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid user payload" }, { status: 400 });
   }
 
-  const passwordHash = await hash(parsed.data.password || "Agency123!", 12);
+  const existingUser = await prisma.user.findUnique({
+    where: {
+      email: parsed.data.email.toLowerCase(),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existingUser) {
+    return NextResponse.json({ error: "A user with this email already exists." }, { status: 409 });
+  }
+
+  const passwordHash = await hash(parsed.data.password, 12);
 
   const user = await prisma.user.create({
     data: {

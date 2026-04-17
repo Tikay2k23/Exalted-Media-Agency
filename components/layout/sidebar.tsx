@@ -2,9 +2,10 @@
 
 import {
   BriefcaseBusiness,
-  ChartColumnBig,
+  CalendarRange,
   KanbanSquare,
   LayoutDashboard,
+  Settings2,
   ShieldCheck,
   Users2,
 } from "lucide-react";
@@ -16,11 +17,12 @@ import { cn } from "@/lib/utils";
 
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/clients", label: "Clients", icon: BriefcaseBusiness },
+  { href: "/clients", label: "Accounts", icon: BriefcaseBusiness },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
-  { href: "/fulfillment", label: "Weekly Tracker", icon: ChartColumnBig },
+  { href: "/fulfillment", label: "Weekly Work", icon: CalendarRange },
   { href: "/team", label: "Team", icon: Users2 },
   { href: "/admin/users", label: "Users", icon: ShieldCheck, adminOnly: true },
+  { href: "/settings", label: "Settings", icon: Settings2 },
 ];
 
 export function Sidebar({ role }: { role: "ADMIN" | "MANAGER" | "TEAM_MEMBER" }) {
@@ -31,9 +33,9 @@ export function Sidebar({ role }: { role: "ADMIN" | "MANAGER" | "TEAM_MEMBER" })
       <div className="mb-10 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-sky-200/80">
-            Exalted
+            Exalted Media
           </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Agency Hub</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Operations</h1>
         </div>
         <Badge tone="sky">{role.replace("_", " ")}</Badge>
       </div>
@@ -67,11 +69,11 @@ export function Sidebar({ role }: { role: "ADMIN" | "MANAGER" | "TEAM_MEMBER" })
 
       <div className="mt-10 rounded-3xl border border-white/10 bg-white/5 p-4">
         <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-          Operating Model
+          Delivery Standard
         </p>
         <p className="mt-3 text-sm leading-6 text-slate-200">
-          Focused on client delivery, weekly accountability, and fast operational
-          visibility for the whole team.
+          Built for account visibility, clean execution, and weekly accountability across the
+          agency team.
         </p>
       </div>
     </aside>
