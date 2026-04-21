@@ -7,6 +7,18 @@ import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validators";
 import { ensureRequiredWorkspaceInitialized } from "@/lib/workspace-bootstrap";
 
+function getCookieSafeImageUrl(avatarUrl?: string | null) {
+  if (!avatarUrl) {
+    return null;
+  }
+
+  if (avatarUrl.startsWith("data:image/")) {
+    return null;
+  }
+
+  return avatarUrl.length <= 2000 ? avatarUrl : null;
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.AUTH_SECRET,
   session: {
@@ -63,7 +75,7 @@ export const authOptions: NextAuthOptions = {
             id: user.id,
             name: user.name,
             email: user.email,
-            image: user.avatarUrl,
+            image: getCookieSafeImageUrl(user.avatarUrl),
             role: user.role,
           };
         } catch (error) {
@@ -107,7 +119,7 @@ export const authOptions: NextAuthOptions = {
         token.name = currentUser.name;
         token.email = currentUser.email;
         token.role = currentUser.role;
-        token.picture = currentUser.avatarUrl ?? null;
+        token.picture = getCookieSafeImageUrl(currentUser.avatarUrl);
 
         return token;
       } catch (error) {
