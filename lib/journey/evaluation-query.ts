@@ -58,7 +58,17 @@ export const journeyEvaluationSelect = {
   defects: {
     select: { reference: true, severity: true, status: true },
   },
-  approvals: { select: { type: true } },
+  approvals: {
+    select: {
+      type: true,
+      // The gate re-derives whether an approval is one a launch may rest on,
+      // rather than trusting that a row exists.
+      status: true,
+      approvedByName: true,
+      evidenceUrl: true,
+      notes: true,
+    },
+  },
   launches: {
     select: { backupVerifiedAt: true, rollbackPlan: true, ownerId: true },
   },

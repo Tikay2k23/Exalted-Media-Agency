@@ -196,6 +196,7 @@ model User {
   reviewCyclesOwned   ReviewCycle[]  @relation("ReviewOwner")
   revisionsAssigned   RevisionItem[] @relation("RevisionAssignee")
   approvalsRecorded   Approval[]     @relation("ApprovalRecorder")
+  approvalsWithdrawn  Approval[]     @relation("ApprovalWithdrawer")
 
   // Launch
   launchesOwned             Launch[]              @relation("LaunchOwner")

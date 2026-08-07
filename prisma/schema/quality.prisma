@@ -78,6 +78,13 @@ enum ApprovalType {
   FINAL_SIGN_OFF
 }
 
+/// A recorded approval is never deleted. A mistaken or retracted one is
+/// withdrawn instead, so the register still shows what was believed and when.
+enum ApprovalRecordStatus {
+  RECORDED
+  WITHDRAWN
+}
+
 model QaPlan {
   id          String       @id @default(cuid())
   clientId    String
@@ -236,21 +243,29 @@ model Approval {
   projectId      String?
   type           ApprovalType
   subject        String
+  status         ApprovalRecordStatus @default(RECORDED)
   /// Who at the client approved, and how it was captured.
   approverContactId String?
+  /// Snapshot of the contact's name at the time. The contact relation is
+  /// SetNull on delete, and a sign-off that forgets who gave it is no record.
   approvedByName String?
   evidenceUrl    String?
   approvedAt     DateTime     @default(now())
   recordedById   String?
   notes          String?
+  withdrawnAt      DateTime?
+  withdrawnById    String?
+  withdrawnReason  String?
   createdAt      DateTime     @default(now())
 
   client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   approverContact ClientContact? @relation("ApprovalContact", fields: [approverContactId], references: [id], onDelete: SetNull)
   recordedBy      User?          @relation("ApprovalRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  withdrawnBy     User?          @relation("ApprovalWithdrawer", fields: [withdrawnById], references: [id], onDelete: SetNull)
 
   @@index([clientId, type])
+  @@index([clientId, status])
   @@index([projectId])
   @@index([approvedAt])
 }

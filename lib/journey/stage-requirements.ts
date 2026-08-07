@@ -1,5 +1,6 @@
 import type {
   AccessStatus,
+  ApprovalRecordStatus,
   ApprovalType,
   BriefStatus,
   DefectSeverity,
@@ -11,6 +12,10 @@ import type {
   TaskPriority,
 } from "@prisma/client";
 
+import {
+  describeApprovalShortfall,
+  hasGateSatisfyingApproval,
+} from "@/lib/approvals/approval-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 
 /**
@@ -81,6 +86,15 @@ export interface EvaluableDefect {
 
 export interface EvaluableApproval {
   type: ApprovalType;
+  /**
+   * Enough to re-derive whether a launch may rest on this approval. The gate
+   * does not trust that a row exists: a withdrawn one, or one naming nobody,
+   * is not a sign-off.
+   */
+  status: ApprovalRecordStatus;
+  approvedByName: string | null;
+  evidenceUrl: string | null;
+  notes: string | null;
 }
 
 export interface EvaluableLaunch {
@@ -493,13 +507,30 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "client_approval_recorded",
     label: "Client approval recorded",
-    description: "A deliverable or final sign-off approval is on file.",
-    check: (client) =>
-      client.approvals.some(
-        (approval) => approval.type === "DELIVERABLE" || approval.type === "FINAL_SIGN_OFF",
-      )
-        ? null
-        : "No client approval has been recorded for this account.",
+    description: "A deliverable or final sign-off approval is on file, with evidence.",
+    check: (client) => {
+      if (hasGateSatisfyingApproval(client.approvals)) {
+        return null;
+      }
+
+      if (client.approvals.length === 0) {
+        return "No client approval has been recorded for this account.";
+      }
+
+      // There are approvals but none a launch may rest on, so say which
+      // problem it is rather than repeating "none recorded" at somebody
+      // looking at a screen that plainly shows several.
+      const shortfalls = client.approvals
+        .map((approval) => describeApprovalShortfall(approval))
+        .filter((reasons) => reasons.length > 0)
+        .flat();
+
+      if (shortfalls.length === 0) {
+        return "No approval on file covers a deliverable or final sign-off.";
+      }
+
+      return `No usable client approval: ${[...new Set(shortfalls)].join(", ")}.`;
+    },
   },
   {
     key: "backup_verified",

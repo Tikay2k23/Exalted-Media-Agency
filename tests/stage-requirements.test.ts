@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  type EvaluableApproval,
   type EvaluableClient,
   type EvaluableTask,
   REQUIREMENT_DEFINITIONS,
@@ -28,6 +29,18 @@ function task(overrides: Partial<EvaluableTask> = {}): EvaluableTask {
   };
 }
 
+/** A sign-off somebody could actually check afterwards. */
+function approval(overrides: Partial<EvaluableApproval> = {}): EvaluableApproval {
+  return {
+    type: "DELIVERABLE",
+    status: "RECORDED",
+    approvedByName: "Maria Santos",
+    evidenceUrl: "https://mail.example.test/thread/9",
+    notes: null,
+    ...overrides,
+  };
+}
+
 function client(overrides: Partial<EvaluableClient> = {}): EvaluableClient {
   return {
     id: "client-1",
@@ -43,7 +56,7 @@ function client(overrides: Partial<EvaluableClient> = {}): EvaluableClient {
     accessRecords: [{ platform: "GOHIGHLEVEL", isCritical: true, status: "TESTED" }],
     strategyBrief: { status: "APPROVED" },
     defects: [],
-    approvals: [{ type: "DELIVERABLE" }],
+    approvals: [approval()],
     launches: [
       {
         backupVerifiedAt: new Date("2026-02-01"),
@@ -306,14 +319,14 @@ describe("requirements backed by the commercial, access, QA and launch records",
 
     // A strategy brief approval is not a deliverable sign-off.
     assert.equal(
-      evaluateStageRequirements(client({ approvals: [{ type: "STRATEGY_BRIEF" }] }), [
+      evaluateStageRequirements(client({ approvals: [approval({ type: "STRATEGY_BRIEF" })] }), [
         requirement("client_approval_recorded"),
       ]).passed,
       false,
     );
 
     assert.equal(
-      evaluateStageRequirements(client({ approvals: [{ type: "FINAL_SIGN_OFF" }] }), [
+      evaluateStageRequirements(client({ approvals: [approval({ type: "FINAL_SIGN_OFF" })] }), [
         requirement("client_approval_recorded"),
       ]).passed,
       true,

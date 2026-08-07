@@ -560,6 +560,14 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             approvedBy: { select: { id: true, name: true } },
           },
         },
+        approvals: {
+          orderBy: { approvedAt: "desc" },
+          include: {
+            recordedBy: { select: { id: true, name: true } },
+            withdrawnBy: { select: { id: true, name: true } },
+            project: { select: { id: true, name: true } },
+          },
+        },
         defects: {
           orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
           include: { assignedTo: { select: { id: true, name: true } } },

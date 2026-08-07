@@ -2,6 +2,7 @@ import {
   AccessMethod,
   AccessPlatform,
   AccessStatus,
+  ApprovalType,
   CallOutcome,
   ChecklistItemStatus,
   DefectSeverity,
@@ -175,6 +176,24 @@ export const strategyBriefSchema = z.object({
 });
 
 export const briefRevisionSchema = z.object({
+  reason: z.string().min(1).max(2000),
+});
+
+// --- Client approvals ------------------------------------------------------
+
+export const clientApprovalSchema = z.object({
+  type: z.nativeEnum(ApprovalType),
+  subject: z.string().min(2).max(200),
+  // Chosen from the account's contacts, never typed. The service checks the
+  // contact belongs to this client and is authorized to approve.
+  approverContactId: z.string().min(1),
+  approvedAt: z.string().optional().or(z.literal("")),
+  evidenceUrl: z.string().max(500).optional().or(z.literal("")),
+  notes: z.string().max(2000).optional().or(z.literal("")),
+  projectId: z.string().optional().or(z.literal("")),
+});
+
+export const approvalWithdrawalSchema = z.object({
   reason: z.string().min(1).max(2000),
 });
 

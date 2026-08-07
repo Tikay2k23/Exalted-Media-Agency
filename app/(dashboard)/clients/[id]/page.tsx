@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AccountDetailsForm } from "@/components/clients/account-details-form";
 import { ClientAccess } from "@/components/clients/client-access";
+import { ClientApprovals } from "@/components/clients/client-approvals";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientContacts } from "@/components/clients/client-contacts";
 import { ClientForm } from "@/components/clients/client-form";
@@ -30,6 +31,11 @@ import {
 import { loadAuthContext } from "@/lib/authz";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
 import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
+import {
+  CLIENT_APPROVAL_TYPES,
+  describeApprovalShortfall,
+  isVerifiableApproval,
+} from "@/lib/approvals/approval-service";
 import { isDefectOpen } from "@/lib/quality/defect-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
@@ -219,6 +225,47 @@ export default async function ClientDetailPage({
             status: test.status,
             actualResult: test.actualResult,
           })),
+        }))}
+      />
+
+      {/* Sits between quality assurance and launch, which is the order it
+          happens in: the work passes QA, the client signs it off, it goes
+          live. */}
+      <ClientApprovals
+        clientId={client.id}
+        canRecord={can(actor, "revisions.recordApproval")}
+        contactCount={client.contacts.length}
+        approvalTypes={CLIENT_APPROVAL_TYPES.map((option) => ({
+          value: option.value,
+          label: option.label,
+        }))}
+        approvers={client.contacts
+          .filter((contact) => contact.isApprover)
+          .map((contact) => ({
+            id: contact.id,
+            name: contact.name,
+            role: contact.role,
+          }))}
+        projects={client.projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+        }))}
+        approvals={client.approvals.map((approval) => ({
+          id: approval.id,
+          type: approval.type,
+          typeLabel: formatEnumLabel(approval.type),
+          subject: approval.subject,
+          status: approval.status,
+          approvedByName: approval.approvedByName,
+          approvedAt: approval.approvedAt.toISOString(),
+          evidenceUrl: approval.evidenceUrl,
+          notes: approval.notes,
+          recordedByName: approval.recordedBy?.name ?? null,
+          projectName: approval.project?.name ?? null,
+          withdrawnReason: approval.withdrawnReason,
+          withdrawnByName: approval.withdrawnBy?.name ?? null,
+          countsForLaunch: isVerifiableApproval(approval),
+          shortfall: describeApprovalShortfall(approval),
         }))}
       />
 

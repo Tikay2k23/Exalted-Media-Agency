@@ -152,11 +152,11 @@ export const REQUIREMENT_REMEDIES: Record<string, RequirementRemedy> = {
   },
   client_approval_recorded: {
     whatItMeans:
-      "The client has not signed off. Launching without a recorded approval leaves the agency exposed if they later object.",
-    howToFix: "Record the client's approval of the deliverable, with evidence.",
+      "The client has not signed off, or the sign-off on file cannot be checked. Launching without a recorded approval leaves the agency exposed if they later object.",
+    howToFix:
+      "Open Client approvals on the account and record the sign-off: what they approved, which authorized contact approved it, and either a link to the approval or a note describing how it was given.",
     href: "/clients/:id",
     actionLabel: "Record approval",
-    notBuiltYet: true,
   },
   launch_owner_assigned: {
     whatItMeans: "No one is accountable for the launch itself.",
