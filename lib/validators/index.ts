@@ -4,9 +4,17 @@ import {
   AccessStatus,
   ApprovalType,
   ComplaintStatus,
+  ExpansionStatus,
+  ExpansionType,
+  OffboardingReason,
+  OffboardingStatus,
   OptimizationDecision,
   RecoveryPlanStatus,
+  ReferralStatus,
+  RenewalStage,
   ReportType,
+  TestimonialFormat,
+  TestimonialStatus,
   CallOutcome,
   ChecklistItemStatus,
   DefectSeverity,
@@ -236,6 +244,93 @@ export const complaintUpdateSchema = z.object({
   finalOutcome: z.string().max(2000).optional().or(z.literal("")),
   ownerId: z.string().optional().or(z.literal("")),
   followUpAt: z.string().optional().or(z.literal("")),
+});
+
+// --- Renewal, expansion, advocacy and offboarding ---------------------------
+
+const money = z.number().min(0).max(100_000_000).nullable().optional();
+
+export const renewalSchema = z.object({
+  stage: z.nativeEnum(RenewalStage),
+  renewalDate: z.string().optional().or(z.literal("")),
+  contractEndDate: z.string().optional().or(z.literal("")),
+  currentPackage: z.string().max(200).optional().or(z.literal("")),
+  recommendedPackage: z.string().max(200).optional().or(z.literal("")),
+  currentValue: money,
+  renewalValue: money,
+  meetingAt: z.string().optional().or(z.literal("")),
+  decisionDate: z.string().optional().or(z.literal("")),
+  clientInterest: z.string().max(2000).optional().or(z.literal("")),
+  nextAction: z.string().max(1000).optional().or(z.literal("")),
+  outcomeNote: z.string().max(2000).optional().or(z.literal("")),
+  ownerId: z.string().optional().or(z.literal("")),
+});
+
+export const expansionSchema = z.object({
+  expansionId: z.string().optional().or(z.literal("")),
+  type: z.nativeEnum(ExpansionType),
+  status: z.nativeEnum(ExpansionStatus).optional(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional().or(z.literal("")),
+  estimatedValue: money,
+  targetDate: z.string().optional().or(z.literal("")),
+  outcomeNote: z.string().max(2000).optional().or(z.literal("")),
+  ownerId: z.string().optional().or(z.literal("")),
+});
+
+export const testimonialSchema = z.object({
+  testimonialId: z.string().optional().or(z.literal("")),
+  format: z.nativeEnum(TestimonialFormat),
+  status: z.nativeEnum(TestimonialStatus).optional(),
+  trigger: z.string().max(500).optional().or(z.literal("")),
+  content: z.string().max(4000).optional().or(z.literal("")),
+  mediaUrl: z.string().max(500).optional().or(z.literal("")),
+  publishingChannels: z.string().max(500).optional().or(z.literal("")),
+  allowPersonName: z.boolean().optional(),
+  allowBusinessName: z.boolean().optional(),
+  allowLogo: z.boolean().optional(),
+  allowPhoto: z.boolean().optional(),
+  allowPerformanceData: z.boolean().optional(),
+});
+
+export const referralSchema = z.object({
+  referralId: z.string().optional().or(z.literal("")),
+  contactName: z.string().min(1).max(160),
+  businessName: z.string().max(200).optional().or(z.literal("")),
+  email: z.string().max(200).optional().or(z.literal("")),
+  phone: z.string().max(60).optional().or(z.literal("")),
+  permissionGranted: z.boolean().optional(),
+  status: z.nativeEnum(ReferralStatus).optional(),
+  assignedToId: z.string().optional().or(z.literal("")),
+  outcome: z.string().max(2000).optional().or(z.literal("")),
+  incentiveStatus: z.string().max(200).optional().or(z.literal("")),
+});
+
+export const referralConversionSchema = z.object({
+  assignedToId: z.string().optional().or(z.literal("")),
+});
+
+const offboardingStepKey = z.enum([
+  "finalBillingSettledAt",
+  "remainingWorkCleared",
+  "assetsTransferredAt",
+  "dataExportedAt",
+  "clientAdminAccessConfirmedAt",
+  "agencyAccessRemovedAt",
+  "finalReportSentAt",
+]);
+
+export const offboardingSchema = z.object({
+  status: z.nativeEnum(OffboardingStatus).optional(),
+  reason: z.nativeEnum(OffboardingReason).optional(),
+  reasonDetail: z.string().max(2000).optional().or(z.literal("")),
+  finalServiceDate: z.string().optional().or(z.literal("")),
+  supportEndsAt: z.string().optional().or(z.literal("")),
+  remainingWork: z.string().max(2000).optional().or(z.literal("")),
+  lessonsLearned: z.string().max(4000).optional().or(z.literal("")),
+  ownerId: z.string().optional().or(z.literal("")),
+  completeSteps: z.array(offboardingStepKey).optional(),
+  clearSteps: z.array(offboardingStepKey).optional(),
 });
 
 // --- Client reporting and optimization -------------------------------------

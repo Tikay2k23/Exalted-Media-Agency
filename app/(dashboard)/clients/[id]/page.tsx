@@ -5,7 +5,9 @@ import { ClientAccess } from "@/components/clients/client-access";
 import { ClientApprovals } from "@/components/clients/client-approvals";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientContacts } from "@/components/clients/client-contacts";
+import { ClientGrowth } from "@/components/clients/client-growth";
 import { ClientHealth } from "@/components/clients/client-health";
+import { ClientOffboarding } from "@/components/clients/client-offboarding";
 import { ClientForm } from "@/components/clients/client-form";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
@@ -50,6 +52,28 @@ import {
   isOptimizationConcluded,
   isReportLate,
 } from "@/lib/success/report-service";
+import {
+  EXPANSION_STATUSES,
+  EXPANSION_TYPES,
+  RENEWAL_STAGES,
+  isExpansionDecided,
+  isRenewalSettled,
+  renewalRunway,
+} from "@/lib/growth/renewal-service";
+import {
+  TESTIMONIAL_FORMATS,
+  TESTIMONIAL_PERMISSIONS,
+  TESTIMONIAL_STATUSES,
+  canPublishTestimonial,
+  describePublishingBlockers,
+  grantedPermissions,
+} from "@/lib/growth/advocacy-service";
+import {
+  OFFBOARDING_REASONS,
+  OFFBOARDING_STEPS,
+  isOffboardingComplete,
+  outstandingOffboardingSteps,
+} from "@/lib/success/offboarding-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
@@ -183,6 +207,130 @@ export default async function ClientDetailPage({
           contacts={client.contacts}
         />
       </section>
+
+      {/* The end of the journey, in the order it happens: what comes next
+          commercially, then the exit if there is one. */}
+      {(() => {
+        const record = client.renewals[0] ?? null;
+        const runway = renewalRunway(record?.renewalDate ?? client.renewalDate);
+
+        return (
+          <ClientGrowth
+            clientId={client.id}
+            canManage={can(actor, "renewals.manage")}
+            canCreateLeads={can(actor, "renewals.manage")}
+            owners={options.users}
+            renewalStages={RENEWAL_STAGES.map((o) => ({ value: o.value, label: o.label }))}
+            expansionTypes={EXPANSION_TYPES.map((o) => ({ value: o.value, label: o.label }))}
+            expansionStatuses={EXPANSION_STATUSES.map((o) => ({
+              value: o.value,
+              label: o.label,
+            }))}
+            testimonialFormats={TESTIMONIAL_FORMATS.map((o) => ({
+              value: o.value,
+              label: o.label,
+            }))}
+            testimonialStatuses={TESTIMONIAL_STATUSES.map((o) => ({
+              value: o.value,
+              label: o.label,
+            }))}
+            testimonialPermissions={TESTIMONIAL_PERMISSIONS.map((o) => ({
+              key: o.key,
+              label: o.label,
+            }))}
+            renewal={{
+              exists: record !== null,
+              stage: record?.stage ?? "NOT_STARTED",
+              renewalDate:
+                (record?.renewalDate ?? client.renewalDate)?.toISOString() ?? null,
+              currentPackage: record?.currentPackage ?? null,
+              recommendedPackage: record?.recommendedPackage ?? null,
+              currentValue: record?.currentValue === null || record === null
+                ? null
+                : Number(record.currentValue),
+              renewalValue: record?.renewalValue === null || record === null
+                ? null
+                : Number(record.renewalValue),
+              clientInterest: record?.clientInterest ?? null,
+              nextAction: record?.nextAction ?? null,
+              outcomeNote: record?.outcomeNote ?? null,
+              ownerName: record?.owner?.name ?? null,
+              daysUntil: runway.daysUntil,
+              window: runway.window,
+              overdue: runway.overdue,
+              isSettled: record ? isRenewalSettled(record.stage) : false,
+            }}
+            expansions={client.expansionOpportunities.map((item) => ({
+              id: item.id,
+              type: item.type,
+              status: item.status,
+              title: item.title,
+              description: item.description,
+              estimatedValue:
+                item.estimatedValue === null ? null : Number(item.estimatedValue),
+              ownerName: item.owner?.name ?? null,
+              outcomeNote: item.outcomeNote,
+              isDecided: isExpansionDecided(item.status),
+            }))}
+            testimonials={client.testimonials.map((item) => ({
+              id: item.id,
+              format: item.format,
+              status: item.status,
+              content: item.content,
+              publishingChannels: item.publishingChannels,
+              permissions: grantedPermissions(item),
+              blockers: describePublishingBlockers(item),
+              canPublish: canPublishTestimonial(item),
+            }))}
+            referrals={client.referralsGiven.map((item) => ({
+              id: item.id,
+              contactName: item.contactName,
+              businessName: item.businessName,
+              status: item.status,
+              permissionGranted: item.permissionGranted,
+              outcome: item.outcome,
+              leadId: item.leadId,
+              assignedToName: item.assignedTo?.name ?? null,
+            }))}
+          />
+        );
+      })()}
+
+      {(() => {
+        const record = client.offboarding;
+
+        return (
+          <ClientOffboarding
+            clientId={client.id}
+            canManage={can(actor, "offboarding.manage")}
+            owners={options.users}
+            reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
+            offboarding={{
+              exists: record !== null,
+              status: record?.status ?? "REQUESTED",
+              reason: record?.reason ?? "OTHER",
+              reasonDetail: record?.reasonDetail ?? null,
+              remainingWork: record?.remainingWork ?? null,
+              lessonsLearned: record?.lessonsLearned ?? null,
+              ownerName: null,
+              steps: OFFBOARDING_STEPS.map((step) => ({
+                key: step.key,
+                label: step.label,
+                why: step.why,
+                done: record
+                  ? step.key === "remainingWorkCleared"
+                    ? Boolean(record.remainingWork?.trim())
+                    : record[step.key] !== null
+                  : false,
+              })),
+              outstanding: record
+                ? outstandingOffboardingSteps(record).map((step) => step.label)
+                : OFFBOARDING_STEPS.map((step) => step.label),
+              complete: record ? isOffboardingComplete(record) : false,
+            }}
+          />
+        );
+      })()}
 
       {/* Reporting sits beside health because they answer the same question
           from two directions: what we told them, and how they are doing. */}

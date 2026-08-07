@@ -212,10 +212,9 @@ export const REQUIREMENT_REMEDIES: Record<string, RequirementRemedy> = {
     whatItMeans:
       "The client has not been confirmed as an administrator of their own platforms. Removing agency access first would lock them out of their own business.",
     howToFix:
-      "Confirm the client holds administrator access on every platform, then record it on the offboarding record.",
+      "Open Offboarding on the account, confirm the client holds administrator access on every platform, and mark that step done. The system will not let agency access be recorded as removed before this.",
     href: "/clients/:id",
     actionLabel: "Open offboarding",
-    notBuiltYet: true,
   },
 };
 
