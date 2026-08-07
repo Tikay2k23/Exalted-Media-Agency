@@ -125,13 +125,16 @@ describe("the approval types offered on the screen", () => {
   it("does not offer the internal strategy brief approval", () => {
     // Offering it here would invite somebody to record a client sign-off that
     // never happened.
-    assert.ok(
-      CLIENT_APPROVAL_TYPES.every((option) => option.value !== "STRATEGY_BRIEF"),
-    );
+    //
+    // Widened to string deliberately: the literal type currently proves this,
+    // but the point of the test is to fail the day somebody adds it.
+    const values: string[] = CLIENT_APPROVAL_TYPES.map((option) => option.value);
+
+    assert.ok(values.every((value) => value !== "STRATEGY_BRIEF"));
   });
 
   it("offers the two that open the launch gate", () => {
-    const values = CLIENT_APPROVAL_TYPES.map((option) => option.value);
+    const values: string[] = CLIENT_APPROVAL_TYPES.map((option) => option.value);
 
     assert.ok(values.includes("DELIVERABLE"));
     assert.ok(values.includes("FINAL_SIGN_OFF"));
