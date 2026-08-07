@@ -3,7 +3,14 @@ import {
   AccessPlatform,
   AccessStatus,
   ApprovalType,
+  AuditType,
+  CertificationLevel,
   ComplaintStatus,
+  ComplianceStatus,
+  CorrectiveActionStatus,
+  ImprovementPriority,
+  ImprovementStatus,
+  TrainingStatus,
   ExpansionStatus,
   ExpansionType,
   OffboardingReason,
@@ -244,6 +251,88 @@ export const complaintUpdateSchema = z.object({
   finalOutcome: z.string().max(2000).optional().or(z.literal("")),
   ownerId: z.string().optional().or(z.literal("")),
   followUpAt: z.string().optional().or(z.literal("")),
+});
+
+// --- Governance --------------------------------------------------------------
+
+export const sopSchema = z.object({
+  sopId: z.string().optional().or(z.literal("")),
+  reference: z.string().min(1).max(40),
+  title: z.string().min(1).max(200),
+  summary: z.string().max(1000).optional().or(z.literal("")),
+  content: z.string().min(1).max(200_000),
+  changeNote: z.string().max(1000).optional().or(z.literal("")),
+  ownerId: z.string().optional().or(z.literal("")),
+});
+
+export const sopActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("activate") }),
+  z.object({ action: z.literal("review") }),
+]);
+
+export const auditSchema = z.object({
+  auditId: z.string().optional().or(z.literal("")),
+  type: z.nativeEnum(AuditType),
+  scope: z.string().min(1).max(1000),
+  clientId: z.string().optional().or(z.literal("")),
+  auditorId: z.string().optional().or(z.literal("")),
+  summary: z.string().max(4000).optional().or(z.literal("")),
+  complianceScore: z.number().int().min(0).max(100).nullable().optional(),
+  overallResult: z.nativeEnum(ComplianceStatus).nullable().optional(),
+});
+
+export const auditFindingSchema = z.object({
+  title: z.string().min(1).max(200),
+  detail: z.string().min(1).max(4000),
+  result: z.nativeEnum(ComplianceStatus),
+  isCritical: z.boolean().optional(),
+  sopId: z.string().optional().or(z.literal("")),
+  evidenceUrl: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const correctiveActionSchema = z.object({
+  actionId: z.string().optional().or(z.literal("")),
+  findingId: z.string().optional().or(z.literal("")),
+  title: z.string().min(1).max(200),
+  risk: z.string().max(2000).optional().or(z.literal("")),
+  immediateCorrection: z.string().max(2000).optional().or(z.literal("")),
+  rootCause: z.string().max(2000).optional().or(z.literal("")),
+  processCorrection: z.string().max(2000).optional().or(z.literal("")),
+  status: z.nativeEnum(CorrectiveActionStatus).optional(),
+  ownerId: z.string().optional().or(z.literal("")),
+  dueDate: z.string().optional().or(z.literal("")),
+  evidenceUrl: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const correctiveActionVerifySchema = z.object({
+  note: z.string().max(2000).optional().or(z.literal("")),
+});
+
+export const improvementSchema = z.object({
+  improvementId: z.string().optional().or(z.literal("")),
+  title: z.string().min(1).max(200),
+  problem: z.string().min(1).max(4000),
+  source: z.string().max(200).optional().or(z.literal("")),
+  proposedSolution: z.string().max(4000).optional().or(z.literal("")),
+  benefit: z.string().max(2000).optional().or(z.literal("")),
+  effortEstimate: z.string().max(200).optional().or(z.literal("")),
+  priority: z.nativeEnum(ImprovementPriority).optional(),
+  status: z.nativeEnum(ImprovementStatus).optional(),
+  ownerId: z.string().optional().or(z.literal("")),
+  result: z.string().max(4000).optional().or(z.literal("")),
+});
+
+export const trainingRecordSchema = z.object({
+  recordId: z.string().optional().or(z.literal("")),
+  userId: z.string().min(1),
+  courseName: z.string().min(1).max(200),
+  sopReference: z.string().max(40).optional().or(z.literal("")),
+  status: z.nativeEnum(TrainingStatus).optional(),
+  dueDate: z.string().optional().or(z.literal("")),
+  assessmentScore: z.number().int().min(0).max(100).nullable().optional(),
+  certificationAwarded: z.nativeEnum(CertificationLevel).nullable().optional(),
+  certificationExpiresAt: z.string().optional().or(z.literal("")),
+  notes: z.string().max(2000).optional().or(z.literal("")),
 });
 
 // --- Renewal, expansion, advocacy and offboarding ---------------------------

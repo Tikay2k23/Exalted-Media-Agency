@@ -94,6 +94,13 @@ export const NAVIGATION: NavigationGroup[] = [
         description: "Workload and capacity",
       },
       {
+        href: "/governance",
+        label: "Governance",
+        icon: "ScrollText",
+        anyOf: ["governance.view"],
+        description: "SOPs, audits and improvement",
+      },
+      {
         href: "/admin/users",
         label: "Users",
         icon: "ShieldCheck",

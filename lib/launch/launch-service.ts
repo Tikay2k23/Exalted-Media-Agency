@@ -9,6 +9,10 @@ import {
 import { addDays, addHours } from "date-fns";
 
 import { logActivity } from "@/lib/activity";
+import {
+  certificationBlocksRestrictedWork,
+  loadCertificationState,
+} from "@/lib/governance/training-service";
 import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
@@ -23,7 +27,12 @@ import { prisma } from "@/lib/prisma";
  * named owner.
  */
 
-export type LaunchFailureCode = "FORBIDDEN" | "NOT_FOUND" | "NOT_READY" | "INVALID";
+export type LaunchFailureCode =
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "NOT_READY"
+  | "INVALID"
+  | "CERTIFICATION_LAPSED";
 
 export interface LaunchFailure {
   ok: false;
@@ -366,6 +375,20 @@ export async function activateLaunch(input: { actor: AuthContext; launchId: stri
 
   if (!can(actor, "launch.activate")) {
     return failure("FORBIDDEN", "You do not have permission to activate a launch.");
+  }
+
+  // SOP 40: somebody whose certification has lapsed does not do restricted
+  // high-risk work, and taking a client's systems live is the most
+  // consequential action in this application. This only bites once the agency
+  // has actually certified this person - see training-service for why an
+  // absent record is not treated as a lapsed one.
+  const certification = await loadCertificationState(actor.id);
+
+  if (certificationBlocksRestrictedWork(certification)) {
+    return failure(
+      "CERTIFICATION_LAPSED",
+      "Your certification has expired, so you cannot activate a launch until it is renewed. Someone with training oversight can do that on the Governance page.",
+    );
   }
 
   const launch = await prisma.launch.findUnique({

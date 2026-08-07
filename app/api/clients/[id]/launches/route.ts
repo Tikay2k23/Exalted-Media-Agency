@@ -13,6 +13,8 @@ export const LAUNCH_FAILURE_STATUS = {
   INVALID: 400,
   /** Not ready is a state of the world, not a malformed request. */
   NOT_READY: 409,
+  /** The person is real and permitted, but their certification has lapsed. */
+  CERTIFICATION_LAPSED: 403,
 } as const;
 
 export async function POST(

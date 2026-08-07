@@ -137,6 +137,11 @@ const BASE: readonly Permission[] = [
 const SPECIALIST: readonly Permission[] = [
   ...BASE,
   "qa.view",
+  // Specialists read the procedures they are held to, and raise improvements.
+  // SOP 10 asks every team member to take part in improving the process, and a
+  // backlog only leadership can write to collects only leadership's ideas.
+  // Deciding what goes on it stays with governance.audit.
+  "governance.view",
 ];
 
 const DELIVERY_OVERSIGHT: readonly Permission[] = [

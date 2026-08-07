@@ -9,6 +9,7 @@ import {
   type LucideIcon,
   Menu,
   Route,
+  ScrollText,
   Settings2,
   ShieldCheck,
   Users2,
@@ -31,6 +32,7 @@ const icons: Record<string, LucideIcon> = {
   Flame,
   Users2,
   ShieldCheck,
+  ScrollText,
   Settings2,
 };
 
