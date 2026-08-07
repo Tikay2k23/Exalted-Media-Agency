@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AccountDetailsForm } from "@/components/clients/account-details-form";
 import { ClientAccess } from "@/components/clients/client-access";
+import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientContacts } from "@/components/clients/client-contacts";
 import { ClientForm } from "@/components/clients/client-form";
 import { ClientInvoices } from "@/components/clients/client-invoices";
@@ -30,6 +31,7 @@ import { loadAuthContext } from "@/lib/authz";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
 import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
 import { isDefectOpen } from "@/lib/quality/defect-service";
+import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
@@ -163,6 +165,28 @@ export default async function ClientDetailPage({
           contacts={client.contacts}
         />
       </section>
+
+      <ClientBrief
+        clientId={client.id}
+        currentUserId={actor.id}
+        canEdit={can(actor, "projects.manage")}
+        brief={{
+          exists: client.strategyBrief !== null,
+          status: client.strategyBrief?.status ?? "DRAFT",
+          authorName: client.strategyBrief?.author?.name ?? null,
+          authorId: client.strategyBrief?.authorId ?? null,
+          approvedByName: client.strategyBrief?.approvedBy?.name ?? null,
+          values: (client.strategyBrief ?? {}) as Record<string, string | null>,
+          ...(() => {
+            const completeness = deriveBriefCompleteness(client.strategyBrief);
+            return {
+              missing: completeness.missing,
+              answered: completeness.answered,
+              total: completeness.total,
+            };
+          })(),
+        }}
+      />
 
       <ClientQuality
         clientId={client.id}

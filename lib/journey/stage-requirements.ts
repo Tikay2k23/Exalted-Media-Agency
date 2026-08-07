@@ -11,6 +11,8 @@ import type {
   TaskPriority,
 } from "@prisma/client";
 
+import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
+
 /**
  * Stage gates.
  *
@@ -105,7 +107,7 @@ export interface EvaluableClient {
   agencyTasks: EvaluableTask[];
   invoices: EvaluableInvoice[];
   accessRecords: EvaluableAccessRecord[];
-  strategyBrief: { status: BriefStatus } | null;
+  strategyBrief: ({ status: BriefStatus } & Record<string, unknown>) | null;
   defects: EvaluableDefect[];
   approvals: EvaluableApproval[];
   launches: EvaluableLaunch[];
@@ -437,9 +439,17 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
         return "No strategy brief has been created for this account.";
       }
 
-      return client.strategyBrief.status === "APPROVED"
+      if (client.strategyBrief.status !== "APPROVED") {
+        return `The strategy brief is ${client.strategyBrief.status.toLowerCase().replaceAll("_", " ")}, not approved.`;
+      }
+
+      // Checked here as well as at approval time, so an approval that reached
+      // the database another way cannot satisfy this gate with an empty brief.
+      const completeness = deriveBriefCompleteness(client.strategyBrief);
+
+      return completeness.complete
         ? null
-        : `The strategy brief is ${client.strategyBrief.status.toLowerCase().replaceAll("_", " ")}, not approved.`;
+        : `The brief is approved but still missing ${completeness.missing.join(", ").toLowerCase()}.`;
     },
   },
   {

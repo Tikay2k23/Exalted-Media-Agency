@@ -554,6 +554,12 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
         },
+        strategyBrief: {
+          include: {
+            author: { select: { id: true, name: true } },
+            approvedBy: { select: { id: true, name: true } },
+          },
+        },
         defects: {
           orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
           include: { assignedTo: { select: { id: true, name: true } } },

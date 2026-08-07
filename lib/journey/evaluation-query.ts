@@ -42,7 +42,19 @@ export const journeyEvaluationSelect = {
   accessRecords: {
     select: { platform: true, isCritical: true, status: true },
   },
-  strategyBrief: { select: { status: true } },
+  strategyBrief: {
+    select: {
+      status: true,
+      // The required answers, so the gate can confirm an approved brief is
+      // actually filled in rather than trusting the status alone.
+      primaryGoal: true,
+      successMetrics: true,
+      targetAudience: true,
+      mainOffer: true,
+      agencyResponsibilities: true,
+      clientResponsibilities: true,
+    },
+  },
   defects: {
     select: { reference: true, severity: true, status: true },
   },

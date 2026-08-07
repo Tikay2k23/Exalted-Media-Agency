@@ -168,6 +168,7 @@ describe("client journey stage gate (integration)", { skip: !hasDatabase }, () =
       "payment_confirmed",
       "project_exists",
       "project_manager_assigned",
+      "strategy_brief_approved",
       "work_assigned",
     ]);
 

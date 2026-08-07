@@ -144,6 +144,40 @@ export const clientContactSchema = z.object({
   notes: z.string().max(1000).optional().or(z.literal("")),
 });
 
+// --- Strategy brief --------------------------------------------------------
+
+const briefField = z.string().max(4000).optional().or(z.literal(""));
+
+/**
+ * Every field is optional so the brief can be saved half-written. Whether it
+ * is complete enough to approve is decided in lib/strategy/brief-service.ts,
+ * not here: partial saving and readiness are different questions.
+ */
+export const strategyBriefSchema = z.object({
+  primaryGoal: briefField,
+  successMetrics: briefField,
+  targetAudience: briefField,
+  mainOffer: briefField,
+  serviceArea: briefField,
+  callToAction: briefField,
+  customerJourney: briefField,
+  funnelStrategy: briefField,
+  crmStrategy: briefField,
+  advertisingStrategy: briefField,
+  trackingStrategy: briefField,
+  contentStrategy: briefField,
+  technicalArchitecture: briefField,
+  risks: briefField,
+  dependencies: briefField,
+  clientResponsibilities: briefField,
+  agencyResponsibilities: briefField,
+  timelineSummary: briefField,
+});
+
+export const briefRevisionSchema = z.object({
+  reason: z.string().min(1).max(2000),
+});
+
 // --- Quality assurance -----------------------------------------------------
 
 export const defectSchema = z.object({

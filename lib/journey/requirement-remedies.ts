@@ -78,7 +78,6 @@ export const REQUIREMENT_REMEDIES: Record<string, RequirementRemedy> = {
       "Write the strategy brief covering goals, audience, offer, and responsibilities, then have it approved.",
     href: "/clients/:id",
     actionLabel: "Write the brief",
-    notBuiltYet: true,
   },
   project_exists: {
     whatItMeans:
