@@ -137,14 +137,12 @@ export const REQUIREMENT_REMEDIES: Record<string, RequirementRemedy> = {
     howToFix: "Fix each critical defect and have it verified by someone other than the builder.",
     href: "/clients/:id",
     actionLabel: "Review defects",
-    notBuiltYet: true,
   },
   high_defects_closed: {
     whatItMeans: "A high severity defect is still open.",
     howToFix: "Fix and verify the outstanding high severity defects.",
     href: "/clients/:id",
     actionLabel: "Review defects",
-    notBuiltYet: true,
   },
   no_critical_open_work: {
     whatItMeans: "Work marked critical or urgent is still outstanding.",

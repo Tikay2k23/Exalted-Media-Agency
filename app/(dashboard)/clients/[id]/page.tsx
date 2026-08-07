@@ -7,6 +7,7 @@ import { ClientForm } from "@/components/clients/client-form";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
 import { ClientProjects } from "@/components/clients/client-projects";
+import { ClientQuality } from "@/components/clients/client-quality";
 import { DeleteClientButton } from "@/components/clients/delete-client-button";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
 import { StageReadiness } from "@/components/clients/stage-readiness";
@@ -28,6 +29,7 @@ import {
 import { loadAuthContext } from "@/lib/authz";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
 import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
+import { isDefectOpen } from "@/lib/quality/defect-service";
 import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
@@ -161,6 +163,40 @@ export default async function ClientDetailPage({
           contacts={client.contacts}
         />
       </section>
+
+      <ClientQuality
+        clientId={client.id}
+        currentUserId={actor.id}
+        canTest={can(actor, "qa.test")}
+        canClose={can(actor, "qa.closeDefect")}
+        canApprove={can(actor, "qa.approve")}
+        assignees={options.users}
+        defects={client.defects.map((defect) => ({
+          id: defect.id,
+          reference: defect.reference,
+          title: defect.title,
+          severity: defect.severity,
+          status: defect.status,
+          description: defect.description,
+          assignedToName: defect.assignedTo?.name ?? null,
+          assignedToId: defect.assignedToId,
+          dueDate: defect.dueDate?.toISOString() ?? null,
+          closureOverrideReason: defect.closureOverrideReason,
+          isOpen: isDefectOpen(defect.status),
+        }))}
+        qaPlans={client.qaPlans.map((plan) => ({
+          id: plan.id,
+          name: plan.name,
+          deliverable: plan.deliverable,
+          status: plan.status,
+          tests: plan.tests.map((test) => ({
+            id: test.id,
+            objective: test.objective,
+            status: test.status,
+            actualResult: test.actualResult,
+          })),
+        }))}
+      />
 
       <ClientLaunches
         clientId={client.id}

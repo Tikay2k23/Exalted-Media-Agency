@@ -61,13 +61,26 @@ async function nextDefectReference(transaction: Prisma.TransactionClient) {
   return `DEF-${String(next).padStart(6, "0")}`;
 }
 
+/**
+ * Finds a client this user is entitled to raise quality work against.
+ *
+ * Account ownership is not the right test here. A specialist builds the work
+ * but rarely owns the relationship, so scoping on `assignedUserId` alone would
+ * mean the people most likely to spot a defect are the ones who cannot log it.
+ * Having assigned work on the account is enough.
+ */
 async function loadClient(actor: AuthContext, clientId: string) {
+  const scope = can(actor, "clients.view.all")
+    ? {}
+    : {
+        OR: [
+          { assignedUserId: actor.id },
+          { agencyTasks: { some: { assignedToId: actor.id, deletedAt: null } } },
+        ],
+      };
+
   return prisma.client.findFirst({
-    where: {
-      id: clientId,
-      deletedAt: null,
-      ...(can(actor, "clients.view.all") ? {} : { assignedUserId: actor.id }),
-    },
+    where: { id: clientId, deletedAt: null, ...scope },
     select: { id: true, companyName: true, assignedUserId: true },
   });
 }
@@ -397,6 +410,39 @@ export async function createQaPlan(input: {
   });
 
   return { ok: true as const, plan };
+}
+
+export async function addQaTest(input: {
+  actor: AuthContext;
+  planId: string;
+  data: { objective: string; steps: string; expectedResult: string };
+}) {
+  const { actor, planId, data } = input;
+
+  if (!can(actor, "qa.test")) {
+    return failure("FORBIDDEN", "You do not have permission to change QA plans.");
+  }
+
+  const plan = await prisma.qaPlan.findUnique({
+    where: { id: planId },
+    select: { id: true, name: true, _count: { select: { tests: true } } },
+  });
+
+  if (!plan) {
+    return failure("NOT_FOUND", "QA plan not found.");
+  }
+
+  const test = await prisma.qaTest.create({
+    data: {
+      planId: plan.id,
+      objective: data.objective,
+      steps: data.steps,
+      expectedResult: data.expectedResult,
+      position: plan._count.tests,
+    },
+  });
+
+  return { ok: true as const, test };
 }
 
 export async function recordTestResult(input: {

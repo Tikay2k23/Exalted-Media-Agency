@@ -4,6 +4,8 @@ import {
   AccessStatus,
   CallOutcome,
   ChecklistItemStatus,
+  DefectSeverity,
+  DefectStatus,
   ClientStatus,
   Department,
   EmployeeTaskStatus,
@@ -13,6 +15,7 @@ import {
   LeadSource,
   LeadStatus,
   MonitoringResult,
+  QaTestStatus,
   PaymentMethod,
   PaymentStatus,
   ProjectStatus,
@@ -140,6 +143,64 @@ export const clientContactSchema = z.object({
   communicationPreference: z.string().max(120).optional().or(z.literal("")),
   notes: z.string().max(1000).optional().or(z.literal("")),
 });
+
+// --- Quality assurance -----------------------------------------------------
+
+export const defectSchema = z.object({
+  title: z.string().min(2).max(160),
+  severity: z.nativeEnum(DefectSeverity),
+  description: z.string().min(2).max(4000),
+  deliverable: z.string().max(160).optional().or(z.literal("")),
+  stepsToReproduce: z.string().max(4000).optional().or(z.literal("")),
+  expectedResult: z.string().max(2000).optional().or(z.literal("")),
+  actualResult: z.string().max(2000).optional().or(z.literal("")),
+  evidenceUrl: z.string().max(500).optional().or(z.literal("")),
+  assignedToId: z.string().optional().or(z.literal("")),
+  projectId: z.string().optional().or(z.literal("")),
+  dueDate: z.string().optional().or(z.literal("")),
+});
+
+export const defectUpdateSchema = z.object({
+  status: z.nativeEnum(DefectStatus).optional(),
+  severity: z.nativeEnum(DefectSeverity).optional(),
+  assignedToId: z.string().optional().or(z.literal("")),
+  correctionNotes: z.string().max(2000).optional().or(z.literal("")),
+  retestResult: z.string().max(2000).optional().or(z.literal("")),
+  dueDate: z.string().optional().or(z.literal("")),
+});
+
+/**
+ * Closing a defect is separate from updating one, so the self-verification
+ * rule cannot be bypassed by a plain status change.
+ */
+export const defectClosureSchema = z.object({
+  resolution: z.enum([DefectStatus.CLOSED, DefectStatus.PASSED, DefectStatus.WONT_FIX]),
+  retestResult: z.string().max(2000).optional().or(z.literal("")),
+  overrideReason: z.string().max(1000).optional().or(z.literal("")),
+});
+
+export const qaPlanSchema = z.object({
+  name: z.string().min(2).max(120),
+  deliverable: z.string().min(2).max(160),
+  projectId: z.string().optional().or(z.literal("")),
+});
+
+export const qaTestSchema = z.object({
+  objective: z.string().min(2).max(300),
+  steps: z.string().min(2).max(2000),
+  expectedResult: z.string().min(2).max(2000),
+});
+
+export const qaTestResultSchema = z
+  .object({
+    status: z.nativeEnum(QaTestStatus),
+    actualResult: z.string().max(2000).optional().or(z.literal("")),
+    evidenceUrl: z.string().max(500).optional().or(z.literal("")),
+  })
+  .refine(
+    (value) => value.status !== QaTestStatus.FAILED || Boolean(value.actualResult?.trim()),
+    { message: "A failed test needs the actual result recorded.", path: ["actualResult"] },
+  );
 
 // --- Launches --------------------------------------------------------------
 
