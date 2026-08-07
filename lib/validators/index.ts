@@ -4,7 +4,9 @@ import {
   AccessStatus,
   ApprovalType,
   ComplaintStatus,
+  OptimizationDecision,
   RecoveryPlanStatus,
+  ReportType,
   CallOutcome,
   ChecklistItemStatus,
   DefectSeverity,
@@ -234,6 +236,46 @@ export const complaintUpdateSchema = z.object({
   finalOutcome: z.string().max(2000).optional().or(z.literal("")),
   ownerId: z.string().optional().or(z.literal("")),
   followUpAt: z.string().optional().or(z.literal("")),
+});
+
+// --- Client reporting and optimization -------------------------------------
+
+export const clientReportSchema = z.object({
+  reportId: z.string().optional().or(z.literal("")),
+  type: z.nativeEnum(ReportType),
+  periodStart: z.string().min(1),
+  periodEnd: z.string().min(1),
+  dueAt: z.string().optional().or(z.literal("")),
+  dataSources: z.string().max(2000).optional().or(z.literal("")),
+  knownLimitations: z.string().max(2000).optional().or(z.literal("")),
+  recommendedActions: z.string().max(4000).optional().or(z.literal("")),
+  documentUrl: z.string().max(500).optional().or(z.literal("")),
+  dataValidated: z.boolean().optional(),
+});
+
+export const reportReviewSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("submit") }),
+  z.object({ action: z.literal("approve") }),
+  z.object({ action: z.literal("requestChanges"), note: z.string().min(1).max(2000) }),
+  z.object({ action: z.literal("send") }),
+  z.object({ action: z.literal("acknowledge") }),
+]);
+
+export const optimizationSchema = z.object({
+  optimizationId: z.string().optional().or(z.literal("")),
+  platform: z.string().min(1).max(120),
+  observedProblem: z.string().min(1).max(2000),
+  proposedChange: z.string().min(1).max(2000),
+  evidence: z.string().max(2000).optional().or(z.literal("")),
+  hypothesis: z.string().max(2000).optional().or(z.literal("")),
+  expectedMetric: z.string().max(200).optional().or(z.literal("")),
+  previousSetting: z.string().max(1000).optional().or(z.literal("")),
+  newSetting: z.string().max(1000).optional().or(z.literal("")),
+  startDate: z.string().optional().or(z.literal("")),
+  endDate: z.string().optional().or(z.literal("")),
+  result: z.string().max(2000).optional().or(z.literal("")),
+  decision: z.nativeEnum(OptimizationDecision).optional(),
+  ownerId: z.string().optional().or(z.literal("")),
 });
 
 export const recoveryPlanSchema = z.object({

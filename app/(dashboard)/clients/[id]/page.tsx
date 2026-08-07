@@ -11,6 +11,7 @@ import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
 import { ClientProjects } from "@/components/clients/client-projects";
 import { ClientQuality } from "@/components/clients/client-quality";
+import { ClientReporting } from "@/components/clients/client-reporting";
 import { DeleteClientButton } from "@/components/clients/delete-client-button";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
 import { StageReadiness } from "@/components/clients/stage-readiness";
@@ -43,6 +44,12 @@ import {
   isComplaintOpen,
   isRecoveryPlanLive,
 } from "@/lib/success/health-service";
+import {
+  OPTIMIZATION_DECISIONS,
+  REPORT_TYPES,
+  isOptimizationConcluded,
+  isReportLate,
+} from "@/lib/success/report-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
@@ -176,6 +183,58 @@ export default async function ClientDetailPage({
           contacts={client.contacts}
         />
       </section>
+
+      {/* Reporting sits beside health because they answer the same question
+          from two directions: what we told them, and how they are doing. */}
+      <ClientReporting
+        clientId={client.id}
+        canManage={can(actor, "reporting.client")}
+        currentUserId={actor.id}
+        reportTypes={REPORT_TYPES.map((option) => ({
+          value: option.value,
+          label: option.label,
+        }))}
+        decisions={OPTIMIZATION_DECISIONS.map((option) => ({
+          value: option.value,
+          label: option.label,
+        }))}
+        owners={options.users}
+        reports={client.reports.map((report) => ({
+          id: report.id,
+          type: report.type,
+          status: report.status,
+          periodStart: report.periodStart.toISOString(),
+          periodEnd: report.periodEnd.toISOString(),
+          dueAt: report.dueAt?.toISOString() ?? null,
+          sentAt: report.sentAt?.toISOString() ?? null,
+          dataValidated: report.dataValidatedAt !== null,
+          dataSources: report.dataSources,
+          knownLimitations: report.knownLimitations,
+          recommendedActions: report.recommendedActions,
+          documentUrl: report.documentUrl,
+          preparedByName: report.preparedBy?.name ?? null,
+          preparedById: report.preparedById,
+          reviewedByName: report.reviewedBy?.name ?? null,
+          acknowledged: report.clientAcknowledgedAt !== null,
+          isLate: isReportLate(report),
+        }))}
+        optimizations={client.optimizations.map((item) => ({
+          id: item.id,
+          platform: item.platform,
+          observedProblem: item.observedProblem,
+          proposedChange: item.proposedChange,
+          hypothesis: item.hypothesis,
+          expectedMetric: item.expectedMetric,
+          previousSetting: item.previousSetting,
+          newSetting: item.newSetting,
+          result: item.result,
+          decision: item.decision,
+          ownerName: item.owner?.name ?? null,
+          startDate: item.startDate?.toISOString() ?? null,
+          endDate: item.endDate?.toISOString() ?? null,
+          isConcluded: isOptimizationConcluded(item.decision),
+        }))}
+      />
 
       <ClientHealth
         clientId={client.id}
