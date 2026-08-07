@@ -2,6 +2,10 @@
 
 A practical guide for the team. No technical knowledge assumed.
 
+The ten procedures this system enforces are in [the SOP library](sop/README.md).
+This guide explains how to use the software; those documents are the rules it
+was built from.
+
 ---
 
 ## The one idea
