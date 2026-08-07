@@ -65,7 +65,7 @@ const fallbackDatabaseUrl =
   ?? "postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public";
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema: "prisma/schema",
   migrations: {
     path: "prisma/migrations",
     seed: "tsx prisma/seed.ts",

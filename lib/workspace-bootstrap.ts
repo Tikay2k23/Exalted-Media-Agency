@@ -2,8 +2,9 @@ import { hash } from "bcryptjs";
 
 import { prisma } from "@/lib/prisma";
 import {
+  buildStageSeedData,
   defaultAgencyUsers,
-  defaultPipelineStages,
+  defaultPipelines,
   readDefaultUserPassword,
 } from "@/lib/workspace-defaults";
 
@@ -13,8 +14,23 @@ const globalForWorkspaceBootstrap = globalThis as unknown as {
 };
 
 async function bootstrapWorkspace() {
+  // Pipelines must exist before their stages can reference them.
+  for (const pipeline of defaultPipelines) {
+    await prisma.pipeline.upsert({
+      where: { id: pipeline.id },
+      update: {
+        kind: pipeline.kind,
+        name: pipeline.name,
+        slug: pipeline.slug,
+        description: pipeline.description,
+        isDefault: true,
+      },
+      create: { ...pipeline, isDefault: true },
+    });
+  }
+
   await prisma.pipelineStage.createMany({
-    data: defaultPipelineStages,
+    data: buildStageSeedData(),
     skipDuplicates: true,
   });
 

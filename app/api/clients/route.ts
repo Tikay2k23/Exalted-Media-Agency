@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity";
 import { canManageClients } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { clientFormSchema } from "@/lib/validators";
+import { FULFILLMENT_PIPELINE_ID } from "@/lib/workspace-defaults";
 
 export const runtime = "nodejs";
 
@@ -28,12 +29,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid client payload" }, { status: 400 });
     }
 
-    const stage = await prisma.pipelineStage.findUnique({
-      where: { id: parsed.data.currentStageId },
+    // The stage must belong to the client journey. Accepting any stage id lets
+    // an account be created on the sales pipeline, where the journey rules do
+    // not apply and the move guard would then refuse to bring it back.
+    const stage = await prisma.pipelineStage.findFirst({
+      where: {
+        id: parsed.data.currentStageId,
+        pipelineId: FULFILLMENT_PIPELINE_ID,
+        isDeprecated: false,
+      },
+      select: { id: true },
     });
 
     if (!stage) {
-      return NextResponse.json({ error: "Pipeline stage not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "That stage is not a current client journey stage." },
+        { status: 400 },
+      );
     }
 
     const client = await prisma.client.create({

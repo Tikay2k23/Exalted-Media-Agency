@@ -1,8 +1,15 @@
 import { notFound } from "next/navigation";
 
+import { AccountDetailsForm } from "@/components/clients/account-details-form";
+import { ClientAccess } from "@/components/clients/client-access";
+import { ClientContacts } from "@/components/clients/client-contacts";
 import { ClientForm } from "@/components/clients/client-form";
+import { ClientInvoices } from "@/components/clients/client-invoices";
+import { ClientLaunches } from "@/components/clients/client-launches";
+import { ClientProjects } from "@/components/clients/client-projects";
 import { DeleteClientButton } from "@/components/clients/delete-client-button";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
+import { StageReadiness } from "@/components/clients/stage-readiness";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,12 +25,20 @@ import {
   getSharedOptions,
   serviceTypeOptions,
 } from "@/lib/data/queries";
-import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
+import { loadAuthContext } from "@/lib/authz";
+import { deriveProjectProgress } from "@/lib/delivery/project-service";
+import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
+import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+/** A date input needs YYYY-MM-DD, not an ISO timestamp. */
+function toDateInput(value: Date | null) {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
 
 function toneForStatus(status: string): "sky" | "amber" | "rose" | "emerald" {
   switch (status) {
@@ -54,7 +69,15 @@ export default async function ClientDetailPage({
     notFound();
   }
 
+  const actor = await loadAuthContext(user.id);
+
+  if (!actor) {
+    notFound();
+  }
+
   const canManageClient = canManageClients(user.role);
+  const canViewFinance = can(actor, "finance.view");
+  const canEditFinance = can(actor, "finance.edit");
   const canEditStatus =
     canManageClient ||
     canAccessAssignedRecord(user.role, user.id, client.assignedUserId);
@@ -108,6 +131,145 @@ export default async function ClientDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      <StageReadiness
+        clientId={client.id}
+        currentStagePosition={client.currentStage.position}
+      />
+
+      <section className="grid items-start gap-6 xl:grid-cols-2">
+        <AccountDetailsForm
+          clientId={client.id}
+          canEdit={canManageClient}
+          users={options.users}
+          values={{
+            assignedUserId: client.assignedUserId,
+            healthStatus: client.healthStatus,
+            monthlyValue: client.monthlyValue === null ? null : Number(client.monthlyValue),
+            contractStartDate: toDateInput(client.contractStartDate),
+            contractEndDate: toDateInput(client.contractEndDate),
+            renewalDate: toDateInput(client.renewalDate),
+            currentBlocker: client.currentBlocker,
+            nextAction: client.nextAction,
+            nextActionDueAt: toDateInput(client.nextActionDueAt),
+          }}
+        />
+
+        <ClientContacts
+          clientId={client.id}
+          canEdit={canManageClient}
+          contacts={client.contacts}
+        />
+      </section>
+
+      <ClientLaunches
+        clientId={client.id}
+        canSchedule={can(actor, "launch.schedule")}
+        canActivate={can(actor, "launch.activate")}
+        owners={options.users}
+        launches={client.launches.map((launch) => {
+          const readiness = deriveLaunchReadiness(launch);
+
+          return {
+            id: launch.id,
+            name: launch.name,
+            status: launch.status,
+            scheduledFor: launch.scheduledFor?.toISOString() ?? null,
+            ownerName: launch.owner?.name ?? null,
+            backupVerified: launch.backupVerifiedAt !== null,
+            rollbackPlan: launch.rollbackPlan,
+            isFrozen: launch.isFrozen,
+            freezeReason: launch.freezeReason,
+            checklistItems: launch.checklistItems.map((item) => ({
+              id: item.id,
+              label: item.label,
+              status: item.status,
+              isRequired: item.isRequired,
+            })),
+            monitoringChecks: launch.monitoringChecks.map((check) => ({
+              id: check.id,
+              window: check.window,
+              result: check.result,
+              dueAt: check.dueAt?.toISOString() ?? null,
+              observations: check.observations,
+            })),
+            readinessBlockers: readiness.blockers,
+            isReady: readiness.ready,
+            completedRequired: readiness.completedRequired,
+            totalRequired: readiness.totalRequired,
+          };
+        })}
+      />
+
+      <ClientAccess
+        clientId={client.id}
+        canEdit={can(actor, "security.manageAccess")}
+        records={client.accessRecords.map((record) => ({
+          id: record.id,
+          platform: record.platform,
+          platformLabel: record.platformLabel,
+          accountName: record.accountName,
+          status: record.status,
+          permissionLevel: record.permissionLevel,
+          isCritical: record.isCritical,
+          twoFactorEnabled: record.twoFactorEnabled,
+          credentialLocation: record.credentialLocation,
+          missingPermissions: record.missingPermissions,
+        }))}
+      />
+
+      <ClientProjects
+        clientId={client.id}
+        canEdit={can(actor, "projects.manage")}
+        managers={options.users}
+        projects={client.projects.map((project) => {
+          const progress = deriveProjectProgress(project.milestones);
+
+          return {
+            id: project.id,
+            name: project.name,
+            status: project.status,
+            riskLevel: project.riskLevel,
+            managerName: project.projectManager?.name ?? null,
+            targetLaunchDate: project.targetLaunchDate?.toISOString() ?? null,
+            percentComplete: progress.percentComplete,
+            currentMilestone: progress.currentMilestone,
+            nextMilestone: progress.nextMilestone,
+            overdueMilestones: progress.overdueCount,
+            milestones: project.milestones.map((milestone) => ({
+              id: milestone.id,
+              name: milestone.name,
+              dueDate: milestone.dueDate?.toISOString() ?? null,
+              completedAt: milestone.completedAt?.toISOString() ?? null,
+              isOverdue:
+                milestone.completedAt === null
+                && milestone.dueDate !== null
+                && milestone.dueDate < new Date(),
+            })),
+          };
+        })}
+      />
+
+      {/* Money is owner business. The project manager still learns that payment
+          is outstanding through the stage gate, without seeing any amounts. */}
+      {canViewFinance ? (
+        <ClientInvoices
+          clientId={client.id}
+          canEdit={canEditFinance}
+          invoices={client.invoices.map((invoice) => ({
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            status: invoice.status,
+            amountDue: Number(invoice.amountDue),
+            amountPaid: Number(invoice.amountPaid),
+            currency: invoice.currency,
+            issuedAt: invoice.issuedAt?.toISOString() ?? null,
+            dueAt: invoice.dueAt?.toISOString() ?? null,
+            paidAt: invoice.paidAt?.toISOString() ?? null,
+            failureReason: invoice.failureReason,
+          }))}
+        />
+      ) : null}
 
       {canManageClient ? (
         <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">

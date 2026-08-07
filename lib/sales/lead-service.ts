@@ -1,0 +1,633 @@
+import {
+  type CallOutcome,
+  type LeadSource,
+  LeadStatus,
+  type Prisma,
+  type ServiceType,
+} from "@prisma/client";
+import { addDays } from "date-fns";
+
+import { logActivity } from "@/lib/activity";
+import {
+  getStageTaskTemplates,
+  resolveAssignee,
+} from "@/lib/automation/stage-automation";
+import { type AuthContext } from "@/lib/authz";
+import { createNotifications, resolveRecipients } from "@/lib/notifications";
+import { can } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { scoreLead } from "@/lib/sales/lead-scoring";
+import { FULFILLMENT_PIPELINE_ID, SALES_PIPELINE_ID } from "@/lib/workspace-defaults";
+
+/**
+ * Lead operations.
+ *
+ * Every function here enforces its own authorization rather than trusting the
+ * caller, so a lead cannot leak through a route that forgot to check.
+ */
+
+export type LeadFailureCode =
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "ALREADY_CONVERTED"
+  | "INVALID"
+  | "STAGE_NOT_FOUND";
+
+export interface LeadFailure {
+  ok: false;
+  code: LeadFailureCode;
+  message: string;
+}
+
+function failure(code: LeadFailureCode, message: string): LeadFailure {
+  return { ok: false, code, message };
+}
+
+/**
+ * Restricts a query to the leads this user may see.
+ *
+ * A sales representative holds `leads.view.assigned` only, so they see their
+ * own leads and nothing else. Returning `null` means "no access at all".
+ */
+export function leadVisibilityWhere(actor: AuthContext): Prisma.LeadWhereInput | null {
+  if (can(actor, "leads.view.all")) {
+    return { deletedAt: null };
+  }
+
+  if (can(actor, "leads.view.assigned")) {
+    return { deletedAt: null, assignedToId: actor.id };
+  }
+
+  return null;
+}
+
+/** Loads a lead only if this user is allowed to see it. */
+async function loadVisibleLead(actor: AuthContext, leadId: string) {
+  const visibility = leadVisibilityWhere(actor);
+
+  if (!visibility) {
+    return null;
+  }
+
+  return prisma.lead.findFirst({
+    where: { AND: [{ id: leadId }, visibility] },
+    include: {
+      stage: { select: { id: true, name: true, stageKey: true } },
+      assignedTo: { select: { id: true, name: true } },
+    },
+  });
+}
+
+function toDate(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function decimalToNumber(value: Prisma.Decimal | null): number | null {
+  return value === null ? null : Number(value);
+}
+
+/** Recomputes and stores the qualification score from the lead's own fields. */
+function computeScore(lead: {
+  budgetAmount: Prisma.Decimal | null;
+  timeline: string | null;
+  isDecisionMaker: boolean | null;
+  mainProblem: string | null;
+  goal: string | null;
+  source: LeadSource;
+  email: string | null;
+  phone: string | null;
+}) {
+  return scoreLead({
+    budgetAmount: decimalToNumber(lead.budgetAmount),
+    timeline: lead.timeline,
+    isDecisionMaker: lead.isDecisionMaker,
+    mainProblem: lead.mainProblem,
+    goal: lead.goal,
+    source: lead.source,
+    email: lead.email,
+    phone: lead.phone,
+  }).total;
+}
+
+export interface CreateLeadInput {
+  actor: AuthContext;
+  data: {
+    contactName: string;
+    businessName: string;
+    email?: string | null;
+    phone?: string | null;
+    source: LeadSource;
+    serviceInterest?: ServiceType | null;
+    budgetAmount?: number | null;
+    timeline?: string | null;
+    isDecisionMaker?: boolean | null;
+    mainProblem?: string | null;
+    goal?: string | null;
+    assignedToId?: string | null;
+    stageId?: string | null;
+    nextFollowUpAt?: string | null;
+    notes?: string | null;
+  };
+}
+
+export async function createLead(input: CreateLeadInput) {
+  const { actor, data } = input;
+
+  if (!can(actor, "leads.create")) {
+    return failure("FORBIDDEN", "You do not have permission to create leads.");
+  }
+
+  // A rep who can only see their own leads cannot hand one to someone else.
+  const assignedToId = can(actor, "leads.view.all")
+    ? data.assignedToId || null
+    : actor.id;
+
+  const stage =
+    (data.stageId
+      ? await prisma.pipelineStage.findFirst({
+          where: { id: data.stageId, pipelineId: SALES_PIPELINE_ID },
+          select: { id: true },
+        })
+      : null)
+    ?? (await prisma.pipelineStage.findFirst({
+      where: { pipelineId: SALES_PIPELINE_ID, isDefault: true },
+      select: { id: true },
+    }));
+
+  if (!stage) {
+    return failure("STAGE_NOT_FOUND", "The sales pipeline has no stages configured.");
+  }
+
+  const score = scoreLead({
+    budgetAmount: data.budgetAmount ?? null,
+    timeline: data.timeline ?? null,
+    isDecisionMaker: data.isDecisionMaker ?? null,
+    mainProblem: data.mainProblem ?? null,
+    goal: data.goal ?? null,
+    source: data.source,
+    email: data.email ?? null,
+    phone: data.phone ?? null,
+  }).total;
+
+  const lead = await prisma.lead.create({
+    data: {
+      contactName: data.contactName,
+      businessName: data.businessName,
+      email: data.email?.toLowerCase() || null,
+      phone: data.phone || null,
+      source: data.source,
+      serviceInterest: data.serviceInterest ?? null,
+      budgetAmount: data.budgetAmount ?? null,
+      timeline: data.timeline || null,
+      isDecisionMaker: data.isDecisionMaker ?? null,
+      mainProblem: data.mainProblem || null,
+      goal: data.goal || null,
+      notes: data.notes || null,
+      assignedToId,
+      stageId: stage.id,
+      status: LeadStatus.NEW,
+      score,
+      nextFollowUpAt: toDate(data.nextFollowUpAt),
+    },
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Created lead ${lead.businessName}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    metadataJson: { source: lead.source, score },
+  });
+
+  if (assignedToId) {
+    await createNotifications(
+      resolveRecipients([assignedToId], actor.id).map((recipientId) => ({
+        recipientId,
+        type: "TASK_ASSIGNED" as const,
+        urgency: "HIGH" as const,
+        title: `New lead assigned: ${lead.businessName}`,
+        body: `${actor.name} assigned you this lead. Qualification score ${score}.`,
+        entityType: "LEAD" as const,
+        entityId: lead.id,
+        href: `/leads/${lead.id}`,
+      })),
+    );
+  }
+
+  return { ok: true as const, lead };
+}
+
+export interface UpdateLeadInput {
+  actor: AuthContext;
+  leadId: string;
+  data: Record<string, unknown> & {
+    status?: LeadStatus;
+    lostReason?: string | null;
+    stageId?: string | null;
+    assignedToId?: string | null;
+  };
+}
+
+export async function updateLead(input: UpdateLeadInput) {
+  const { actor, leadId, data } = input;
+
+  if (!can(actor, "leads.edit")) {
+    return failure("FORBIDDEN", "You do not have permission to edit leads.");
+  }
+
+  const existing = await loadVisibleLead(actor, leadId);
+
+  if (!existing) {
+    return failure("NOT_FOUND", "Lead not found.");
+  }
+
+  if (existing.status === LeadStatus.CONVERTED) {
+    return failure(
+      "ALREADY_CONVERTED",
+      "This lead has already been converted into a client account and can no longer be edited.",
+    );
+  }
+
+  // Closing a lead as lost without saying why destroys the only useful output
+  // of losing it, so the reason is mandatory.
+  if (data.status === LeadStatus.LOST && !String(data.lostReason ?? "").trim()) {
+    return failure("INVALID", "A lost lead needs a recorded reason.");
+  }
+
+  if (data.stageId) {
+    const stage = await prisma.pipelineStage.findFirst({
+      where: { id: String(data.stageId), pipelineId: SALES_PIPELINE_ID },
+      select: { id: true },
+    });
+
+    if (!stage) {
+      return failure("STAGE_NOT_FOUND", "That stage is not part of the sales pipeline.");
+    }
+  }
+
+  const reassigning =
+    data.assignedToId !== undefined && data.assignedToId !== existing.assignedToId;
+
+  if (reassigning && !can(actor, "leads.view.all")) {
+    return failure("FORBIDDEN", "You do not have permission to reassign leads.");
+  }
+
+  const merged = {
+    budgetAmount:
+      data.budgetAmount === undefined
+        ? existing.budgetAmount
+        : (data.budgetAmount as Prisma.Decimal | null),
+    timeline: (data.timeline as string | undefined) ?? existing.timeline,
+    isDecisionMaker:
+      data.isDecisionMaker === undefined
+        ? existing.isDecisionMaker
+        : (data.isDecisionMaker as boolean | null),
+    mainProblem: (data.mainProblem as string | undefined) ?? existing.mainProblem,
+    goal: (data.goal as string | undefined) ?? existing.goal,
+    source: (data.source as typeof existing.source) ?? existing.source,
+    email: (data.email as string | undefined) ?? existing.email,
+    phone: (data.phone as string | undefined) ?? existing.phone,
+  };
+
+  const updateData: Prisma.LeadUpdateInput = {
+    score: computeScore(merged),
+  };
+
+  // These columns are NOT NULL, so an empty submission leaves them unchanged
+  // rather than trying to blank a required field.
+  for (const field of ["contactName", "businessName"] as const) {
+    const value = String(data[field] ?? "").trim();
+
+    if (data[field] !== undefined && value) {
+      updateData[field] = value;
+    }
+  }
+
+  for (const field of [
+    "phone",
+    "timeline",
+    "mainProblem",
+    "goal",
+    "notes",
+    "objection",
+    "lostReason",
+  ] as const) {
+    if (data[field] !== undefined) {
+      updateData[field] = (data[field] as string) || null;
+    }
+  }
+
+  if (data.email !== undefined) {
+    updateData.email = String(data.email || "").toLowerCase() || null;
+  }
+  if (data.source !== undefined) {
+    updateData.source = data.source as typeof existing.source;
+  }
+  if (data.serviceInterest !== undefined) {
+    updateData.serviceInterest = data.serviceInterest as ServiceType | null;
+  }
+  if (data.budgetAmount !== undefined) {
+    updateData.budgetAmount = data.budgetAmount as number | null;
+  }
+  if (data.proposalValue !== undefined) {
+    updateData.proposalValue = data.proposalValue as number | null;
+  }
+  if (data.isDecisionMaker !== undefined) {
+    updateData.isDecisionMaker = data.isDecisionMaker as boolean | null;
+  }
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  }
+  for (const dateField of ["nextFollowUpAt", "proposalSentAt", "decisionDate"] as const) {
+    if (data[dateField] !== undefined) {
+      updateData[dateField] = toDate(data[dateField] as string);
+    }
+  }
+  if (data.stageId !== undefined && data.stageId) {
+    updateData.stage = { connect: { id: String(data.stageId) } };
+  }
+  if (reassigning) {
+    updateData.assignedTo = data.assignedToId
+      ? { connect: { id: String(data.assignedToId) } }
+      : { disconnect: true };
+  }
+
+  const lead = await prisma.lead.update({ where: { id: leadId }, data: updateData });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Updated lead ${lead.businessName}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    ...(data.status !== undefined && data.status !== existing.status
+      ? {
+          fieldName: "status",
+          previousValue: existing.status,
+          newValue: lead.status,
+        }
+      : {}),
+  });
+
+  if (reassigning && lead.assignedToId) {
+    await createNotifications(
+      resolveRecipients([lead.assignedToId], actor.id).map((recipientId) => ({
+        recipientId,
+        type: "TASK_ASSIGNED" as const,
+        urgency: "HIGH" as const,
+        title: `Lead reassigned to you: ${lead.businessName}`,
+        body: `${actor.name} assigned you this lead.`,
+        entityType: "LEAD" as const,
+        entityId: lead.id,
+        href: `/leads/${lead.id}`,
+      })),
+    );
+  }
+
+  return { ok: true as const, lead };
+}
+
+export interface LogCallInput {
+  actor: AuthContext;
+  leadId: string;
+  data: {
+    outcome: CallOutcome;
+    notes?: string | null;
+    durationMinutes?: number | null;
+    occurredAt?: string | null;
+    nextFollowUpAt?: string | null;
+  };
+}
+
+export async function logLeadCall(input: LogCallInput) {
+  const { actor, leadId, data } = input;
+
+  if (!can(actor, "leads.edit")) {
+    return failure("FORBIDDEN", "You do not have permission to log calls.");
+  }
+
+  const lead = await loadVisibleLead(actor, leadId);
+
+  if (!lead) {
+    return failure("NOT_FOUND", "Lead not found.");
+  }
+
+  const call = await prisma.leadCallLog.create({
+    data: {
+      leadId: lead.id,
+      loggedById: actor.id,
+      outcome: data.outcome,
+      notes: data.notes || null,
+      durationMinutes: data.durationMinutes ?? null,
+      occurredAt: toDate(data.occurredAt) ?? new Date(),
+    },
+  });
+
+  // A logged call is contact, so a lead sitting in NEW has demonstrably moved on.
+  const nextFollowUp = toDate(data.nextFollowUpAt);
+  const shouldAdvance =
+    lead.status === LeadStatus.NEW || lead.status === LeadStatus.ATTEMPTING_CONTACT;
+  const connected =
+    data.outcome === "CONNECTED"
+    || data.outcome === "CALL_BOOKED"
+    || data.outcome === "CALL_SHOWED";
+
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      ...(shouldAdvance
+        ? {
+            status: connected ? LeadStatus.CONTACTED : LeadStatus.ATTEMPTING_CONTACT,
+          }
+        : {}),
+      ...(nextFollowUp ? { nextFollowUpAt: nextFollowUp } : {}),
+    },
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Logged a ${data.outcome.toLowerCase().replaceAll("_", " ")} call on ${lead.businessName}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    metadataJson: { outcome: data.outcome },
+  });
+
+  return { ok: true as const, call };
+}
+
+export interface ConvertLeadInput {
+  actor: AuthContext;
+  leadId: string;
+  data: {
+    serviceType: ServiceType;
+    assignedUserId?: string | null;
+    monthlyValue?: number | null;
+    notes?: string | null;
+  };
+}
+
+/**
+ * The sales-to-delivery handoff.
+ *
+ * Creates the client account, opens it at the first journey stage, generates
+ * that stage's onboarding work so nothing depends on someone remembering it,
+ * and closes the lead as Won. All of it lands in one transaction: a converted
+ * lead with no client account, or a client with no onboarding work, would both
+ * be silent process failures.
+ */
+export async function convertLeadToClient(input: ConvertLeadInput) {
+  const { actor, leadId, data } = input;
+
+  if (!can(actor, "leads.convert")) {
+    return failure("FORBIDDEN", "You do not have permission to convert leads.");
+  }
+
+  const lead = await loadVisibleLead(actor, leadId);
+
+  if (!lead) {
+    return failure("NOT_FOUND", "Lead not found.");
+  }
+
+  if (lead.convertedClientId || lead.status === LeadStatus.CONVERTED) {
+    return failure(
+      "ALREADY_CONVERTED",
+      "This lead has already been converted into a client account.",
+    );
+  }
+
+  const [entryStage, wonStage] = await Promise.all([
+    prisma.pipelineStage.findFirst({
+      where: { pipelineId: FULFILLMENT_PIPELINE_ID, isDefault: true, isDeprecated: false },
+      select: { id: true, name: true, stageKey: true },
+    }),
+    prisma.pipelineStage.findFirst({
+      where: { pipelineId: SALES_PIPELINE_ID, stageKey: "won" },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!entryStage) {
+    return failure(
+      "STAGE_NOT_FOUND",
+      "The client journey has no entry stage configured. Run the workspace seed.",
+    );
+  }
+
+  const accountOwnerId = data.assignedUserId || lead.assignedToId || actor.id;
+  const now = new Date();
+
+  const templates = getStageTaskTemplates(entryStage.stageKey);
+  const generatedTasks = templates.map((template) => {
+    const dueDate = addDays(now, template.dueInDays);
+
+    return {
+      title: template.title,
+      note: template.note,
+      category: template.category,
+      priority: template.priority,
+      estimatedHours: template.estimatedHours,
+      dueDate,
+      weekStartDate: dueDate,
+      assignedToId: resolveAssignee(template.assignTo, {
+        accountOwnerId,
+        projectManagerId: null,
+        actorId: actor.id,
+      }),
+      createdById: actor.id,
+      isClientFacing: template.isClientFacing ?? false,
+      requiresQa: template.requiresQa ?? false,
+      requiresApproval: template.requiresApproval ?? false,
+      completionCriteria: template.completionCriteria ?? null,
+    };
+  });
+
+  const client = await prisma.$transaction(async (transaction) => {
+    const created = await transaction.client.create({
+      data: {
+        clientName: lead.contactName,
+        companyName: lead.businessName,
+        contactEmail: lead.email ?? `${lead.id}@no-email.invalid`,
+        contactPhone: lead.phone,
+        serviceType: data.serviceType,
+        currentStageId: entryStage.id,
+        stageEnteredAt: now,
+        assignedUserId: accountOwnerId,
+        monthlyValue: data.monthlyValue ?? null,
+        notes: data.notes || lead.notes,
+      },
+    });
+
+    await transaction.clientStageHistory.create({
+      data: {
+        clientId: created.id,
+        toStageId: entryStage.id,
+        changedById: actor.id,
+        changedAt: now,
+        note: `Converted from lead ${lead.businessName}.`,
+      },
+    });
+
+    if (generatedTasks.length) {
+      await transaction.employeeTask.createMany({
+        data: generatedTasks.map((task) => ({ ...task, clientId: created.id })),
+      });
+    }
+
+    await transaction.lead.update({
+      where: { id: lead.id },
+      data: {
+        status: LeadStatus.CONVERTED,
+        convertedClientId: created.id,
+        decisionDate: now,
+        ...(wonStage ? { stageId: wonStage.id } : {}),
+      },
+    });
+
+    return created;
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Converted lead ${lead.businessName} into a client account`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    fieldName: "status",
+    previousValue: lead.status,
+    newValue: LeadStatus.CONVERTED,
+    metadataJson: { clientId: client.id, generatedTaskCount: generatedTasks.length },
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Created client ${client.companyName} from a converted lead`,
+    entityType: "CLIENT",
+    entityId: client.id,
+    metadataJson: { leadId: lead.id },
+  });
+
+  await createNotifications(
+    resolveRecipients(
+      [accountOwnerId, ...generatedTasks.map((task) => task.assignedToId)],
+      actor.id,
+    ).map((recipientId) => ({
+      recipientId,
+      type: "TASK_ASSIGNED" as const,
+      urgency: "HIGH" as const,
+      title: `New client account: ${client.companyName}`,
+      body: `${actor.name} converted this lead. Onboarding work has been created for you.`,
+      entityType: "CLIENT" as const,
+      entityId: client.id,
+      href: `/clients/${client.id}`,
+    })),
+  );
+
+  return {
+    ok: true as const,
+    client,
+    generatedTaskCount: generatedTasks.length,
+  };
+}

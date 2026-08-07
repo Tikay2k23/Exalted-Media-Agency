@@ -11,7 +11,8 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, LoaderCircle } from "lucide-react";
+import { GripVertical, LoaderCircle, ShieldAlert, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore, useTransition } from "react";
 
@@ -216,6 +217,10 @@ export function PipelineBoard({
 }) {
   const router = useRouter();
   const [stages, setStages] = useState(initialStages);
+  const [blocked, setBlocked] = useState<{
+    message: string;
+    requirements: { label: string; reason: string | null }[];
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const isMounted = useSyncExternalStore(
@@ -266,6 +271,7 @@ export function PipelineBoard({
     const previous = stages;
     const next = moveCardLocally(clientId, targetStageId);
     setStages(next);
+    setBlocked(null);
 
     startTransition(async () => {
       const response = await fetch("/api/pipeline/move", {
@@ -280,7 +286,19 @@ export function PipelineBoard({
       });
 
       if (!response.ok) {
+        // A card that silently snaps back teaches people the board is broken.
+        // Say what the stage gate is waiting for, and where to resolve it.
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+          blocking?: { label: string; reason: string | null }[];
+        } | null;
+
         setStages(previous);
+        setBlocked({
+          message: data?.error ?? "That move could not be saved.",
+          requirements: data?.blocking ?? [],
+        });
+        return;
       }
 
       router.refresh();
@@ -293,6 +311,49 @@ export function PipelineBoard({
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <LoaderCircle className="h-4 w-4 animate-spin" />
           Saving pipeline changes...
+        </div>
+      ) : null}
+
+      {blocked ? (
+        <div
+          role="alert"
+          className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-4"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex gap-3">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden />
+              <div>
+                <p className="text-sm font-semibold text-rose-900">
+                  Move blocked — {blocked.message}
+                </p>
+                {blocked.requirements.length ? (
+                  <ul className="mt-2 space-y-1">
+                    {blocked.requirements.map((requirement) => (
+                      <li key={requirement.label} className="text-sm leading-6 text-rose-800">
+                        <span className="font-medium">{requirement.label}:</span>{" "}
+                        {requirement.reason ?? "Not met."}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="mt-2 text-sm text-rose-800">
+                  Resolve these, or use{" "}
+                  <Link href="/journey" className="font-semibold underline">
+                    Client Journey
+                  </Link>{" "}
+                  to record an authorized override.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBlocked(null)}
+              aria-label="Dismiss"
+              className="shrink-0 rounded-lg p-1 text-rose-600 transition hover:bg-rose-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       ) : null}
 

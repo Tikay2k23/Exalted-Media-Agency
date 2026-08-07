@@ -1,0 +1,114 @@
+/**
+ * Keeps credentials out of the database.
+ *
+ * The access tracker records *whether* the agency can reach a platform and
+ * *where* the credential is held. It has no password field and must never gain
+ * one. Somebody will nonetheless paste a password into a notes box one day, so
+ * this rejects the obvious cases before they are stored.
+ *
+ * This is a guard, not a security boundary: it catches carelessness, not a
+ * determined attempt. The real protection is that there is nowhere legitimate
+ * to put a secret.
+ */
+
+export interface CredentialCheck {
+  flagged: boolean;
+  reason?: string;
+}
+
+/** Labels people actually type before pasting a secret. */
+const LABELLED_SECRET =
+  /\b(pass(word|wd|phrase)?|pwd|secret|api[\s_-]?key|token|otp|pin|seed[\s_-]?phrase)\b\s*[:=]\s*\S+/i;
+
+/** Well-known key formats worth catching by shape alone. */
+const KNOWN_KEY_SHAPES: { pattern: RegExp; label: string }[] = [
+  { pattern: /\bsk_(live|test)_[A-Za-z0-9]{8,}/, label: "a Stripe secret key" },
+  { pattern: /\bAKIA[0-9A-Z]{12,}/, label: "an AWS access key" },
+  { pattern: /\bgh[pousr]_[A-Za-z0-9]{16,}/, label: "a GitHub token" },
+  { pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}/, label: "a Slack token" },
+  { pattern: /\bey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./, label: "a JSON web token" },
+  { pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, label: "a private key" },
+];
+
+/**
+ * A long unbroken run of mixed character classes. Deliberately conservative:
+ * it needs length, no whitespace, and three of four classes, so ordinary text
+ * and URLs do not trip it.
+ */
+function looksLikeRandomSecret(value: string): boolean {
+  for (const token of value.split(/\s+/)) {
+    if (token.length < 14 || token.length > 200) {
+      continue;
+    }
+
+    // URLs and email addresses are legitimate here.
+    if (/^https?:\/\//i.test(token) || token.includes("@")) {
+      continue;
+    }
+
+    const classes = [
+      /[a-z]/.test(token),
+      /[A-Z]/.test(token),
+      /[0-9]/.test(token),
+      /[^A-Za-z0-9]/.test(token),
+    ].filter(Boolean).length;
+
+    if (classes >= 3) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function checkForCredential(value: string | null | undefined): CredentialCheck {
+  if (!value?.trim()) {
+    return { flagged: false };
+  }
+
+  if (LABELLED_SECRET.test(value)) {
+    return {
+      flagged: true,
+      reason:
+        "This looks like a password or key. Store the credential in the client's password "
+        + "manager and record only where it is held.",
+    };
+  }
+
+  for (const { pattern, label } of KNOWN_KEY_SHAPES) {
+    if (pattern.test(value)) {
+      return {
+        flagged: true,
+        reason:
+          `This looks like ${label}. Keys must never be stored here — record only where `
+          + "the credential is held.",
+      };
+    }
+  }
+
+  if (looksLikeRandomSecret(value)) {
+    return {
+      flagged: true,
+      reason:
+        "This contains something that looks like a generated secret. Record where the "
+        + "credential is held, not the credential itself.",
+    };
+  }
+
+  return { flagged: false };
+}
+
+/** Checks several free-text fields at once, returning the first problem found. */
+export function checkFieldsForCredentials(
+  fields: Record<string, string | null | undefined>,
+): { field: string; reason: string } | null {
+  for (const [field, value] of Object.entries(fields)) {
+    const result = checkForCredential(value);
+
+    if (result.flagged) {
+      return { field, reason: result.reason! };
+    }
+  }
+
+  return null;
+}

@@ -1,0 +1,352 @@
+// Client success: health, complaints, reporting, optimization, advocacy,
+// training, and offboarding.
+
+enum ReportType {
+  WEEKLY_UPDATE
+  MONTHLY_REPORT
+  QUARTERLY_BUSINESS_REVIEW
+  LAUNCH_REPORT
+  FINAL_REPORT
+}
+
+enum ReportStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  SENT
+  ACKNOWLEDGED
+  LATE
+}
+
+enum ComplaintStatus {
+  LOGGED
+  INVESTIGATING
+  ACTION_AGREED
+  RESOLVED
+  ESCALATED
+  CLOSED
+}
+
+enum RecoveryPlanStatus {
+  DRAFT
+  ACTIVE
+  MONITORING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum OptimizationDecision {
+  PENDING
+  KEEP
+  ADJUST
+  REVERSE
+  CONTINUE_TESTING
+  INCONCLUSIVE
+}
+
+enum TestimonialStatus {
+  REQUESTED
+  RECEIVED
+  APPROVED
+  PUBLISHED
+  DECLINED
+}
+
+enum TestimonialFormat {
+  WRITTEN
+  VIDEO
+  CASE_STUDY
+  REVIEW_PLATFORM
+}
+
+enum ReferralStatus {
+  RECEIVED
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+  DECLINED
+}
+
+enum TrainingSessionType {
+  PLATFORM_WALKTHROUGH
+  CRM_TRAINING
+  REPORTING_TRAINING
+  HANDOVER
+  REFRESHER
+}
+
+enum OffboardingStatus {
+  REQUESTED
+  IN_PROGRESS
+  AWAITING_CLIENT
+  COMPLETE
+  CANCELLED
+}
+
+enum OffboardingReason {
+  CONTRACT_ENDED
+  CLIENT_CANCELLED
+  AGENCY_CANCELLED
+  PROJECT_COMPLETE
+  BUDGET
+  PERFORMANCE
+  RELATIONSHIP
+  BUSINESS_CLOSED
+  OTHER
+}
+
+/// A point-in-time health reading. Kept as a history rather than a single
+/// column so trend and churn analysis have something to work with.
+model ClientHealthAssessment {
+  id                  String       @id @default(cuid())
+  clientId            String
+  status              HealthStatus
+  /// 0-100.
+  healthScore         Int?
+  satisfactionScore   Int?
+  communicationStatus String?
+  paymentStatus       String?
+  performanceStatus   String?
+  clientParticipation String?
+  openComplaints      Int          @default(0)
+  cancellationThreat  Boolean      @default(false)
+  renewalProbability  Int?
+  summary             String?
+  assessedById        String?
+  assessedAt          DateTime     @default(now())
+  createdAt           DateTime     @default(now())
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assessedBy User?  @relation("HealthAssessor", fields: [assessedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, assessedAt])
+  @@index([status])
+}
+
+model Complaint {
+  id               String          @id @default(cuid())
+  clientId         String
+  title            String
+  description      String
+  serviceArea      String?
+  businessImpact   String?
+  evidenceUrl      String?
+  status           ComplaintStatus @default(LOGGED)
+  rootCause        String?
+  resolutionPlan   String?
+  clientCommunication String?
+  ownerId          String?
+  raisedAt         DateTime        @default(now())
+  followUpAt       DateTime?
+  resolvedAt       DateTime?
+  finalOutcome     String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("ComplaintOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([ownerId])
+  @@index([followUpAt])
+}
+
+model RecoveryPlan {
+  id            String             @id @default(cuid())
+  clientId      String
+  status        RecoveryPlanStatus @default(DRAFT)
+  trigger       String
+  objective     String
+  actions       String
+  ownerId       String?
+  startDate     DateTime?
+  reviewDate    DateTime?
+  completedAt   DateTime?
+  outcome       String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("RecoveryOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([reviewDate])
+}
+
+model ClientReport {
+  id                String       @id @default(cuid())
+  clientId          String
+  type              ReportType
+  status            ReportStatus @default(DRAFT)
+  periodStart       DateTime
+  periodEnd         DateTime
+  dataSources       String?
+  dataValidatedAt   DateTime?
+  knownLimitations  String?
+  recommendedActions String?
+  documentUrl       String?
+  preparedById      String?
+  reviewedById      String?
+  sentAt            DateTime?
+  dueAt             DateTime?
+  clientAcknowledgedAt DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  preparedBy User?  @relation("ReportPreparer", fields: [preparedById], references: [id], onDelete: SetNull)
+  reviewedBy User?  @relation("ReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, type])
+  @@index([status])
+  @@index([dueAt])
+}
+
+/// SOP section 22. Every optimization records the evidence and the decision,
+/// so changes can be defended and reversed.
+model Optimization {
+  id              String               @id @default(cuid())
+  clientId        String
+  platform        String
+  observedProblem String
+  evidence        String?
+  hypothesis      String?
+  proposedChange  String
+  expectedMetric  String?
+  previousSetting String?
+  newSetting      String?
+  startDate       DateTime?
+  endDate         DateTime?
+  result          String?
+  decision        OptimizationDecision @default(PENDING)
+  ownerId         String?
+  approvedById    String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner      User?  @relation("OptimizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  approvedBy User?  @relation("OptimizationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, platform])
+  @@index([decision])
+}
+
+/// Permissions are stored as explicit booleans rather than one "approved"
+/// flag: consent to publish a name is not consent to publish results.
+model Testimonial {
+  id                     String            @id @default(cuid())
+  clientId               String
+  status                 TestimonialStatus @default(REQUESTED)
+  format                 TestimonialFormat @default(WRITTEN)
+  trigger                String?
+  requestedAt            DateTime?
+  receivedAt             DateTime?
+  content                String?
+  mediaUrl               String?
+  allowBusinessName      Boolean           @default(false)
+  allowPersonName        Boolean           @default(false)
+  allowLogo              Boolean           @default(false)
+  allowPhoto             Boolean           @default(false)
+  allowPerformanceData   Boolean           @default(false)
+  publishingChannels     String?
+  approvedById           String?
+  approvedAt             DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  approvedBy User?  @relation("TestimonialApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model Referral {
+  id                 String         @id @default(cuid())
+  referringClientId  String
+  contactName        String
+  businessName       String?
+  email              String?
+  phone              String?
+  permissionGranted  Boolean        @default(false)
+  status             ReferralStatus @default(RECEIVED)
+  assignedToId       String?
+  leadId             String?        @unique
+  receivedAt         DateTime       @default(now())
+  outcome            String?
+  thankYouSentAt     DateTime?
+  incentiveStatus    String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  referringClient Client @relation("ClientReferrals", fields: [referringClientId], references: [id], onDelete: Cascade)
+  assignedTo      User?  @relation("ReferralOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  lead            Lead?  @relation("ReferralLead", fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([referringClientId])
+  @@index([status])
+}
+
+model TrainingSession {
+  id             String              @id @default(cuid())
+  clientId       String
+  type           TrainingSessionType @default(PLATFORM_WALKTHROUGH)
+  scheduledFor   DateTime?
+  completedAt    DateTime?
+  trainerId      String?
+  agenda         String?
+  participants   String?
+  recordingUrl   String?
+  writtenGuideUrl String?
+  questionsRaised String?
+  followUpRequired Boolean            @default(false)
+  competencyConfirmed Boolean         @default(false)
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  client  Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  trainer User?  @relation("ClientTrainer", fields: [trainerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([scheduledFor])
+}
+
+model OffboardingRecord {
+  id                    String            @id @default(cuid())
+  clientId              String            @unique
+  status                OffboardingStatus @default(REQUESTED)
+  reason                OffboardingReason @default(OTHER)
+  reasonDetail          String?
+  cancellationRequestedAt DateTime?
+  finalServiceDate      DateTime?
+  finalBillingSettledAt DateTime?
+  remainingWork         String?
+  finalReportSentAt     DateTime?
+  assetsTransferredAt   DateTime?
+  dataExportedAt        DateTime?
+  /// Client administrator access must be confirmed before agency access is
+  /// removed. The offboarding gate reads both of these.
+  clientAdminAccessConfirmedAt DateTime?
+  agencyAccessRemovedAt DateTime?
+  subscriptionsCancelledAt DateTime?
+  finalTrainingAt       DateTime?
+  supportEndsAt         DateTime?
+  clientConfirmedAt     DateTime?
+  archivedAt            DateTime?
+  lessonsLearned        String?
+  ownerId               String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("OffboardingOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([ownerId])
+}

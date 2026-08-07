@@ -20,6 +20,7 @@ import {
 
 import { canManageEmployeeTasks, canViewAllAgencyData } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { FULFILLMENT_PIPELINE_ID } from "@/lib/workspace-defaults";
 
 export interface AppUser {
   id: string;
@@ -208,7 +209,14 @@ function getAttentionRank(client: { status: string; assignedUserId: string | nul
 export async function getSharedOptions() {
   try {
     const [stages, users] = await Promise.all([
+      // Client forms must only offer client journey stages. Offering sales
+      // stages here is what allowed an account to be created on the wrong
+      // pipeline, where the journey rules do not apply.
       prisma.pipelineStage.findMany({
+        where: {
+          pipelineId: FULFILLMENT_PIPELINE_ID,
+          isDeprecated: false,
+        },
         orderBy: {
           position: "asc",
         },
@@ -539,6 +547,32 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           },
         },
         currentStage: true,
+        contacts: {
+          orderBy: [{ isPrimary: "desc" }, { name: "asc" }],
+        },
+        invoices: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+        },
+        launches: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            owner: { select: { id: true, name: true } },
+            checklistItems: { orderBy: { position: "asc" } },
+            monitoringChecks: { orderBy: { dueAt: "asc" } },
+          },
+        },
+        accessRecords: {
+          orderBy: [{ isCritical: "desc" }, { platform: "asc" }],
+        },
+        projects: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          include: {
+            projectManager: { select: { id: true, name: true } },
+            milestones: { orderBy: { position: "asc" } },
+          },
+        },
         agencyTasks: {
           include: {
             assignedTo: {

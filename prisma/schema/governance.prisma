@@ -1,0 +1,209 @@
+// SOP library, audits, corrective actions, and continuous improvement.
+
+enum SopStatus {
+  DRAFT
+  IN_REVIEW
+  ACTIVE
+  SUPERSEDED
+  RETIRED
+}
+
+enum AuditType {
+  ROUTINE
+  SPOT
+  INCIDENT
+  CLIENT
+  DEPARTMENT
+  PLATFORM
+  ANNUAL_GOVERNANCE
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  PARTIALLY_COMPLIANT
+  NON_COMPLIANT
+  NOT_APPLICABLE
+  CRITICAL_FAILURE
+}
+
+enum AuditStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETE
+  CANCELLED
+}
+
+enum CorrectiveActionStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_VERIFICATION
+  VERIFIED
+  CLOSED
+  OVERDUE
+}
+
+enum ImprovementStatus {
+  PROPOSED
+  ACCEPTED
+  IN_PROGRESS
+  IMPLEMENTED
+  REJECTED
+  DEFERRED
+}
+
+enum ImprovementPriority {
+  PRIORITY_ONE
+  PRIORITY_TWO
+  PRIORITY_THREE
+  PRIORITY_FOUR
+}
+
+model Sop {
+  id            String    @id @default(cuid())
+  /// Human reference such as SOP-014.
+  reference     String    @unique
+  title         String
+  summary       String?
+  status        SopStatus @default(DRAFT)
+  currentVersion String   @default("1.0")
+  ownerId       String?
+  effectiveDate DateTime?
+  lastReviewedAt DateTime?
+  nextReviewAt  DateTime?
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  owner      User?        @relation("SopOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  approvedBy User?        @relation("SopApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  versions   SopVersion[]
+  findings   AuditFinding[]
+
+  @@index([status])
+  @@index([nextReviewAt])
+  @@index([ownerId])
+}
+
+/// Immutable snapshot of an SOP at a point in time. Superseded versions are
+/// retained so an audit can be judged against the rules that applied then.
+model SopVersion {
+  id          String   @id @default(cuid())
+  sopId       String
+  version     String
+  content     String
+  changeNote  String?
+  authorId    String?
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  sop    Sop   @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  author User? @relation("SopVersionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([sopId, version])
+  @@index([sopId])
+}
+
+model Audit {
+  id              String           @id @default(cuid())
+  reference       String           @unique
+  type            AuditType
+  status          AuditStatus      @default(PLANNED)
+  auditorId       String?
+  clientId        String?
+  department      Department?
+  scope           String
+  conductedAt     DateTime?
+  /// 0-100.
+  complianceScore Int?
+  overallResult   ComplianceStatus?
+  summary         String?
+  completedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  auditor  User?          @relation("Auditor", fields: [auditorId], references: [id], onDelete: SetNull)
+  client   Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  findings AuditFinding[]
+
+  @@index([type])
+  @@index([status])
+  @@index([clientId])
+  @@index([conductedAt])
+}
+
+model AuditFinding {
+  id          String           @id @default(cuid())
+  auditId     String
+  sopId       String?
+  title       String
+  detail      String
+  result      ComplianceStatus @default(NON_COMPLIANT)
+  isCritical  Boolean          @default(false)
+  evidenceUrl String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  audit             Audit              @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  sop               Sop?               @relation(fields: [sopId], references: [id], onDelete: SetNull)
+  correctiveActions CorrectiveAction[]
+
+  @@index([auditId])
+  @@index([result])
+  @@index([isCritical])
+}
+
+model CorrectiveAction {
+  id                 String                 @id @default(cuid())
+  findingId          String?
+  incidentId         String?
+  title              String
+  risk               String?
+  immediateCorrection String?
+  rootCause          String?
+  processCorrection  String?
+  status             CorrectiveActionStatus @default(OPEN)
+  ownerId            String?
+  dueDate            DateTime?
+  evidenceUrl        String?
+  verifiedById       String?
+  verifiedAt         DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  finding    AuditFinding? @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  owner      User?         @relation("CorrectiveActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  verifiedBy User?         @relation("CorrectiveActionVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([findingId])
+  @@index([status])
+  @@index([ownerId])
+  @@index([dueDate])
+}
+
+model ImprovementRequest {
+  id            String              @id @default(cuid())
+  title         String
+  problem       String
+  source        String?
+  proposedSolution String?
+  benefit       String?
+  riskReduction String?
+  effortEstimate String?
+  priority      ImprovementPriority @default(PRIORITY_THREE)
+  status        ImprovementStatus   @default(PROPOSED)
+  ownerId       String?
+  raisedById    String?
+  result        String?
+  implementedAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  owner    User? @relation("ImprovementOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  raisedBy User? @relation("ImprovementReporter", fields: [raisedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([priority])
+  @@index([ownerId])
+}

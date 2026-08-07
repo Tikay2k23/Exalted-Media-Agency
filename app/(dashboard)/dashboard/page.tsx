@@ -1,137 +1,86 @@
-import {
-  BarChart3,
-  BriefcaseBusiness,
-  Clock3,
-  Sparkles,
-  UsersRound,
-} from "lucide-react";
+import { redirect } from "next/navigation";
 
-import { ActivityFeed } from "@/components/dashboard/activity-feed";
-import { AgencyTaskList } from "@/components/dashboard/agency-task-list";
-import { PipelineOverview } from "@/components/dashboard/pipeline-overview";
-import { StatCard } from "@/components/dashboard/stat-card";
-import { PerformanceTable } from "@/components/team/performance-table";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { getDashboardData } from "@/lib/data/queries";
+import { ActionSection } from "@/components/dashboard/action-section";
+import { Card, CardContent } from "@/components/ui/card";
+import { loadAuthContext } from "@/lib/authz";
+import { getRoleDashboard } from "@/lib/data/dashboard-queries";
+import { teamRoleDescriptions } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
-import { formatPercent } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+export const metadata = {
+  title: "Dashboard",
+};
+
+const TONE_CLASS = {
+  default: "text-slate-950",
+  warning: "text-amber-700",
+  danger: "text-rose-700",
+} as const;
+
 export default async function DashboardPage() {
   const user = await requireUser();
-  const data = await getDashboardData(user);
+  const actor = await loadAuthContext(user.id);
+
+  if (!actor) {
+    redirect("/login");
+  }
+
+  const data = await getRoleDashboard(actor);
+  const firstName = actor.name.split(" ")[0];
 
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+          Good day, {firstName}
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+          {data.intro}
+        </p>
+        <p className="mt-1 text-sm text-slate-400">
+          Signed in as {data.seatLabel} — {teamRoleDescriptions[actor.teamRole]}
+        </p>
+      </div>
+
       {data.isDegraded ? (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader>
-            <CardTitle>Live data is temporarily unavailable</CardTitle>
-            <CardDescription>
-              We kept the dashboard online, but one or more data sources did not respond in time.
-              Refresh the page in a moment to load the latest workspace information.
-            </CardDescription>
-          </CardHeader>
+        <Card>
+          <CardContent className="px-6 py-5">
+            <p className="text-sm text-amber-800">
+              Your dashboard could not load. Refresh, and tell an administrator if it keeps
+              happening.
+            </p>
+          </CardContent>
         </Card>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          title="Client accounts"
-          value={String(data.metrics.existingClientsCount)}
-          description="Accounts currently visible in your workspace."
-          icon={BriefcaseBusiness}
-        />
-        <StatCard
-          title="New this month"
-          value={String(data.metrics.newClientsCount)}
-          description="Accounts added in the last 30 days."
-          icon={Sparkles}
-        />
-        <StatCard
-          title="Active accounts"
-          value={String(data.metrics.activeClientsCount)}
-          description="Live accounts currently marked active."
-          icon={BarChart3}
-        />
-        <StatCard
-          title="Open work items"
-          value={String(data.metrics.openAgencyTasksCount)}
-          description="Internal delivery tasks that still need action."
-          icon={Clock3}
-        />
-        <StatCard
-          title="Team utilization"
-          value={formatPercent(data.metrics.teamUtilizationRate)}
-          description={`${data.metrics.overdueAgencyTasksCount} overdue work item${data.metrics.overdueAgencyTasksCount === 1 ? "" : "s"} currently need attention.`}
-          icon={UsersRound}
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-        <PipelineOverview stages={data.pipelineOverview} attentionClients={data.attentionClients} />
-        <AgencyTaskList tasks={data.agencyTasks} />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Team Workload Summary</CardTitle>
-            <CardDescription>
-              Capacity, active work, and overdue items across the agency team.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <PerformanceTable rows={data.teamPerformance} />
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Department Load</CardTitle>
-              <CardDescription>
-                Capacity and booked hours across the digital marketing team.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {data.departmentLoad.map((department) => (
-                <div
-                  key={department.department}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4"
+      {/* A short row of figures, and only ones that change what you do next. */}
+      {data.headlines.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {data.headlines.map((headline) => (
+            <Card key={headline.label}>
+              <CardContent className="px-5 py-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  {headline.label}
+                </p>
+                <p
+                  className={`mt-1.5 text-2xl font-semibold ${TONE_CLASS[headline.tone ?? "default"]}`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        {department.department.replaceAll("_", " ")}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {department.members} team member
-                        {department.members === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <Badge tone="sky">{department.utilizationRate}% utilized</Badge>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-500">
-                    {department.openHours}h booked across {department.capacityHours}h capacity
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <ActivityFeed activities={data.recentActivity} />
+                  {headline.value}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </section>
+      ) : null}
+
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        {data.sections.map((section) => (
+          <ActionSection key={section.key} section={section} />
+        ))}
+      </div>
     </div>
   );
 }

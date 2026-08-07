@@ -1,0 +1,224 @@
+// Onboarding, platform access, asset collection, and the strategy brief.
+
+enum OnboardingStatus {
+  NOT_STARTED
+  WELCOME_SENT
+  FORM_SENT
+  AWAITING_CLIENT
+  KICKOFF_SCHEDULED
+  KICKOFF_COMPLETE
+  COLLECTING_ACCESS
+  COMPLETE
+  BLOCKED
+}
+
+enum AccessPlatform {
+  GOHIGHLEVEL
+  WEBSITE_ADMIN
+  HOSTING
+  DOMAIN_REGISTRAR
+  DNS
+  META_BUSINESS
+  GOOGLE_ADS
+  GOOGLE_ANALYTICS
+  GOOGLE_TAG_MANAGER
+  GOOGLE_SEARCH_CONSOLE
+  GOOGLE_BUSINESS_PROFILE
+  EMAIL_PLATFORM
+  CALENDAR
+  STRIPE
+  ZAPIER
+  MAKE
+  N8N
+  FILE_STORAGE
+  PROJECT_MANAGEMENT
+  COMMUNICATION
+  PASSWORD_MANAGER
+  SOCIAL_INSTAGRAM
+  SOCIAL_FACEBOOK
+  SOCIAL_LINKEDIN
+  SOCIAL_TIKTOK
+  SOCIAL_YOUTUBE
+  OTHER
+}
+
+enum AccessStatus {
+  NOT_REQUESTED
+  REQUESTED
+  PENDING_CLIENT
+  GRANTED
+  TESTED
+  INSUFFICIENT_PERMISSIONS
+  FAILED
+  REVOKED
+  NOT_APPLICABLE
+}
+
+enum AccessMethod {
+  DELEGATED_ACCESS
+  USER_INVITE
+  SHARED_VIA_PASSWORD_MANAGER
+  AGENCY_OWNED
+  CLIENT_MANAGED
+  OTHER
+}
+
+enum AssetType {
+  LOGO
+  BRAND_GUIDELINES
+  IMAGERY
+  VIDEO
+  COPY
+  TESTIMONIAL
+  PRODUCT_INFORMATION
+  PRICING
+  LEGAL
+  PRIOR_CAMPAIGN
+  OTHER
+}
+
+enum AssetStatus {
+  REQUESTED
+  RECEIVED
+  APPROVED
+  REJECTED
+  NOT_APPLICABLE
+}
+
+enum BriefStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  NEEDS_REVISION
+  ARCHIVED
+}
+
+model OnboardingRecord {
+  id                     String           @id @default(cuid())
+  clientId               String           @unique
+  status                 OnboardingStatus @default(NOT_STARTED)
+  welcomeEmailSentAt     DateTime?
+  formSentAt             DateTime?
+  formSubmittedAt        DateTime?
+  missingInformation     String?
+  kickoffScheduledAt     DateTime?
+  kickoffCompletedAt     DateTime?
+  communicationPreference String?
+  targetLaunchDate       DateTime?
+  blocker                String?
+  completedAt            DateTime?
+  ownerId                String?
+  notes                  String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("OnboardingOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// Tracks whether the agency can reach a client platform, and at what level.
+///
+/// This model deliberately has no password, secret, or token field, and must
+/// never gain one. Credentials belong in the client's password manager; this
+/// record stores only the status of access and where it is held.
+model AccessRecord {
+  id                 String         @id @default(cuid())
+  clientId           String
+  platform           AccessPlatform
+  /// Free text for platform = OTHER, or to name the specific property.
+  platformLabel      String?
+  accountName        String?
+  status             AccessStatus   @default(NOT_REQUESTED)
+  method             AccessMethod?
+  permissionLevel    String?
+  isCritical         Boolean        @default(false)
+  requestedAt        DateTime?
+  grantedAt          DateTime?
+  testedAt           DateTime?
+  missingPermissions String?
+  twoFactorEnabled   Boolean?
+  /// Where the credential itself lives, e.g. "Client 1Password vault".
+  credentialLocation String?
+  assignedToId       String?
+  removedAt          DateTime?
+  removalConfirmedById String?
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  client             Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignedTo         User?  @relation("AccessAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  removalConfirmedBy User?  @relation("AccessRemovalConfirmer", fields: [removalConfirmedById], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, platform, platformLabel])
+  @@index([clientId])
+  @@index([status])
+  @@index([isCritical])
+  @@index([assignedToId])
+}
+
+model AssetRecord {
+  id          String      @id @default(cuid())
+  clientId    String
+  type        AssetType
+  name        String
+  status      AssetStatus @default(REQUESTED)
+  fileUrl     String?
+  version     String?
+  isRequired  Boolean     @default(false)
+  requestedAt DateTime?
+  receivedAt  DateTime?
+  approvedAt  DateTime?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([isRequired])
+}
+
+/// The structured internal project brief.
+///
+/// Deliberately field-per-question rather than one large notes blob, so the
+/// stage gate can verify a brief is genuinely complete and reporting can read
+/// individual answers.
+model StrategyBrief {
+  id                     String      @id @default(cuid())
+  clientId               String      @unique
+  status                 BriefStatus @default(DRAFT)
+  primaryGoal            String?
+  successMetrics         String?
+  targetAudience         String?
+  mainOffer              String?
+  serviceArea            String?
+  callToAction           String?
+  customerJourney        String?
+  funnelStrategy         String?
+  crmStrategy            String?
+  advertisingStrategy    String?
+  trackingStrategy       String?
+  contentStrategy        String?
+  technicalArchitecture  String?
+  risks                  String?
+  dependencies           String?
+  clientResponsibilities String?
+  agencyResponsibilities String?
+  timelineSummary        String?
+  authorId               String?
+  approvedById           String?
+  approvedAt            DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author     User?  @relation("BriefAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  approvedBy User?  @relation("BriefApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}

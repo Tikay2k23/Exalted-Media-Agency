@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity";
 import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { clientFormSchema, clientStatusUpdateSchema } from "@/lib/validators";
+import { FULFILLMENT_PIPELINE_ID } from "@/lib/workspace-defaults";
 
 export const runtime = "nodejs";
 
@@ -82,8 +83,14 @@ export async function PATCH(
     }
 
     const [stage, assignee] = await Promise.all([
-      prisma.pipelineStage.findUnique({
-        where: { id: parsed.data.currentStageId },
+      // Restricted to the client journey for the same reason as creation: an
+      // account parked on a sales stage cannot be moved back by the journey.
+      prisma.pipelineStage.findFirst({
+        where: {
+          id: parsed.data.currentStageId,
+          pipelineId: FULFILLMENT_PIPELINE_ID,
+          isDeprecated: false,
+        },
         select: { id: true },
       }),
       parsed.data.assignedUserId
@@ -95,7 +102,10 @@ export async function PATCH(
     ]);
 
     if (!stage) {
-      return NextResponse.json({ error: "Pipeline stage not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "That stage is not a current client journey stage." },
+        { status: 400 },
+      );
     }
 
     if (parsed.data.assignedUserId && !assignee) {

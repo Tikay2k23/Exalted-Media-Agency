@@ -6,6 +6,11 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
+// Module-scoped cache. This must apply in every environment: the exported proxy
+// below resolves the client on every property access, so without it each access
+// would build a new PrismaClient and a new connection pool.
+let cachedClient: PrismaClient | undefined;
+
 const databaseUrlKeys = [
   "DATABASE_URL",
   "POSTGRES_URL",
@@ -68,8 +73,11 @@ function resolveConnectionString() {
 }
 
 function getPrismaClient() {
-  if (globalForPrisma.prisma) {
-    return globalForPrisma.prisma;
+  const existingClient = cachedClient ?? globalForPrisma.prisma;
+
+  if (existingClient) {
+    cachedClient = existingClient;
+    return existingClient;
   }
 
   const connectionString = resolveConnectionString();
@@ -90,6 +98,10 @@ function getPrismaClient() {
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
+  cachedClient = prismaClient;
+
+  // The globalThis cache additionally survives dev-server hot reloads, which
+  // discard module state and would otherwise leak a client per reload.
   if (process.env.NODE_ENV !== "production") {
     globalForPrisma.adapter = adapter;
     globalForPrisma.prisma = prismaClient;

@@ -1,0 +1,208 @@
+// Projects, work items, and weekly accountability.
+
+enum ProjectStatus {
+  PLANNING
+  IN_PRODUCTION
+  INTERNAL_QA
+  CLIENT_REVIEW
+  REVISIONS
+  READY_FOR_LAUNCH
+  LIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum RiskLevel {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// Existing values are preserved so historical work items keep their meaning:
+/// TODO reads as "not started" and DONE as "complete".
+enum EmployeeTaskStatus {
+  TODO
+  READY
+  IN_PROGRESS
+  WAITING_INTERNAL
+  WAITING_CLIENT
+  BLOCKED
+  IN_REVIEW
+  CHANGES_REQUIRED
+  READY_FOR_QA
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum TaskCategory {
+  CONTENT_CALENDAR
+  COPYWRITING
+  CREATIVE_PRODUCTION
+  PAID_MEDIA_OPTIMIZATION
+  SEO_AUDIT
+  EMAIL_CAMPAIGN
+  CLIENT_REPORTING
+  COMMUNITY_MANAGEMENT
+  WEBSITE_UPDATE
+  ANALYTICS_REVIEW
+  INTERNAL_OPERATIONS
+  ONBOARDING
+  STRATEGY
+  QUALITY_ASSURANCE
+  REVISION
+  LAUNCH
+  CLIENT_TRAINING
+  RENEWAL
+  OFFBOARDING
+  AUDIT
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  clientId       String
+  name           String
+  serviceType    ServiceType
+  projectManagerId String?
+  status         ProjectStatus @default(PLANNING)
+  health         HealthStatus  @default(NOT_ASSESSED)
+  riskLevel      RiskLevel     @default(NONE)
+  startDate      DateTime?
+  dueDate        DateTime?
+  targetLaunchDate DateTime?
+  progressPercent Int          @default(0)
+  budgetedHours  Int?
+  clientDependency String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  client         Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectManager User?  @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+  milestones     Milestone[]
+  workItems      EmployeeTask[]
+  qaPlans        QaPlan[]
+  defects        Defect[]
+  reviewCycles   ReviewCycle[]
+  approvals      Approval[]
+  launches       Launch[]
+
+  @@index([clientId])
+  @@index([projectManagerId])
+  @@index([status])
+  @@index([targetLaunchDate])
+  @@index([deletedAt])
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([dueDate])
+}
+
+/// The agency work item. Named EmployeeTask for continuity with existing data
+/// and its end-of-day entries; presented as "Work Item" in the interface.
+model EmployeeTask {
+  id             String             @id @default(cuid())
+  title          String
+  note           String?
+  status         EmployeeTaskStatus @default(TODO)
+  priority       TaskPriority       @default(MEDIUM)
+  dueDate        DateTime
+  assignedToId   String
+  createdById    String?
+  clientId       String?
+  projectId      String?
+  reviewerId     String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  category       TaskCategory       @default(INTERNAL_OPERATIONS)
+  estimatedHours Int                @default(2)
+  actualHours    Int?
+  weekStartDate  DateTime           @default(now())
+  department     Department?
+  blocker        String?
+  isClientFacing Boolean            @default(false)
+  completionCriteria String?
+  evidenceUrl    String?
+  requiresApproval Boolean          @default(false)
+  requiresQa     Boolean            @default(false)
+  completedAt    DateTime?
+  deletedAt      DateTime?
+
+  assignedTo User                   @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
+  client     Client?                @relation(fields: [clientId], references: [id])
+  createdBy  User?                  @relation("EmployeeTaskCreator", fields: [createdById], references: [id])
+  reviewer   User?                  @relation("EmployeeTaskReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  project    Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  eodEntries EmployeeTaskEodEntry[]
+  blockedBy  TaskDependency[]       @relation("DependentTask")
+  blocking   TaskDependency[]       @relation("PrerequisiteTask")
+
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([weekStartDate])
+  @@index([projectId])
+  @@index([reviewerId])
+  @@index([deletedAt])
+}
+
+/// "Task A cannot start until Task B completes."
+model TaskDependency {
+  id             String   @id @default(cuid())
+  dependentTaskId String
+  prerequisiteTaskId String
+  createdAt      DateTime @default(now())
+
+  dependentTask    EmployeeTask @relation("DependentTask", fields: [dependentTaskId], references: [id], onDelete: Cascade)
+  prerequisiteTask EmployeeTask @relation("PrerequisiteTask", fields: [prerequisiteTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([dependentTaskId, prerequisiteTaskId])
+  @@index([dependentTaskId])
+  @@index([prerequisiteTaskId])
+}
+
+model EmployeeTaskEodEntry {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  entryDate DateTime
+  summary   String
+  blockers  String?
+  nextSteps String?
+  hoursSpent Int?
+  supportNeeded String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author User         @relation(fields: [authorId], references: [id])
+  task   EmployeeTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, authorId, entryDate])
+  @@index([taskId, entryDate])
+  @@index([authorId, entryDate])
+}

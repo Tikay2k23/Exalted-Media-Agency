@@ -1,0 +1,134 @@
+// Cross-cutting platform concerns: audit trail, notifications, saved views.
+
+enum ActivityEntityType {
+  USER
+  CLIENT
+  PIPELINE
+  SOCIAL_TASK
+  AUTH
+  REPORT
+  EMPLOYEE_TASK
+  LEAD
+  PROJECT
+  MILESTONE
+  CONTRACT
+  PERMISSION
+  NOTIFICATION
+  TRAINING
+  SYSTEM
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  CLIENT_WAITING
+  MISSING_ACCESS
+  MISSING_PAYMENT
+  QA_DEFECT
+  REVISION_REQUEST
+  APPROVAL_RECEIVED
+  LAUNCH_SCHEDULED
+  LAUNCH_INCIDENT
+  REPORT_DUE
+  CLIENT_HEALTH_CHANGE
+  RENEWAL_APPROACHING
+  PAYMENT_FAILED
+  AUDIT_FINDING
+  CORRECTIVE_ACTION_OVERDUE
+  CERTIFICATION_EXPIRING
+  STAGE_OVERRIDE
+}
+
+enum NotificationUrgency {
+  /// Critical notifications cannot be muted by user preference.
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+}
+
+/// Append-only audit trail.
+///
+/// The application exposes no update or delete path for these rows: history
+/// that can be edited is not evidence.
+model ActivityLog {
+  id           String             @id @default(cuid())
+  actorId      String?
+  action       String
+  entityType   ActivityEntityType
+  entityId     String
+  metadataJson Json?
+  /// Field-level before/after for change auditing.
+  fieldName     String?
+  previousValue String?
+  newValue      String?
+  origin        String?
+  createdAt     DateTime           @default(now())
+
+  actor User? @relation("ActivityActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+}
+
+model Notification {
+  id          String              @id @default(cuid())
+  recipientId String
+  type        NotificationType
+  urgency     NotificationUrgency @default(NORMAL)
+  title       String
+  body        String?
+  /// Deep link to the record this notification is about.
+  entityType  ActivityEntityType?
+  entityId    String?
+  href        String?
+  readAt      DateTime?
+  createdAt   DateTime            @default(now())
+
+  recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt])
+  @@index([recipientId, createdAt])
+  @@index([type])
+}
+
+/// A named, shareable filter set such as "Red accounts" or "Renewals this month".
+model SavedView {
+  id         String   @id @default(cuid())
+  ownerId    String
+  name       String
+  /// Which workspace the view belongs to, e.g. "clients" or "work-items".
+  scope      String
+  filtersJson Json
+  isShared   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, scope, name])
+  @@index([ownerId])
+  @@index([scope])
+}
+
+/// Records how existing rows were mapped during a schema migration, including
+/// anything a person still needs to confirm. Nothing is discarded silently.
+model MigrationLog {
+  id            String   @id @default(cuid())
+  migrationName String
+  entityType    String
+  entityId      String
+  fieldName     String
+  previousValue String?
+  mappedValue   String?
+  /// True when the mapping was a best guess and a human should confirm it.
+  needsReview   Boolean  @default(false)
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([migrationName])
+  @@index([needsReview])
+  @@index([entityType, entityId])
+}

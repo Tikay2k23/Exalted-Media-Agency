@@ -1,0 +1,218 @@
+// Contracts, invoicing, payments, renewals, and expansion.
+//
+// Access to every model here is gated behind the finance.view / finance.edit
+// permissions. Nothing in this file should be exposed on a page a fulfillment
+// specialist can reach.
+
+enum AgreementStatus {
+  NOT_SENT
+  SENT
+  VIEWED
+  SIGNED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingCadence {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  FAILED
+  REFUNDED
+  VOID
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  DIRECT_DEBIT
+  PAYPAL
+  CHEQUE
+  CASH
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  DISPUTED
+}
+
+enum RenewalStage {
+  NOT_STARTED
+  REVIEW_SCHEDULED
+  PROPOSAL_PREPARED
+  PROPOSAL_SENT
+  NEGOTIATING
+  RENEWED
+  DOWNGRADED
+  DECLINED
+  CHURNED
+}
+
+enum ExpansionType {
+  UPSELL
+  CROSS_SELL
+  ADDITIONAL_SERVICE
+  INCREASED_SCOPE
+  REFERRAL_DRIVEN
+}
+
+enum ExpansionStatus {
+  IDENTIFIED
+  DISCUSSED
+  PROPOSED
+  WON
+  LOST
+  DEFERRED
+}
+
+model Contract {
+  id               String          @id @default(cuid())
+  clientId         String
+  title            String
+  agreementStatus  AgreementStatus @default(NOT_SENT)
+  signedAt         DateTime?
+  contractValue    Decimal?        @db.Decimal(12, 2)
+  depositAmount    Decimal?        @db.Decimal(12, 2)
+  recurringFee     Decimal?        @db.Decimal(12, 2)
+  billingCadence   BillingCadence  @default(MONTHLY)
+  startDate        DateTime?
+  endDate          DateTime?
+  renewalDate      DateTime?
+  cancellationNoticeDays Int?
+  cancellationRequestedAt DateTime?
+  finalInvoiceIssuedAt DateTime?
+  documentUrl      String?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("ContractCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  invoices  Invoice[]
+
+  @@index([clientId])
+  @@index([agreementStatus])
+  @@index([renewalDate])
+  @@index([endDate])
+  @@index([deletedAt])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  clientId      String
+  contractId    String?
+  invoiceNumber String        @unique
+  status        InvoiceStatus @default(DRAFT)
+  amountDue     Decimal       @db.Decimal(12, 2)
+  amountPaid    Decimal       @default(0) @db.Decimal(12, 2)
+  currency      String        @default("USD")
+  issuedAt      DateTime?
+  dueAt         DateTime?
+  paidAt        DateTime?
+  failureReason String?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contract Contract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  payments Payment[]
+
+  @@index([clientId])
+  @@index([contractId])
+  @@index([status])
+  @@index([dueAt])
+  @@index([deletedAt])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  invoiceId     String
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod @default(CARD)
+  status        PaymentStatus @default(PENDING)
+  reference     String?
+  failureReason String?
+  receivedAt    DateTime?
+  recordedById  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  recordedBy User?   @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([status])
+  @@index([receivedAt])
+}
+
+model Renewal {
+  id                 String       @id @default(cuid())
+  clientId           String
+  contractId         String?
+  stage              RenewalStage @default(NOT_STARTED)
+  contractEndDate    DateTime?
+  renewalDate        DateTime?
+  currentPackage     String?
+  recommendedPackage String?
+  currentValue       Decimal?     @db.Decimal(12, 2)
+  renewalValue       Decimal?     @db.Decimal(12, 2)
+  meetingAt          DateTime?
+  proposalSentAt     DateTime?
+  decisionDate       DateTime?
+  outcomeNote        String?
+  clientInterest     String?
+  nextAction         String?
+  ownerId            String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("RenewalOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([stage])
+  @@index([renewalDate])
+  @@index([ownerId])
+}
+
+model ExpansionOpportunity {
+  id            String          @id @default(cuid())
+  clientId      String
+  type          ExpansionType
+  status        ExpansionStatus @default(IDENTIFIED)
+  title         String
+  description   String?
+  estimatedValue Decimal?       @db.Decimal(12, 2)
+  ownerId       String?
+  targetDate    DateTime?
+  decidedAt     DateTime?
+  outcomeNote   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("ExpansionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([ownerId])
+}

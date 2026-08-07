@@ -9,9 +9,11 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "db:generate": "node scripts/prisma-generate.mjs",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
+    "db:seed-team": "node scripts/seed-team.mjs",
     "db:studio": "prisma studio",
     "db:bootstrap": "prisma db push && prisma db seed",
     "postinstall": "node scripts/prisma-generate.mjs"

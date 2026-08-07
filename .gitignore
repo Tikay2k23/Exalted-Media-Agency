@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files - every real env file stays out of git.
+# .env.example is the one exception: it is the shared template and must only
+# ever contain placeholder values.
 .env*
+!.env.example
 
 # vercel
 .vercel

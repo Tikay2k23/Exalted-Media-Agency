@@ -4,6 +4,14 @@ import { getServerSession, type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 import { prisma } from "@/lib/prisma";
+import {
+  consumeRateLimit,
+  isRateLimited,
+  loginIdentityRule,
+  loginOriginRule,
+  resetRateLimit,
+  resolveRequestOrigin,
+} from "@/lib/rate-limit";
 import { loginSchema } from "@/lib/validators";
 import { ensureRequiredWorkspaceInitialized } from "@/lib/workspace-bootstrap";
 
@@ -40,7 +48,7 @@ export const authOptions: NextAuthOptions = {
           type: "password",
         },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         try {
           const parsed = loginSchema.safeParse(credentials);
 
@@ -48,17 +56,38 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
+          const email = parsed.data.email.toLowerCase();
+          const origin = resolveRequestOrigin(request?.headers);
+          const identityKey = `login:identity:${email}`;
+          const originKey = `login:origin:${origin}`;
+
+          // Reject before touching the database or running bcrypt, so a
+          // throttled attacker cannot consume server resources either.
+          if (
+            !isRateLimited(identityKey, loginIdentityRule).allowed
+            || !isRateLimited(originKey, loginOriginRule).allowed
+          ) {
+            console.warn("[auth] Sign-in throttled.", { email, origin });
+            return null;
+          }
+
+          const recordFailure = () => {
+            consumeRateLimit(identityKey, loginIdentityRule);
+            consumeRateLimit(originKey, loginOriginRule);
+          };
+
           await ensureRequiredWorkspaceInitialized().catch((error) => {
             console.error("[auth] Workspace bootstrap failed during login.", error);
           });
 
           const user = await prisma.user.findUnique({
             where: {
-              email: parsed.data.email.toLowerCase(),
+              email,
             },
           });
 
           if (!user || !user.isActive) {
+            recordFailure();
             return null;
           }
 
@@ -68,8 +97,12 @@ export const authOptions: NextAuthOptions = {
           );
 
           if (!passwordMatches) {
+            recordFailure();
             return null;
           }
+
+          resetRateLimit(identityKey);
+          resetRateLimit(originKey);
 
           return {
             id: user.id,

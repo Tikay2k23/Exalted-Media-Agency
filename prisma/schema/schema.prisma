@@ -1,0 +1,19 @@
+// Exalted Media Operations - database schema.
+//
+// The schema is split by domain across this folder. Prisma loads every
+// `.prisma` file here as one schema, so models may reference each other
+// across files.
+//
+//   schema.prisma      generator + datasource (this file)
+//   identity.prisma    users, positions, access control, training
+//   crm.prisma         leads, clients, contacts, pipelines, stage history
+//   delivery.prisma    projects, work items, weekly accountability
+//   platform.prisma    notifications, activity/audit logs, saved views
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

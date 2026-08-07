@@ -1,0 +1,207 @@
+// Launch execution, post-launch monitoring, and incidents.
+
+enum LaunchType {
+  SOFT_LAUNCH
+  FULL_LAUNCH
+  PHASED_LAUNCH
+  INTERNAL_LAUNCH
+}
+
+enum LaunchStatus {
+  PLANNED
+  READY
+  IN_PROGRESS
+  MONITORING
+  COMPLETE
+  ROLLED_BACK
+  CANCELLED
+  BLOCKED
+}
+
+enum LaunchChecklistCategory {
+  APPROVAL
+  BACKUP
+  DOMAIN
+  WEBSITE
+  FORMS
+  CALENDARS
+  PIPELINES
+  WORKFLOWS
+  EMAIL
+  SMS
+  INTEGRATIONS
+  TRACKING
+  PAYMENT
+  ADS
+  END_TO_END_TEST
+  CLIENT_NOTIFICATION
+}
+
+enum ChecklistItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETE
+  FAILED
+  NOT_APPLICABLE
+}
+
+enum MonitoringWindow {
+  FIRST_TWO_HOURS
+  FIRST_24_HOURS
+  FIRST_72_HOURS
+  FIRST_7_DAYS
+}
+
+enum MonitoringResult {
+  PENDING
+  HEALTHY
+  DEGRADED
+  FAILED
+}
+
+enum IncidentSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  MITIGATED
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentCategory {
+  WEBSITE_OUTAGE
+  LEAD_CAPTURE_FAILURE
+  PAYMENT_FAILURE
+  WORKFLOW_FAILURE
+  INTEGRATION_FAILURE
+  CAMPAIGN_OVERSPEND
+  DATA_ISSUE
+  SECURITY_CONCERN
+  INCORRECT_BULK_COMMUNICATION
+  COMPLIANCE_CONCERN
+  OTHER
+}
+
+model Launch {
+  id              String       @id @default(cuid())
+  clientId        String
+  projectId       String?
+  name            String
+  type            LaunchType   @default(FULL_LAUNCH)
+  status          LaunchStatus @default(PLANNED)
+  scheduledFor    DateTime?
+  launchWindow    String?
+  clientTimezone  String?
+  ownerId         String?
+  /// Backups and a rollback plan are launch gate requirements, so they are
+  /// first-class fields rather than checklist prose.
+  backupVerifiedAt DateTime?
+  rollbackPlan    String?
+  isFrozen        Boolean      @default(false)
+  freezeReason    String?
+  systemsActivated String?
+  campaignsActivated String?
+  completedAt     DateTime?
+  rolledBackAt    DateTime?
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  client         Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project        Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  owner          User?                @relation("LaunchOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  checklistItems LaunchChecklistItem[]
+  monitoringChecks MonitoringCheck[]
+  incidents      Incident[]
+
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([ownerId])
+}
+
+model LaunchChecklistItem {
+  id           String                  @id @default(cuid())
+  launchId     String
+  category     LaunchChecklistCategory
+  label        String
+  status       ChecklistItemStatus     @default(PENDING)
+  isRequired   Boolean                 @default(true)
+  position     Int                     @default(0)
+  completedById String?
+  completedAt  DateTime?
+  evidenceUrl  String?
+  notes        String?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  launch      Launch @relation(fields: [launchId], references: [id], onDelete: Cascade)
+  completedBy User?  @relation("ChecklistCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([launchId])
+  @@index([status])
+}
+
+model MonitoringCheck {
+  id           String           @id @default(cuid())
+  launchId     String
+  window       MonitoringWindow
+  result       MonitoringResult @default(PENDING)
+  dueAt        DateTime?
+  checkedAt    DateTime?
+  checkedById  String?
+  observations String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  launch    Launch @relation(fields: [launchId], references: [id], onDelete: Cascade)
+  checkedBy User?  @relation("MonitoringChecker", fields: [checkedById], references: [id], onDelete: SetNull)
+
+  @@unique([launchId, window])
+  @@index([launchId])
+  @@index([result])
+  @@index([dueAt])
+}
+
+model Incident {
+  id                 String           @id @default(cuid())
+  clientId           String?
+  launchId           String?
+  reference          String           @unique
+  title              String
+  category           IncidentCategory
+  severity           IncidentSeverity @default(MEDIUM)
+  status             IncidentStatus   @default(OPEN)
+  affectedSystem     String?
+  detectedAt         DateTime         @default(now())
+  businessImpact     String?
+  ownerId            String?
+  immediateAction    String?
+  rootCause          String?
+  correction         String?
+  rollbackPerformed  Boolean          @default(false)
+  verification       String?
+  clientCommunication String?
+  preventiveAction   String?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  launch Launch? @relation(fields: [launchId], references: [id], onDelete: SetNull)
+  owner  User?   @relation("IncidentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([severity])
+  @@index([detectedAt])
+  @@index([ownerId])
+}

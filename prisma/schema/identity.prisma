@@ -1,0 +1,338 @@
+// Identity, access control, and team development.
+
+/// Coarse access tier. Retained from the original schema so existing records
+/// and permission checks keep working; fine-grained authority now comes from
+/// `Position` plus explicit overrides. See lib/permissions.ts.
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  TEAM_MEMBER
+}
+
+/// The six seats on the team. This is the single field that decides what
+/// somebody can do.
+///
+/// It replaces the 26-value `Position` enum, which modelled job titles rather
+/// than access and made the system harder to reason about than the agency it
+/// describes. `Position` is retained as a descriptive job title only.
+enum TeamRole {
+  /// Owner / Strategist. Full access, including money and governance.
+  AGENCY_OWNER
+  /// Sales Representative. Leads and opportunities only.
+  SALES_REP
+  /// Project Manager / Client Success Manager. Runs delivery and the client.
+  PROJECT_MANAGER
+  /// GoHighLevel and Automation Specialist.
+  AUTOMATION_SPECIALIST
+  /// Website, Funnel, Design and Copy Specialist.
+  CREATIVE_SPECIALIST
+  /// Ads, Tracking and Reporting Specialist.
+  ADS_SPECIALIST
+}
+
+/// Descriptive job title. Retained so the detail captured against existing
+/// accounts is not lost, but it no longer grants anything.
+enum Position {
+  /// Set on records that predate positions, or whose mapping needs a human
+  /// decision. Carries the narrowest possible permissions by design.
+  UNASSIGNED
+  AGENCY_OWNER
+  AGENCY_DIRECTOR
+  OPERATIONS_MANAGER
+  SALES_MANAGER
+  SALES_REPRESENTATIVE
+  CLIENT_SUCCESS_MANAGER
+  ACCOUNT_MANAGER
+  PROJECT_MANAGER
+  GOHIGHLEVEL_SPECIALIST
+  CRM_AUTOMATION_SPECIALIST
+  FUNNEL_WEBSITE_BUILDER
+  META_ADS_SPECIALIST
+  GOOGLE_ADS_SPECIALIST
+  SEO_SPECIALIST
+  COPYWRITER
+  GRAPHIC_DESIGNER
+  VIDEO_EDITOR
+  CONTENT_SPECIALIST
+  SOCIAL_MEDIA_MANAGER
+  TRACKING_ANALYTICS_SPECIALIST
+  INTEGRATION_SPECIALIST
+  QA_REVIEWER
+  CLIENT_TRAINER
+  FINANCE_ADMINISTRATOR
+  SECURITY_ADMINISTRATOR
+  HR_TRAINING_MANAGER
+}
+
+enum Department {
+  ACCOUNT_MANAGEMENT
+  CONTENT
+  CREATIVE
+  DESIGN
+  PAID_MEDIA
+  SEO
+  EMAIL_MARKETING
+  WEB_DEVELOPMENT
+  ANALYTICS
+  OPERATIONS
+  SALES
+  CLIENT_SUCCESS
+  QUALITY_ASSURANCE
+  FINANCE
+  SECURITY
+  HUMAN_RESOURCES
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  AGENCY_PARTNER
+}
+
+/// Competency ladder. Gates who may perform or sign off on regulated work such
+/// as QA verification and launch activation.
+enum CertificationLevel {
+  OBSERVER
+  TRAINEE
+  SUPERVISED_OPERATOR
+  CERTIFIED_OPERATOR
+  SENIOR_REVIEWER
+  PROCESS_OWNER
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  LIMITED
+  FULLY_BOOKED
+  ON_LEAVE
+  UNAVAILABLE
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum TrainingStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  EXPIRED
+  WAIVED
+}
+
+model User {
+  id                  String             @id @default(cuid())
+  name                String
+  email               String             @unique
+  passwordHash        String
+  role                Role
+  /// The seat this person holds. Drives every permission decision.
+  teamRole            TeamRole           @default(CREATIVE_SPECIALIST)
+  /// Descriptive job title only. Grants nothing.
+  position            Position           @default(UNASSIGNED)
+  avatarUrl           String?
+  isActive            Boolean            @default(true)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  department          Department         @default(CONTENT)
+  jobTitle            String?
+  weeklyCapacityHours Int                @default(40)
+  employmentType      EmploymentType     @default(FULL_TIME)
+  certificationLevel  CertificationLevel @default(OBSERVER)
+  availability        AvailabilityStatus @default(AVAILABLE)
+  managerId           String?
+  lastLoginAt         DateTime?
+  /// Soft delete. Preserves authorship on historical records that must remain
+  /// reportable and auditable after someone leaves.
+  deletedAt           DateTime?
+
+  manager     User?  @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports User[] @relation("UserManager")
+
+  accounts               Account[]
+  sessions               Session[]
+  activityLogs           ActivityLog[]            @relation("ActivityActor")
+  assignedClients        Client[]                 @relation("ClientAssignee")
+  stageChanges           ClientStageHistory[]     @relation("StageChangedBy")
+  assignedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskAssignee")
+  createdAgencyTasks     EmployeeTask[]           @relation("EmployeeTaskCreator")
+  reviewedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskReviewer")
+  employeeTaskEodEntries EmployeeTaskEodEntry[]
+  assignedSocialTasks    SocialMediaTask[]        @relation("TaskAssignee")
+  permissionOverrides    UserPermissionOverride[] @relation("PermissionSubject")
+  grantedOverrides       UserPermissionOverride[] @relation("PermissionGrantedBy")
+  trainingRecords        TrainingRecord[]         @relation("TrainingSubject")
+  deliveredTraining      TrainingRecord[]         @relation("TrainingTrainer")
+  notifications          Notification[]           @relation("NotificationRecipient")
+  savedViews             SavedView[]
+  assignedLeads          Lead[]                   @relation("LeadOwner")
+  loggedCalls            LeadCallLog[]            @relation("CallLogger")
+  managedProjects        Project[]                @relation("ProjectManager")
+  approvedStageOverrides ClientStageHistory[]     @relation("StageOverrideApprover")
+
+  // Commercial
+  contractsCreated   Contract[]             @relation("ContractCreator")
+  paymentsRecorded   Payment[]              @relation("PaymentRecorder")
+  renewalsOwned      Renewal[]              @relation("RenewalOwner")
+  expansionsOwned    ExpansionOpportunity[] @relation("ExpansionOwner")
+
+  // Onboarding and strategy
+  onboardingOwned         OnboardingRecord[] @relation("OnboardingOwner")
+  accessRecordsAssigned   AccessRecord[]     @relation("AccessAssignee")
+  accessRemovalsConfirmed AccessRecord[]     @relation("AccessRemovalConfirmer")
+  briefsAuthored          StrategyBrief[]    @relation("BriefAuthor")
+  briefsApproved          StrategyBrief[]    @relation("BriefApprover")
+
+  // Quality assurance and review
+  qaPlansOwned        QaPlan[]       @relation("QaPlanOwner")
+  qaTestsRun          QaTest[]       @relation("QaTester")
+  defectsRaised       Defect[]       @relation("DefectReporter")
+  defectsAssigned     Defect[]       @relation("DefectAssignee")
+  defectsVerified     Defect[]       @relation("DefectVerifier")
+  reviewCyclesOwned   ReviewCycle[]  @relation("ReviewOwner")
+  revisionsAssigned   RevisionItem[] @relation("RevisionAssignee")
+  approvalsRecorded   Approval[]     @relation("ApprovalRecorder")
+
+  // Launch
+  launchesOwned             Launch[]              @relation("LaunchOwner")
+  checklistItemsCompleted   LaunchChecklistItem[] @relation("ChecklistCompleter")
+  monitoringChecksPerformed MonitoringCheck[]     @relation("MonitoringChecker")
+  incidentsOwned            Incident[]            @relation("IncidentOwner")
+
+  // Client success
+  healthAssessments       ClientHealthAssessment[] @relation("HealthAssessor")
+  complaintsOwned         Complaint[]              @relation("ComplaintOwner")
+  recoveryPlansOwned      RecoveryPlan[]           @relation("RecoveryOwner")
+  reportsPrepared         ClientReport[]           @relation("ReportPreparer")
+  reportsReviewed         ClientReport[]           @relation("ReportReviewer")
+  optimizationsOwned      Optimization[]           @relation("OptimizationOwner")
+  optimizationsApproved   Optimization[]           @relation("OptimizationApprover")
+  testimonialsApproved    Testimonial[]            @relation("TestimonialApprover")
+  referralsAssigned       Referral[]               @relation("ReferralOwner")
+  clientTrainingDelivered TrainingSession[]        @relation("ClientTrainer")
+  offboardingOwned        OffboardingRecord[]      @relation("OffboardingOwner")
+
+  // Governance
+  sopsOwned                 Sop[]                @relation("SopOwner")
+  sopsApproved              Sop[]                @relation("SopApprover")
+  sopVersionsAuthored       SopVersion[]         @relation("SopVersionAuthor")
+  auditsConducted           Audit[]              @relation("Auditor")
+  correctiveActionsOwned    CorrectiveAction[]   @relation("CorrectiveActionOwner")
+  correctiveActionsVerified CorrectiveAction[]   @relation("CorrectiveActionVerifier")
+  improvementsOwned         ImprovementRequest[] @relation("ImprovementOwner")
+  improvementsRaised        ImprovementRequest[] @relation("ImprovementReporter")
+
+  @@index([role])
+  @@index([isActive])
+  @@index([teamRole])
+  @@index([position])
+  @@index([department])
+  @@index([managerId])
+  @@index([deletedAt])
+}
+
+/// Per-user exception to the position-derived permission matrix.
+///
+/// DENY always wins over ALLOW, and both win over the matrix default, so a
+/// security administrator can revoke a single capability without rebuilding
+/// someone's whole role.
+model UserPermissionOverride {
+  id          String           @id @default(cuid())
+  userId      String
+  /// Permission key such as "finance.view". Validated in application code
+  /// against the canonical list in lib/permissions.ts.
+  permission  String
+  effect      PermissionEffect
+  reason      String
+  grantedById String?
+  createdAt   DateTime         @default(now())
+  expiresAt   DateTime?
+
+  user      User  @relation("PermissionSubject", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("PermissionGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, permission])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Durable record of authentication attempts. Backs lockout decisions across
+/// server instances and gives the security administrator a login history.
+model LoginAttempt {
+  id            String   @id @default(cuid())
+  email         String
+  origin        String
+  successful    Boolean
+  failureReason String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([origin, createdAt])
+  @@index([createdAt])
+}
+
+model TrainingRecord {
+  id             String              @id @default(cuid())
+  userId         String
+  courseName     String
+  sopReference   String?
+  status         TrainingStatus      @default(ASSIGNED)
+  assignedDate   DateTime            @default(now())
+  dueDate        DateTime?
+  completedDate  DateTime?
+  assessmentScore Int?
+  trainerId      String?
+  certificationAwarded CertificationLevel?
+  certificationExpiresAt DateTime?
+  retrainingRequired Boolean          @default(false)
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  user    User  @relation("TrainingSubject", fields: [userId], references: [id], onDelete: Cascade)
+  trainer User? @relation("TrainingTrainer", fields: [trainerId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([certificationExpiresAt])
+  @@index([dueDate])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}

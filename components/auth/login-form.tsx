@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -39,6 +39,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const callbackUrl = normalizeCallbackUrl(searchParams.get("callbackUrl"));
 
@@ -57,11 +58,34 @@ export function LoginForm() {
       });
 
       if (!response?.ok || response.error) {
-        setError("Invalid email or password. Please try again.");
+        // NextAuth reports rejected credentials as "CredentialsSignin".
+        // Anything else is a server or configuration fault, and saying
+        // "invalid password" for those sends people hunting the wrong problem.
+        setError(
+          response?.error && response.error !== "CredentialsSignin"
+            ? "Sign-in is unavailable right now. This is a server problem, not your password. Please contact an administrator."
+            : "Invalid email or password. Please try again.",
+        );
         return;
       }
 
-      const destination = response.url ?? callbackUrl;
+      // Only follow the returned URL when it points back at this origin. If
+      // NEXTAUTH_URL is configured for another environment, its redirect would
+      // otherwise throw the user out to a different site after signing in.
+      let destination = callbackUrl;
+
+      if (response.url) {
+        try {
+          const parsed = new URL(response.url, window.location.origin);
+          destination =
+            parsed.origin === window.location.origin
+              ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+              : callbackUrl;
+        } catch {
+          destination = callbackUrl;
+        }
+      }
+
       window.location.assign(destination);
     } catch (submitError) {
       console.error("[login-form] Sign in failed.", submitError);
@@ -102,10 +126,23 @@ export function LoginForm() {
               <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
-                className="pl-10"
+                className="pl-10 pr-11"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                className="absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
             </div>
           </label>
 

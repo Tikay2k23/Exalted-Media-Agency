@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Save } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -57,7 +57,24 @@ type TrackerTask = {
   }>;
 };
 
-const statusOptions = ["TODO", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "DONE"];
+/**
+ * Every status a work item can hold, labelled the way someone would say it out
+ * loud. The list had fallen behind the database, so six statuses existed that
+ * nobody could actually select.
+ */
+const statusOptions: { value: string; label: string }[] = [
+  { value: "TODO", label: "Not started" },
+  { value: "READY", label: "Ready to start" },
+  { value: "IN_PROGRESS", label: "In progress" },
+  { value: "WAITING_INTERNAL", label: "Waiting on someone here" },
+  { value: "WAITING_CLIENT", label: "Waiting on the client" },
+  { value: "BLOCKED", label: "Blocked" },
+  { value: "READY_FOR_QA", label: "Ready for QA" },
+  { value: "IN_REVIEW", label: "In review" },
+  { value: "CHANGES_REQUIRED", label: "Changes needed" },
+  { value: "DONE", label: "Done" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
 const briefPreviewThreshold = 260;
 
 function toneForStatus(status: string): "slate" | "sky" | "amber" | "rose" | "emerald" {
@@ -318,25 +335,48 @@ export function FulfillmentTable({
                       </div>
                     </div>
 
+                    {/* Finishing work is the common case, so it gets one
+                        button rather than a dropdown plus a save. */}
+                    {canUpdate && task.status !== "DONE" ? (
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const formData = new FormData();
+                          formData.set("status", "DONE");
+                          saveStatus(task.id, formData);
+                        }}
+                        disabled={statusSaving}
+                        className="mt-4 w-full gap-2 bg-emerald-600 hover:bg-emerald-500 sm:w-auto"
+                      >
+                        {statusSaving ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
+                        Mark this done
+                      </Button>
+                    ) : null}
+
                     <form
                       action={(formData) => saveStatus(task.id, formData)}
-                      className="mt-4 flex flex-col gap-3 sm:flex-row"
+                      className="mt-3 flex flex-col gap-3 sm:flex-row"
                     >
                       <Select
                         name="status"
                         defaultValue={task.status}
                         disabled={!canUpdate || statusSaving}
                         className="sm:flex-1"
+                        aria-label="Work item status"
                       >
                         {statusOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {formatEnumLabel(option)}
+                          <option key={option.value} value={option.value}>
+                            {option.label}
                           </option>
                         ))}
                       </Select>
                       <Button
                         type="submit"
-                        variant={canUpdate ? "primary" : "secondary"}
+                        variant="secondary"
                         disabled={!canUpdate || statusSaving}
                         className="gap-2"
                       >
@@ -345,7 +385,7 @@ export function FulfillmentTable({
                         ) : (
                           <Save className="h-4 w-4" />
                         )}
-                        Save status
+                        Save a different status
                       </Button>
                     </form>
                     {statusError?.taskId === task.id ? (

@@ -1,0 +1,363 @@
+// Leads, client accounts, and the pipelines they move through.
+
+enum PipelineKind {
+  SALES
+  FULFILLMENT
+}
+
+enum ClientStatus {
+  ACTIVE
+  AT_RISK
+  ON_HOLD
+  COMPLETED
+}
+
+enum ServiceType {
+  SOCIAL_MEDIA_MANAGEMENT
+  CONTENT_PRODUCTION
+  PAID_ADVERTISING
+  BRAND_STRATEGY
+  WEBSITE_SUPPORT
+  FUNNEL_BUILD
+  CRM_AUTOMATION
+  SEO
+  EMAIL_MARKETING
+  FULL_SERVICE_RETAINER
+}
+
+enum HealthStatus {
+  GREEN
+  YELLOW
+  RED
+  NOT_ASSESSED
+}
+
+enum LeadStatus {
+  NEW
+  ATTEMPTING_CONTACT
+  CONTACTED
+  QUALIFIED
+  DISQUALIFIED
+  NURTURE
+  CONVERTED
+  LOST
+  ABANDONED
+}
+
+enum LeadSource {
+  WEBSITE_FORM
+  PAID_ADS
+  ORGANIC_SEARCH
+  SOCIAL_MEDIA
+  REFERRAL
+  OUTBOUND
+  PARTNER
+  EVENT
+  REPEAT_CLIENT
+  OTHER
+}
+
+model Pipeline {
+  id          String       @id @default(cuid())
+  kind        PipelineKind
+  name        String
+  slug        String       @unique
+  description String?
+  isDefault   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  stages PipelineStage[]
+
+  @@index([kind])
+}
+
+model PipelineStage {
+  id         String   @id @default(cuid())
+  pipelineId String
+  name       String
+  slug       String   @unique
+  /// Stable machine key used by stage-gate rules and automation, so renaming a
+  /// stage in the UI never breaks a workflow.
+  stageKey   String?
+  color      String
+  position   Int
+  isDefault  Boolean  @default(false)
+  /// Marks an end state such as Won, Lost, or Archived.
+  isTerminal Boolean  @default(false)
+  /// A retired stage. Still a valid target for accounts that already sit on it,
+  /// but hidden from pickers so no new account can be moved into it.
+  isDeprecated Boolean @default(false)
+  /// Target number of days an account should spend here before it is flagged.
+  slaDays    Int?
+  description String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pipeline      Pipeline             @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  clients       Client[]
+  historiesFrom ClientStageHistory[] @relation("HistoryFromStage")
+  historiesTo   ClientStageHistory[] @relation("HistoryToStage")
+  requirements  StageRequirement[]
+  leads         Lead[]
+
+  @@unique([pipelineId, position])
+  @@unique([pipelineId, stageKey])
+  @@index([position])
+  @@index([pipelineId])
+}
+
+/// A condition that must hold before an account may enter a stage.
+///
+/// Rules live in data rather than code so operations can tighten the process
+/// without a deploy. `requirementKey` maps to a checker in
+/// lib/journey/stage-requirements.ts.
+model StageRequirement {
+  id             String   @id @default(cuid())
+  stageId        String
+  requirementKey String
+  label          String
+  description    String?
+  /// A blocking requirement cannot be passed without a recorded override.
+  isBlocking     Boolean  @default(true)
+  position       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stage PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([stageId, requirementKey])
+  @@index([stageId])
+}
+
+model Lead {
+  id               String     @id @default(cuid())
+  contactName      String
+  businessName     String
+  email            String?
+  phone            String?
+  source           LeadSource @default(WEBSITE_FORM)
+  serviceInterest  ServiceType?
+  budgetAmount     Decimal?   @db.Decimal(12, 2)
+  timeline         String?
+  isDecisionMaker  Boolean?
+  mainProblem      String?
+  goal             String?
+  /// 0-100 qualification score.
+  score            Int?
+  status           LeadStatus @default(NEW)
+  stageId          String?
+  assignedToId     String?
+  proposalValue    Decimal?   @db.Decimal(12, 2)
+  proposalSentAt   DateTime?
+  decisionDate     DateTime?
+  objection        String?
+  lostReason       String?
+  nextFollowUpAt   DateTime?
+  convertedClientId String?   @unique
+  notes            String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+
+  stage           PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  convertedClient Client?        @relation("LeadConversion", fields: [convertedClientId], references: [id], onDelete: SetNull)
+  assignedTo      User?          @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  callLogs        LeadCallLog[]
+  referral        Referral?      @relation("ReferralLead")
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([stageId])
+  @@index([nextFollowUpAt])
+  @@index([source])
+  @@index([deletedAt])
+}
+
+enum CallOutcome {
+  CONNECTED
+  NO_ANSWER
+  VOICEMAIL
+  RESCHEDULED
+  NOT_INTERESTED
+  CALL_BOOKED
+  CALL_SHOWED
+  NO_SHOW
+}
+
+model LeadCallLog {
+  id              String      @id @default(cuid())
+  leadId          String
+  loggedById      String?
+  outcome         CallOutcome
+  notes           String?
+  durationMinutes Int?
+  occurredAt      DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+
+  lead     Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  loggedBy User? @relation("CallLogger", fields: [loggedById], references: [id], onDelete: SetNull)
+
+  @@index([leadId, occurredAt])
+  @@index([loggedById])
+}
+
+model Client {
+  id             String       @id @default(cuid())
+  clientName     String
+  companyName    String
+  contactEmail   String
+  contactPhone   String?
+  assignedUserId String?
+  status         ClientStatus @default(ACTIVE)
+  dateAdded      DateTime     @default(now())
+  notes          String?
+  serviceType    ServiceType
+  currentStageId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  /// When the account entered its current stage. Drives time-in-stage and SLA
+  /// reporting without having to walk the full history table.
+  stageEnteredAt DateTime     @default(now())
+  healthStatus   HealthStatus @default(NOT_ASSESSED)
+  monthlyValue   Decimal?     @db.Decimal(12, 2)
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  renewalDate       DateTime?
+  currentBlocker    String?
+  nextAction        String?
+  nextActionDueAt   DateTime?
+  lastClientUpdateAt DateTime?
+  deletedAt         DateTime?
+
+  assignedUser User?                @relation("ClientAssignee", fields: [assignedUserId], references: [id])
+  currentStage PipelineStage        @relation(fields: [currentStageId], references: [id])
+  stageHistory ClientStageHistory[]
+  agencyTasks  EmployeeTask[]
+  socialTasks  SocialMediaTask[]
+  contacts     ClientContact[]
+  sourceLead   Lead?                @relation("LeadConversion")
+  projects     Project[]
+
+  contracts              Contract[]
+  invoices               Invoice[]
+  renewals               Renewal[]
+  expansionOpportunities ExpansionOpportunity[]
+  onboarding             OnboardingRecord?
+  accessRecords          AccessRecord[]
+  assets                 AssetRecord[]
+  strategyBrief          StrategyBrief?
+  qaPlans                QaPlan[]
+  defects                Defect[]
+  reviewCycles           ReviewCycle[]
+  approvals              Approval[]
+  launches               Launch[]
+  incidents              Incident[]
+  healthAssessments      ClientHealthAssessment[]
+  complaints             Complaint[]
+  recoveryPlans          RecoveryPlan[]
+  reports                ClientReport[]
+  optimizations          Optimization[]
+  testimonials           Testimonial[]
+  referralsGiven         Referral[]               @relation("ClientReferrals")
+  trainingSessions       TrainingSession[]
+  offboarding            OffboardingRecord?
+  audits                 Audit[]
+
+  @@index([assignedUserId])
+  @@index([status])
+  @@index([currentStageId])
+  @@index([healthStatus])
+  @@index([renewalDate])
+  @@index([deletedAt])
+}
+
+model ClientContact {
+  id          String   @id @default(cuid())
+  clientId    String
+  name        String
+  email       String?
+  phone       String?
+  role        String?
+  isPrimary   Boolean  @default(false)
+  isDecisionMaker Boolean @default(false)
+  isApprover  Boolean  @default(false)
+  communicationPreference String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewCycles ReviewCycle[] @relation("ReviewApprover")
+  approvals    Approval[]    @relation("ApprovalContact")
+
+  @@index([clientId])
+}
+
+model ClientStageHistory {
+  id          String   @id @default(cuid())
+  clientId    String
+  fromStageId String?
+  toStageId   String
+  changedById String?
+  note        String?
+  changedAt   DateTime @default(now())
+
+  /// Set when a blocking stage requirement was bypassed. The reason, approver,
+  /// and risk acknowledgement are mandatory at the application layer.
+  wasOverridden       Boolean @default(false)
+  overrideReason      String?
+  overrideApprovedById String?
+  overrideRiskAcknowledged Boolean @default(false)
+  unmetRequirements   Json?
+
+  changedBy          User?          @relation("StageChangedBy", fields: [changedById], references: [id])
+  overrideApprovedBy User?          @relation("StageOverrideApprover", fields: [overrideApprovedById], references: [id], onDelete: SetNull)
+  client             Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fromStage PipelineStage? @relation("HistoryFromStage", fields: [fromStageId], references: [id])
+  toStage   PipelineStage  @relation("HistoryToStage", fields: [toStageId], references: [id])
+
+  @@index([clientId])
+  @@index([changedById])
+  @@index([changedAt])
+  @@index([wasOverridden])
+}
+
+model SocialMediaTask {
+  id             String           @id @default(cuid())
+  clientId       String
+  platform       SocialPlatform
+  plannedPosts   Int
+  completedPosts Int              @default(0)
+  dueDate        DateTime
+  status         SocialTaskStatus @default(NOT_STARTED)
+  assignedUserId String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  assignedUser User?  @relation("TaskAssignee", fields: [assignedUserId], references: [id])
+  client       Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([assignedUserId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
+  LINKEDIN
+  TIKTOK
+  X
+  YOUTUBE
+}
+
+enum SocialTaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  WAITING_ON_CLIENT
+  REVIEW
+  COMPLETED
+}
