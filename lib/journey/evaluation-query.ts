@@ -42,6 +42,12 @@ export const journeyEvaluationSelect = {
   accessRecords: {
     select: { platform: true, isCritical: true, status: true },
   },
+  healthAssessments: {
+    // The gate only needs to know an assessment exists behind the status.
+    take: 1,
+    orderBy: { assessedAt: "desc" },
+    select: { status: true },
+  },
   strategyBrief: {
     select: {
       status: true,

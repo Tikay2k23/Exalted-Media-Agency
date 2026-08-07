@@ -54,6 +54,7 @@ function client(overrides: Partial<EvaluableClient> = {}): EvaluableClient {
     agencyTasks: [task()],
     invoices: [{ status: "PAID" }],
     accessRecords: [{ platform: "GOHIGHLEVEL", isCritical: true, status: "TESTED" }],
+    healthAssessments: [{ status: "GREEN" }],
     strategyBrief: { status: "APPROVED" },
     defects: [],
     approvals: [approval()],

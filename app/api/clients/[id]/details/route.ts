@@ -81,9 +81,10 @@ export async function PATCH(
     const data: Prisma.ClientUpdateInput = {};
     const input = parsed.data;
 
-    if (input.healthStatus !== undefined) {
-      data.healthStatus = input.healthStatus;
-    }
+    // Health is deliberately not accepted here. It moves only by recording an
+    // assessment, so every colour on the board has a person, a date and a
+    // reason behind it. Ignored rather than rejected, so an older client
+    // sending the field still saves the rest of the form.
     if (input.monthlyValue !== undefined) {
       data.monthlyValue = input.monthlyValue;
     }
@@ -129,13 +130,6 @@ export async function PATCH(
       action: `Updated account details for ${client.companyName}`,
       entityType: "CLIENT",
       entityId: client.id,
-      ...(input.healthStatus !== undefined && input.healthStatus !== existing.healthStatus
-        ? {
-            fieldName: "healthStatus",
-            previousValue: existing.healthStatus,
-            newValue: client.healthStatus,
-          }
-        : {}),
       metadataJson: { fields: Object.keys(data) },
     });
 

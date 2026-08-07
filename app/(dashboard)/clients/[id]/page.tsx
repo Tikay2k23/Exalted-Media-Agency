@@ -5,6 +5,7 @@ import { ClientAccess } from "@/components/clients/client-access";
 import { ClientApprovals } from "@/components/clients/client-approvals";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientContacts } from "@/components/clients/client-contacts";
+import { ClientHealth } from "@/components/clients/client-health";
 import { ClientForm } from "@/components/clients/client-form";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
@@ -37,6 +38,11 @@ import {
   isVerifiableApproval,
 } from "@/lib/approvals/approval-service";
 import { isDefectOpen } from "@/lib/quality/defect-service";
+import {
+  daysSinceAssessment,
+  isComplaintOpen,
+  isRecoveryPlanLive,
+} from "@/lib/success/health-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
@@ -154,7 +160,6 @@ export default async function ClientDetailPage({
           users={options.users}
           values={{
             assignedUserId: client.assignedUserId,
-            healthStatus: client.healthStatus,
             monthlyValue: client.monthlyValue === null ? null : Number(client.monthlyValue),
             contractStartDate: toDateInput(client.contractStartDate),
             contractEndDate: toDateInput(client.contractEndDate),
@@ -171,6 +176,48 @@ export default async function ClientDetailPage({
           contacts={client.contacts}
         />
       </section>
+
+      <ClientHealth
+        clientId={client.id}
+        canManage={can(actor, "health.manage")}
+        currentStatus={client.healthStatus}
+        daysSinceAssessment={daysSinceAssessment(
+          client.healthAssessments[0]?.assessedAt ?? null,
+        )}
+        owners={options.users}
+        assessments={client.healthAssessments.map((item) => ({
+          id: item.id,
+          status: item.status,
+          summary: item.summary,
+          healthScore: item.healthScore,
+          assessedByName: item.assessedBy?.name ?? null,
+          assessedAt: item.assessedAt.toISOString(),
+          openComplaints: item.openComplaints,
+          cancellationThreat: item.cancellationThreat,
+        }))}
+        complaints={client.complaints.map((item) => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          status: item.status,
+          ownerName: item.owner?.name ?? null,
+          raisedAt: item.raisedAt.toISOString(),
+          rootCause: item.rootCause,
+          finalOutcome: item.finalOutcome,
+          isOpen: isComplaintOpen(item.status),
+        }))}
+        plans={client.recoveryPlans.map((plan) => ({
+          id: plan.id,
+          status: plan.status,
+          trigger: plan.trigger,
+          objective: plan.objective,
+          actions: plan.actions,
+          ownerName: plan.owner?.name ?? null,
+          reviewDate: plan.reviewDate?.toISOString() ?? null,
+          outcome: plan.outcome,
+          isLive: isRecoveryPlanLive(plan.status),
+        }))}
+      />
 
       <ClientBrief
         clientId={client.id}

@@ -3,6 +3,8 @@ import {
   AccessPlatform,
   AccessStatus,
   ApprovalType,
+  ComplaintStatus,
+  RecoveryPlanStatus,
   CallOutcome,
   ChecklistItemStatus,
   DefectSeverity,
@@ -195,6 +197,54 @@ export const clientApprovalSchema = z.object({
 
 export const approvalWithdrawalSchema = z.object({
   reason: z.string().min(1).max(2000),
+});
+
+// --- Client health, complaints and recovery --------------------------------
+
+const score = z.number().int().min(0).max(100).nullable().optional();
+
+export const healthAssessmentSchema = z.object({
+  status: z.nativeEnum(HealthStatus),
+  summary: z.string().min(1).max(2000),
+  healthScore: score,
+  satisfactionScore: score,
+  renewalProbability: score,
+  cancellationThreat: z.boolean().optional(),
+  communicationStatus: z.string().max(200).optional().or(z.literal("")),
+  paymentStatus: z.string().max(200).optional().or(z.literal("")),
+  performanceStatus: z.string().max(200).optional().or(z.literal("")),
+  clientParticipation: z.string().max(200).optional().or(z.literal("")),
+});
+
+export const complaintSchema = z.object({
+  title: z.string().min(1).max(160),
+  description: z.string().min(1).max(4000),
+  serviceArea: z.string().max(160).optional().or(z.literal("")),
+  businessImpact: z.string().max(2000).optional().or(z.literal("")),
+  evidenceUrl: z.string().max(500).optional().or(z.literal("")),
+  ownerId: z.string().optional().or(z.literal("")),
+  followUpAt: z.string().optional().or(z.literal("")),
+});
+
+export const complaintUpdateSchema = z.object({
+  status: z.nativeEnum(ComplaintStatus).optional(),
+  rootCause: z.string().max(2000).optional().or(z.literal("")),
+  resolutionPlan: z.string().max(2000).optional().or(z.literal("")),
+  clientCommunication: z.string().max(2000).optional().or(z.literal("")),
+  finalOutcome: z.string().max(2000).optional().or(z.literal("")),
+  ownerId: z.string().optional().or(z.literal("")),
+  followUpAt: z.string().optional().or(z.literal("")),
+});
+
+export const recoveryPlanSchema = z.object({
+  planId: z.string().optional().or(z.literal("")),
+  trigger: z.string().min(1).max(1000),
+  objective: z.string().min(1).max(1000),
+  actions: z.string().min(1).max(4000),
+  status: z.nativeEnum(RecoveryPlanStatus).optional(),
+  ownerId: z.string().optional().or(z.literal("")),
+  reviewDate: z.string().optional().or(z.literal("")),
+  outcome: z.string().max(2000).optional().or(z.literal("")),
 });
 
 // --- Quality assurance -----------------------------------------------------

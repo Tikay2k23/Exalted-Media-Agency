@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 
 export interface AccountDetailsValues {
   assignedUserId: string | null;
-  healthStatus: string;
   monthlyValue: number | null;
   contractStartDate: string | null;
   contractEndDate: string | null;
@@ -22,13 +21,6 @@ export interface AccountDetailsValues {
 
 const selectClass =
   "h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100";
-
-const HEALTH_OPTIONS = [
-  { value: "NOT_ASSESSED", label: "Not assessed yet" },
-  { value: "GREEN", label: "Green — healthy" },
-  { value: "YELLOW", label: "Yellow — needs attention" },
-  { value: "RED", label: "Red — at risk of leaving" },
-];
 
 function Field({
   label,
@@ -76,7 +68,6 @@ export function AccountDetailsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assignedUserId: String(formData.get("assignedUserId") ?? ""),
-          healthStatus: String(formData.get("healthStatus") ?? "NOT_ASSESSED"),
           monthlyValue: monthly === "" ? null : Number(monthly),
           contractStartDate: String(formData.get("contractStartDate") ?? ""),
           contractEndDate: String(formData.get("contractEndDate") ?? ""),
@@ -103,7 +94,7 @@ export function AccountDetailsForm({
       <CardHeader>
         <CardTitle>Account details</CardTitle>
         <CardDescription>
-          Contract, health, and the next action. Several stage requirements read these
+          Contract, ownership, and the next action. Several stage requirements read these
           fields, so filling them in here is what unblocks the journey.
         </CardDescription>
       </CardHeader>
@@ -120,21 +111,6 @@ export function AccountDetailsForm({
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Client health">
-            <select
-              name="healthStatus"
-              defaultValue={values.healthStatus}
-              disabled={!canEdit}
-              className={selectClass}
-            >
-              {HEALTH_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
                 </option>
               ))}
             </select>

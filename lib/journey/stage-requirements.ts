@@ -17,6 +17,7 @@ import {
   hasGateSatisfyingApproval,
 } from "@/lib/approvals/approval-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
+import { hasCurrentHealthAssessment } from "@/lib/success/health-service";
 
 /**
  * Stage gates.
@@ -121,6 +122,8 @@ export interface EvaluableClient {
   agencyTasks: EvaluableTask[];
   invoices: EvaluableInvoice[];
   accessRecords: EvaluableAccessRecord[];
+  /** Newest first; the gate only needs to know one exists. */
+  healthAssessments: { status: HealthStatus }[];
   strategyBrief: ({ status: BriefStatus } & Record<string, unknown>) | null;
   defects: EvaluableDefect[];
   approvals: EvaluableApproval[];
@@ -354,11 +357,19 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "health_assessed",
     label: "Client health assessed",
-    description: "The account has a health status other than Not Assessed.",
-    check: (client) =>
-      client.healthStatus === "NOT_ASSESSED"
-        ? "This account has not been given a health status yet."
-        : null,
+    description: "Somebody has assessed the account's health and said why.",
+    check: (client) => {
+      if (client.healthStatus === "NOT_ASSESSED") {
+        return "This account has not been given a health status yet.";
+      }
+
+      // The colour alone is not the assessment. A status with no assessment
+      // behind it has nobody's name against it and no stated reason, which is
+      // what this requirement exists to prevent.
+      return hasCurrentHealthAssessment(client)
+        ? null
+        : `This account is marked ${client.healthStatus.toLowerCase()}, but nobody has recorded an assessment saying why.`;
+    },
   },
   {
     key: "renewal_date_set",

@@ -176,7 +176,10 @@ describe("account details close the stage gate loop (integration)", { skip: !has
     assert.ok(!blocked.includes("client_approver_recorded"));
   });
 
-  it("clears the health requirement once a health status is set", async () => {
+  it("does not clear the health requirement from a bare status change", async () => {
+    // Health used to be a field on this page. It is an assessment now, so
+    // writing the column straight to green must no longer open the gate -
+    // otherwise the assessment is decorative and this page is the back door.
     assert.ok((await blockingKeys("ongoing_management")).includes("health_assessed"));
 
     await prisma.client.update({
@@ -184,7 +187,7 @@ describe("account details close the stage gate loop (integration)", { skip: !has
       data: { healthStatus: "GREEN" },
     });
 
-    assert.ok(!(await blockingKeys("ongoing_management")).includes("health_assessed"));
+    assert.ok((await blockingKeys("ongoing_management")).includes("health_assessed"));
   });
 
   it("clears the renewal requirement once a renewal date is set", async () => {
@@ -203,10 +206,11 @@ describe("account details close the stage gate loop (integration)", { skip: !has
     // shorter every time another module ships. What must stay true is that the
     // account page resolves what it owns, and that whatever still blocks has a
     // home somewhere in the app.
+    // health_assessed is deliberately absent: it moved to the health panel
+    // when it became an assessment rather than a field.
     const ownedByThisPage = [
       "account_owner_assigned",
       "contract_recorded",
-      "health_assessed",
       "renewal_date_set",
       "primary_contact_recorded",
       "client_approver_recorded",

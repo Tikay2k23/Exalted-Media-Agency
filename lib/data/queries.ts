@@ -560,6 +560,19 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             approvedBy: { select: { id: true, name: true } },
           },
         },
+        healthAssessments: {
+          orderBy: { assessedAt: "desc" },
+          take: 12,
+          include: { assessedBy: { select: { id: true, name: true } } },
+        },
+        complaints: {
+          orderBy: { raisedAt: "desc" },
+          include: { owner: { select: { id: true, name: true } } },
+        },
+        recoveryPlans: {
+          orderBy: { createdAt: "desc" },
+          include: { owner: { select: { id: true, name: true } } },
+        },
         approvals: {
           orderBy: { approvedAt: "desc" },
           include: {
