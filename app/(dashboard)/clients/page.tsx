@@ -1,7 +1,7 @@
 import type { ClientStatus } from "@prisma/client";
 import Link from "next/link";
 
-import { ClientForm } from "@/components/clients/client-form";
+import { AddClientButton } from "@/components/clients/add-client-wizard";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getClientsData, serviceTypeOptions } from "@/lib/data/queries";
+import { getClientsData } from "@/lib/data/queries";
+import { SERVICE_BLUEPRINTS } from "@/lib/workflow/service-blueprints";
+import { teamRoleLabels } from "@/lib/permissions";
 import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
@@ -43,14 +45,40 @@ export default async function ClientsPage({
     assigneeId,
   });
 
+  // Built here rather than in the component so the wizard shows exactly which
+  // seats each service brings in - the same blueprint the workstreams use.
+  const serviceOptions = (
+    Object.keys(SERVICE_BLUEPRINTS) as (keyof typeof SERVICE_BLUEPRINTS)[]
+  ).map((value) => ({
+    value,
+    label: SERVICE_BLUEPRINTS[value].label,
+    summary: SERVICE_BLUEPRINTS[value].summary,
+    specialists: SERVICE_BLUEPRINTS[value].specialists.map((role) => ({
+      role,
+      label: teamRoleLabels[role],
+    })),
+  }));
+
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Client Accounts</CardTitle>
-          <CardDescription>
-            Review account ownership, service scope, current stage, and workload from one clean directory.
-          </CardDescription>
+        <CardHeader className="flex-row flex-wrap items-start justify-between gap-4">
+          <div>
+            <CardTitle>Clients</CardTitle>
+            <CardDescription>
+              Who owns each account, where it is in the journey, and what it is waiting on.
+            </CardDescription>
+          </div>
+          {canManageClients(user.role) ? (
+            <AddClientButton
+              services={serviceOptions}
+              team={data.users.map((member) => ({
+                id: member.id,
+                name: member.name,
+                teamRole: member.teamRole,
+              }))}
+            />
+          ) : null}
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 md:grid-cols-[1.4fr_0.9fr_0.9fr_auto]">
@@ -80,10 +108,6 @@ export default async function ClientsPage({
           </form>
         </CardContent>
       </Card>
-
-      {canManageClients(user.role) ? (
-        <ClientForm users={data.users} stages={data.stages} serviceTypes={serviceTypeOptions} />
-      ) : null}
 
       <Card>
         <CardHeader>

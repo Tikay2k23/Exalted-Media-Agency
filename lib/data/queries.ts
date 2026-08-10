@@ -228,6 +228,9 @@ export async function getSharedOptions() {
           id: true,
           name: true,
           role: true,
+          // The seat, not the access tier: the Add Client wizard offers
+          // people by the seat they actually hold.
+          teamRole: true,
           department: true,
           jobTitle: true,
           weeklyCapacityHours: true,
@@ -560,6 +563,19 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             approvedBy: { select: { id: true, name: true } },
           },
         },
+        workstreams: {
+          orderBy: { role: "asc" },
+          include: { owner: { select: { id: true, name: true } } },
+        },
+        handoffs: {
+          orderBy: { handedOffAt: "desc" },
+          take: 5,
+          include: {
+            toUser: { select: { id: true, name: true } },
+            fromUser: { select: { id: true, name: true } },
+          },
+        },
+        currentOwner: { select: { id: true, name: true } },
         renewals: {
           orderBy: { createdAt: "desc" },
           take: 1,

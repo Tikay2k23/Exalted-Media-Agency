@@ -253,6 +253,32 @@ export const complaintUpdateSchema = z.object({
   followUpAt: z.string().optional().or(z.literal("")),
 });
 
+// --- Guided client creation --------------------------------------------------
+
+export const newClientSchema = z.object({
+  companyName: z.string().min(1).max(200),
+  contactName: z.string().min(1).max(160),
+  contactEmail: z.string().email().max(200),
+  contactPhone: z.string().max(60).optional().or(z.literal("")),
+  website: z.string().max(300).optional().or(z.literal("")),
+
+  serviceType: z.nativeEnum(ServiceType),
+  monthlyValue: z.number().min(0).max(100_000_000).nullable().optional(),
+  contractStartDate: z.string().optional().or(z.literal("")),
+  contractEndDate: z.string().optional().or(z.literal("")),
+  targetLaunchDate: z.string().optional().or(z.literal("")),
+
+  mainGoal: z.string().max(2000).optional().or(z.literal("")),
+  mainProblem: z.string().max(2000).optional().or(z.literal("")),
+  targetAudience: z.string().max(2000).optional().or(z.literal("")),
+  mainOffer: z.string().max(2000).optional().or(z.literal("")),
+
+  projectManagerId: z.string().optional().or(z.literal("")),
+  /** Seat -> user id. Only the seats this service needs are honoured. */
+  specialistOwners: z.record(z.string(), z.string()).optional(),
+  notes: z.string().max(4000).optional().or(z.literal("")),
+});
+
 // --- Governance --------------------------------------------------------------
 
 export const sopSchema = z.object({

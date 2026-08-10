@@ -16,6 +16,7 @@ import { ClientQuality } from "@/components/clients/client-quality";
 import { ClientReporting } from "@/components/clients/client-reporting";
 import { DeleteClientButton } from "@/components/clients/delete-client-button";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
+import { JourneyOverview } from "@/components/clients/journey-overview";
 import { StageReadiness } from "@/components/clients/stage-readiness";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,7 +76,12 @@ import {
   outstandingOffboardingSteps,
 } from "@/lib/success/offboarding-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
-import { can, canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
+import { can, canAccessAssignedRecord, canManageClients, teamRoleLabels } from "@/lib/permissions";
+import {
+  JOURNEY_OWNERSHIP,
+  deriveOwnership,
+  journeyPosition,
+} from "@/lib/workflow/handoff-engine";
 import { requireUser } from "@/lib/session";
 import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
 
@@ -179,10 +185,79 @@ export default async function ClientDetailPage({
         </CardContent>
       </Card>
 
-      <StageReadiness
-        clientId={client.id}
-        currentStagePosition={client.currentStage.position}
-      />
+      {/* The five questions, answered without opening anything else. */}
+      {(() => {
+        const stageKey = client.currentStage.stageKey;
+        const position = journeyPosition(stageKey);
+        const ownership = deriveOwnership(stageKey, client.serviceType);
+        const openTasks = client.agencyTasks.filter((task) => task.status !== "DONE");
+
+        // Waiting on the client is a different kind of stuck from blocked, and
+        // conflating them is why nobody could tell whose move it was.
+        const waitingOnClient = openTasks.some(
+          (task) => task.status === "WAITING_CLIENT",
+        );
+
+        const blockers = [
+          ...(client.currentBlocker ? [client.currentBlocker] : []),
+          ...openTasks
+            .filter((task) => task.status === "BLOCKED" || task.status === "WAITING_CLIENT")
+            .map((task) => task.title),
+        ];
+
+        return (
+          <JourneyOverview
+            clientId={client.id}
+            stageName={client.currentStage.name}
+            progressPercent={
+              position === null
+                ? 0
+                : Math.round(((position + 1) / JOURNEY_OWNERSHIP.length) * 100)
+            }
+            currentOwnerLabel={ownership.current
+              .map((role) => teamRoleLabels[role])
+              .join(" + ")}
+            currentOwnerName={client.currentOwner?.name ?? client.assignedUser?.name ?? null}
+            nextOwnerLabel={
+              ownership.next.length
+                ? ownership.next.map((role) => teamRoleLabels[role]).join(" + ")
+                : "Nobody — end of the journey"
+            }
+            openTaskCount={openTasks.length}
+            targetLaunch={client.contractEndDate}
+            blockers={blockers}
+            waitingOnClient={waitingOnClient && blockers.length > 0}
+            steps={JOURNEY_OWNERSHIP.map((entry, index) => ({
+              stageKey: entry.stageKey,
+              label: entry.stageKey.replaceAll("_", " "),
+              state:
+                position === null
+                  ? "future"
+                  : index < position
+                    ? "done"
+                    : index === position
+                      ? "current"
+                      : "future",
+            }))}
+            workstreams={client.workstreams
+              .filter((stream) => stream.isRequired)
+              .map((stream) => ({
+                role: stream.role,
+                label: teamRoleLabels[stream.role],
+                ownerName: stream.owner?.name ?? null,
+                stage: stream.stage,
+                isRequired: stream.isRequired,
+              }))}
+          />
+        );
+      })()}
+
+      <div id="readiness">
+        <StageReadiness
+          clientId={client.id}
+          currentStagePosition={client.currentStage.position}
+        />
+      </div>
 
       <section className="grid items-start gap-6 xl:grid-cols-2">
         <AccountDetailsForm
