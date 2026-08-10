@@ -157,6 +157,7 @@ model User {
   sessions               Session[]
   activityLogs           ActivityLog[]            @relation("ActivityActor")
   assignedClients        Client[]                 @relation("ClientAssignee")
+  currentlyHeldClients   Client[]                 @relation("ClientCurrentOwner")
   stageChanges           ClientStageHistory[]     @relation("StageChangedBy")
   assignedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskAssignee")
   createdAgencyTasks     EmployeeTask[]           @relation("EmployeeTaskCreator")
@@ -197,6 +198,10 @@ model User {
   revisionsAssigned   RevisionItem[] @relation("RevisionAssignee")
   approvalsRecorded   Approval[]     @relation("ApprovalRecorder")
   approvalsWithdrawn  Approval[]     @relation("ApprovalWithdrawer")
+  workstreams         ClientWorkstream[] @relation("WorkstreamOwner")
+  handoffsFrom        ClientHandoff[]    @relation("HandoffFrom")
+  handoffsTo          ClientHandoff[]    @relation("HandoffTo")
+  handoffsMade        ClientHandoff[]    @relation("HandoffActor")
 
   // Launch
   launchesOwned             Launch[]              @relation("LaunchOwner")

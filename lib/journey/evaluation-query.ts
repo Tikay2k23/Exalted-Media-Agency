@@ -14,6 +14,12 @@ export const journeyEvaluationSelect = {
   companyName: true,
   assignedUserId: true,
   currentStageId: true,
+  // Needed by the handoff engine: which service the client bought decides
+  // which specialist seats exist, and who is holding it now decides whether
+  // the move is a handoff at all.
+  serviceType: true,
+  currentOwnerRole: true,
+  currentOwnerId: true,
   contractStartDate: true,
   monthlyValue: true,
   healthStatus: true,

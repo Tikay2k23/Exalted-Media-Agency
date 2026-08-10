@@ -221,6 +221,12 @@ model Client {
   /// reporting without having to walk the full history table.
   stageEnteredAt DateTime     @default(now())
   healthStatus   HealthStatus @default(NOT_ASSESSED)
+  /// The seat holding the client right now. Distinct from assignedUserId,
+  /// which is the standing account owner: during production the client is
+  /// held by a specialist while the project manager still owns the
+  /// relationship.
+  currentOwnerRole       TeamRole?
+  currentOwnerId         String?
   monthlyValue   Decimal?     @db.Decimal(12, 2)
   contractStartDate DateTime?
   contractEndDate   DateTime?
@@ -232,6 +238,7 @@ model Client {
   deletedAt         DateTime?
 
   assignedUser User?                @relation("ClientAssignee", fields: [assignedUserId], references: [id])
+  currentOwner User?                @relation("ClientCurrentOwner", fields: [currentOwnerId], references: [id], onDelete: SetNull)
   currentStage PipelineStage        @relation(fields: [currentStageId], references: [id])
   stageHistory ClientStageHistory[]
   agencyTasks  EmployeeTask[]
@@ -263,6 +270,8 @@ model Client {
   referralsGiven         Referral[]               @relation("ClientReferrals")
   trainingSessions       TrainingSession[]
   offboarding            OffboardingRecord?
+  workstreams            ClientWorkstream[]
+  handoffs               ClientHandoff[]
   audits                 Audit[]
 
   @@index([assignedUserId])

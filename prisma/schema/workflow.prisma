@@ -1,0 +1,85 @@
+// Service blueprints, role workstreams, and recorded handoffs.
+//
+// This is the answer to "who has the client now, and who gets it next". Before
+// this existed, ownership was a single assignedUserId for the whole
+// relationship, so the system could not say which role was holding the account
+// at a given moment, let alone who it passed to afterwards.
+
+/// Where one role's own work on a client currently sits.
+///
+/// Deliberately generic rather than one enum per specialism: the five role
+/// pipelines are the same shape, and separate enums would mean five sets of
+/// near-identical code to keep in step.
+enum WorkstreamStage {
+  ASSIGNED
+  WAITING_ON_ACCESS
+  WAITING_ON_ASSETS
+  READY
+  IN_PROGRESS
+  SELF_REVIEW
+  INTERNAL_REVIEW
+  QA_CORRECTIONS
+  READY_TO_SHIP
+  LIVE
+  COMPLETE
+  NOT_REQUIRED
+}
+
+/// One role's stream of work on one client.
+///
+/// Created from the purchased service's blueprint, so a CRM-only client never
+/// grows a website workstream and nobody has to close one that was never real.
+model ClientWorkstream {
+  id        String          @id @default(cuid())
+  clientId  String
+  /// The seat responsible for this stream of work.
+  role      TeamRole
+  stage     WorkstreamStage @default(ASSIGNED)
+  /// The person in that seat. Null means the seat is needed but unstaffed,
+  /// which is a real state worth showing rather than hiding behind a default.
+  ownerId   String?
+  /// Position in the master journey this stream feeds, for the roll-up.
+  isRequired Boolean        @default(true)
+  startedAt DateTime?
+  completedAt DateTime?
+  blockedReason String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("WorkstreamOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, role])
+  @@index([role, stage])
+  @@index([ownerId])
+  @@index([stage])
+}
+
+/// A recorded transfer of the client from one seat to another.
+///
+/// Append-only. The point is that "who had it when" survives reassignment, so
+/// the timeline can be read months later without guessing.
+model ClientHandoff {
+  id         String    @id @default(cuid())
+  clientId   String
+  fromRole   TeamRole?
+  toRole     TeamRole
+  fromUserId String?
+  toUserId   String?
+  /// The journey stage the client entered on this handoff.
+  stageKey   String
+  note       String?
+  /// Set when the receiving person acknowledges they have it.
+  acceptedAt DateTime?
+  handedOffAt DateTime @default(now())
+  handedOffById String?
+
+  client      Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fromUser    User?  @relation("HandoffFrom", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser      User?  @relation("HandoffTo", fields: [toUserId], references: [id], onDelete: SetNull)
+  handedOffBy User?  @relation("HandoffActor", fields: [handedOffById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, handedOffAt])
+  @@index([toUserId])
+  @@index([toRole])
+}

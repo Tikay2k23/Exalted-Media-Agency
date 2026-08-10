@@ -2,6 +2,11 @@ import { addDays } from "date-fns";
 
 import { logActivity } from "@/lib/activity";
 import {
+  recordHandoff,
+  syncWorkstreams,
+  workstreamOwners,
+} from "@/lib/workflow/workstream-service";
+import {
   getStageTaskTemplates,
   resolveAssignee,
 } from "@/lib/automation/stage-automation";
@@ -54,6 +59,8 @@ export type MoveClientStageResult =
       wasOverridden: boolean;
       unmet: RequirementEvaluation[];
       createdTaskCount: number;
+      /** The seat the client was handed to, when ownership changed. */
+      handedOffTo?: string | null;
     }
   | {
       ok: false;
@@ -111,6 +118,7 @@ export async function moveClientStage(
       wasOverridden: false,
       unmet: [],
       createdTaskCount: 0,
+      handedOffTo: null,
     };
   }
 
@@ -171,11 +179,18 @@ export async function moveClientStage(
 
   const now = new Date();
   const templates = getStageTaskTemplates(targetStage.stageKey);
+
+  // Make sure the client has the workstreams its service calls for before any
+  // task is routed at a specialist seat, or the first move into production
+  // would route at seats that do not exist yet.
+  await syncWorkstreams({ clientId: client.id, service: client.serviceType });
+
   const assigneeCandidates = {
     accountOwnerId: client.assignedUserId,
     projectManagerId: client.projects.find((project) => project.projectManagerId)
       ?.projectManagerId ?? null,
     actorId: actor.id,
+    workstreamOwners: await workstreamOwners(client.id),
   };
 
   const generatedTasks = templates.map((template) => {
@@ -260,6 +275,21 @@ export async function moveClientStage(
     },
   });
 
+  // The handoff is recorded after the move rather than inside it: the client
+  // has genuinely changed hands only once the stage change has committed, and
+  // a handoff row pointing at a transaction that rolled back would be a lie in
+  // the one place people go to read the history.
+  const handoff = await recordHandoff({
+    clientId: client.id,
+    companyName: client.companyName,
+    service: client.serviceType,
+    toStageKey: targetStage.stageKey,
+    actorId: actor.id,
+    fromRole: client.currentOwnerRole,
+    fromUserId: client.currentOwnerId,
+    note: wasOverridden ? requestedOverride?.reason.trim() : null,
+  });
+
   await notifyStageChange({
     actor,
     client,
@@ -275,6 +305,7 @@ export async function moveClientStage(
     wasOverridden,
     unmet: gate.unmet,
     createdTaskCount: generatedTasks.length,
+    handedOffTo: handoff?.toRole ?? null,
   };
 }
 

@@ -1,4 +1,4 @@
-import type { TaskCategory, TaskPriority } from "@prisma/client";
+import type { TaskCategory, TaskPriority, TeamRole } from "@prisma/client";
 
 /**
  * Stage automation.
@@ -17,6 +17,10 @@ export type AssigneeStrategy =
   | "ACCOUNT_OWNER"
   /** The manager of the account's delivery project. */
   | "PROJECT_MANAGER"
+  /** Whoever holds that specialist seat on this client's workstreams. */
+  | "AUTOMATION_SPECIALIST"
+  | "CREATIVE_SPECIALIST"
+  | "ADS_SPECIALIST"
   /** Whoever moved the account into this stage. */
   | "ACTOR";
 
@@ -309,6 +313,14 @@ export interface AssigneeCandidates {
   accountOwnerId: string | null;
   projectManagerId: string | null;
   actorId: string;
+  /**
+   * Who holds each specialist seat on this client, from its workstreams.
+   *
+   * Absent seats are simply not here: a CRM-only client has no creative
+   * workstream, and a task routed at one should land somewhere sensible rather
+   * than inventing an owner.
+   */
+  workstreamOwners?: Partial<Record<TeamRole, string | null>>;
 }
 
 /**
@@ -316,18 +328,34 @@ export interface AssigneeCandidates {
  *
  * Falls back through account owner then the acting user, so automation never
  * produces an unowned work item - an unassigned task is one nobody does.
+ *
+ * The specialist strategies were the missing piece: before them every
+ * generated task landed on the project manager or whoever moved the stage,
+ * which is why work never appeared to reach the people doing it.
  */
 export function resolveAssignee(
   strategy: AssigneeStrategy,
   candidates: AssigneeCandidates,
 ): string {
-  const { accountOwnerId, projectManagerId, actorId } = candidates;
+  const { accountOwnerId, projectManagerId, actorId, workstreamOwners } = candidates;
+
+  const specialist = (role: TeamRole) =>
+    // Falling back to the project manager rather than the actor: if the seat
+    // is unstaffed, the person coordinating delivery is who picks it up, and
+    // they are the one who can staff it.
+    workstreamOwners?.[role] ?? projectManagerId ?? accountOwnerId ?? actorId;
 
   switch (strategy) {
     case "PROJECT_MANAGER":
       return projectManagerId ?? accountOwnerId ?? actorId;
     case "ACCOUNT_OWNER":
       return accountOwnerId ?? actorId;
+    case "AUTOMATION_SPECIALIST":
+      return specialist("AUTOMATION_SPECIALIST");
+    case "CREATIVE_SPECIALIST":
+      return specialist("CREATIVE_SPECIALIST");
+    case "ADS_SPECIALIST":
+      return specialist("ADS_SPECIALIST");
     case "ACTOR":
     default:
       return actorId;
