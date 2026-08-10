@@ -75,6 +75,12 @@ export const NAVIGATION: NavigationGroup[] = [
         description: "Drag-and-drop account movement",
       },
       {
+        href: "/work",
+        label: "My Work",
+        icon: "CalendarRange",
+        description: "Your board and what needs you today",
+      },
+      {
         href: "/fulfillment",
         label: "Weekly Work",
         icon: "CalendarRange",
