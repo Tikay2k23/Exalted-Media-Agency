@@ -563,6 +563,9 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             approvedBy: { select: { id: true, name: true } },
           },
         },
+        intakeForm: {
+          include: { reviewedBy: { select: { id: true, name: true } } },
+        },
         workstreams: {
           orderBy: { role: "asc" },
           include: { owner: { select: { id: true, name: true } } },

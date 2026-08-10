@@ -1,0 +1,53 @@
+// The client-facing intake form.
+//
+// This did not exist. Intake was chased through internal tasks - "send the
+// onboarding form" - with no form to send, no status to watch, and nowhere for
+// the answers to land. The project manager had a task telling them to do
+// something the system could not do.
+
+enum IntakeStatus {
+  NOT_SENT
+  SENT
+  VIEWED
+  PARTIALLY_COMPLETED
+  SUBMITTED
+  REVIEWED
+}
+
+/// One intake form per client.
+///
+/// Answers are held as JSON keyed by question id rather than as a table of
+/// rows: the questions asked depend on what the client bought, so a fixed
+/// column set would either be mostly null or need a migration per service.
+/// The question catalogue lives in code, which is also what renders them.
+model IntakeForm {
+  id       String       @id @default(cuid())
+  clientId String       @unique
+  status   IntakeStatus @default(NOT_SENT)
+
+  /// Unguessable, and the only thing standing between the public route and
+  /// this client's record. Rotated every time the form is re-sent, so a link
+  /// forwarded to the wrong person stops working the moment it is resent.
+  token       String    @unique
+  /// A link that never expires is a permanent hole. Checked on every request.
+  expiresAt   DateTime?
+
+  answers     Json?
+  sentAt      DateTime?
+  sentById    String?
+  viewedAt    DateTime?
+  lastSavedAt DateTime?
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+  reviewedById String?
+  reviewNotes String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sentBy     User?  @relation("IntakeSender", fields: [sentById], references: [id], onDelete: SetNull)
+  reviewedBy User?  @relation("IntakeReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([expiresAt])
+}

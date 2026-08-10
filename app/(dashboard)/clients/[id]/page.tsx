@@ -9,6 +9,7 @@ import { ClientGrowth } from "@/components/clients/client-growth";
 import { ClientHealth } from "@/components/clients/client-health";
 import { ClientOffboarding } from "@/components/clients/client-offboarding";
 import { ClientForm } from "@/components/clients/client-form";
+import { ClientIntake } from "@/components/clients/client-intake";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
 import { ClientProjects } from "@/components/clients/client-projects";
@@ -76,6 +77,10 @@ import {
   outstandingOffboardingSteps,
 } from "@/lib/success/offboarding-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
+import {
+  deriveIntakeProgress,
+  sectionsForService,
+} from "@/lib/intake/question-catalogue";
 import { can, canAccessAssignedRecord, canManageClients, teamRoleLabels } from "@/lib/permissions";
 import {
   JOURNEY_OWNERSHIP,
@@ -500,6 +505,43 @@ export default async function ClientDetailPage({
           isLive: isRecoveryPlanLive(plan.status),
         }))}
       />
+
+      {/* Intake comes before the brief: the brief is written from what the
+          client tells us here. */}
+      {(() => {
+        const form = client.intakeForm;
+        const answers = (form?.answers as Record<string, string> | null) ?? null;
+        const progress = deriveIntakeProgress(client.serviceType, answers);
+
+        return (
+          <ClientIntake
+            clientId={client.id}
+            canManage={can(actor, "clients.edit")}
+            intake={{
+              exists: form !== null,
+              status: form?.status ?? "NOT_SENT",
+              sentAt: form?.sentAt?.toISOString() ?? null,
+              viewedAt: form?.viewedAt?.toISOString() ?? null,
+              submittedAt: form?.submittedAt?.toISOString() ?? null,
+              reviewedAt: form?.reviewedAt?.toISOString() ?? null,
+              reviewedByName: form?.reviewedBy?.name ?? null,
+              reviewNotes: form?.reviewNotes ?? null,
+              expiresAt: form?.expiresAt?.toISOString() ?? null,
+              percent: progress.percent,
+              missingRequired: progress.missingRequired,
+              groups: form?.submittedAt
+                ? sectionsForService(client.serviceType).map((section) => ({
+                    title: section.title,
+                    answers: section.questions.map((question) => ({
+                      label: question.label,
+                      value: answers?.[question.id] ?? null,
+                    })),
+                  }))
+                : [],
+            }}
+          />
+        );
+      })()}
 
       <ClientBrief
         clientId={client.id}

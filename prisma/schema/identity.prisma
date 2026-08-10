@@ -202,6 +202,8 @@ model User {
   handoffsFrom        ClientHandoff[]    @relation("HandoffFrom")
   handoffsTo          ClientHandoff[]    @relation("HandoffTo")
   handoffsMade        ClientHandoff[]    @relation("HandoffActor")
+  intakeFormsSent     IntakeForm[]       @relation("IntakeSender")
+  intakeFormsReviewed IntakeForm[]       @relation("IntakeReviewer")
 
   // Launch
   launchesOwned             Launch[]              @relation("LaunchOwner")

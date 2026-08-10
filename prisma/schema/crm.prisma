@@ -271,6 +271,7 @@ model Client {
   trainingSessions       TrainingSession[]
   offboarding            OffboardingRecord?
   workstreams            ClientWorkstream[]
+  intakeForm             IntakeForm?
   handoffs               ClientHandoff[]
   audits                 Audit[]
 

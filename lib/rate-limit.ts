@@ -155,6 +155,23 @@ export const loginOriginRule: RateLimitRule = {
 };
 
 /**
+ * Attempts against the public intake endpoint from one network origin.
+ *
+ * The intake link is 32 random bytes, so guessing one is not a realistic
+ * attack - this exists to stop somebody hammering the endpoint rather than to
+ * stop them succeeding. Generous enough that a client filling in a long form
+ * on a flaky connection is never turned away.
+ *
+ * Worth knowing: the store behind this is in-memory, so on a serverless host
+ * the limit is per instance and resets on deploy. That is a real weakness and
+ * it is written down rather than implied.
+ */
+export const intakeOriginRule: RateLimitRule = {
+  limit: 60,
+  windowMs: 10 * 60 * 1000,
+};
+
+/**
  * Resolves the client address from proxy headers. Vercel and most reverse
  * proxies set `x-forwarded-for`; the left-most entry is the original client.
  */
