@@ -2,7 +2,8 @@
 
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,25 @@ export function AddClientWizard({
   const service = services.find((option) => option.value === values.serviceType) ?? null;
   const projectManagers = team.filter((member) => member.teamRole === "PROJECT_MANAGER");
 
+  // Escape closes, and the page behind stops scrolling while this is open -
+  // otherwise the background moves under a dialog that fills the screen.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
   function set(key: keyof typeof values, value: string) {
     setValues((current) => ({ ...current, [key]: value }));
   }
@@ -156,8 +176,28 @@ export function AddClientWizard({
     });
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm">
+  // This only ever renders after a click, so there is a document. The guard is
+  // for safety rather than for a case that happens.
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  /*
+   * Rendered into document.body rather than in place.
+   *
+   * Every Card in this app carries `backdrop-blur`, and an element with a
+   * backdrop-filter becomes the containing block for `position: fixed`
+   * descendants. In place, this dialog was positioned against the card that
+   * holds the button rather than the viewport, so it was clipped to a strip
+   * and scrolled inside it. A portal is the only reliable escape.
+   */
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add a client"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm"
+    >
       <div className="my-8 w-full max-w-2xl rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_40px_120px_-40px_rgba(15,23,42,0.5)]">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
           <div>
@@ -455,7 +495,8 @@ export function AddClientWizard({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
