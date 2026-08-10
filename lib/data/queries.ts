@@ -716,14 +716,19 @@ export async function getPipelineData(user: AppUser, assigneeId?: string | "ALL"
             ? { assignedUserId: assigneeId }
             : {}),
         },
-        include: {
-          assignedUser: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
-            },
-          },
+        // Exactly what a board card shows, and nothing else. Returning the whole
+        // row sent every client's contract value, blocker and internal notes to
+        // the browser, and the Decimal on monthlyValue cannot cross into a
+        // client component at all.
+        select: {
+          id: true,
+          companyName: true,
+          clientName: true,
+          status: true,
+          serviceType: true,
+          updatedAt: true,
+          currentStageId: true,
+          assignedUser: { select: { name: true } },
         },
         orderBy: {
           updatedAt: "desc",
