@@ -1,8 +1,12 @@
+import Link from "next/link";
+
 import { ProfileSettingsForm } from "@/components/settings/profile-settings-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { roleLabels } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { loadAuthContext } from "@/lib/authz";
+import { can } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { formatEnumLabel } from "@/lib/utils";
 
@@ -11,6 +15,10 @@ export const runtime = "nodejs";
 
 export default async function SettingsPage() {
   const sessionUser = await requireUser();
+  // The link is hidden from people who cannot use it. The page itself still
+  // checks - a hidden link is tidiness, not a lock.
+  const actor = await loadAuthContext(sessionUser.id);
+  const canManageUsers = actor !== null && can(actor, "users.manage");
   let user:
     | {
         id: string;
@@ -81,6 +89,27 @@ export default async function SettingsPage() {
           </div>
         </CardHeader>
       </Card>
+
+      {/* User administration lives here rather than in the main menu: it is a
+          real page, but almost nobody's first stop. */}
+      {canManageUsers ? (
+        <Card>
+          <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>User accounts</CardTitle>
+              <CardDescription>
+                Who can sign in, which seat they hold, and what they may do.
+              </CardDescription>
+            </div>
+            <Link
+              href="/admin/users"
+              className="inline-flex items-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Manage users
+            </Link>
+          </CardHeader>
+        </Card>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <ProfileSettingsForm

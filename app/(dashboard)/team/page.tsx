@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AgencyTaskPanel } from "@/components/team/agency-task-panel";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { PerformanceTable } from "@/components/team/performance-table";
@@ -18,6 +20,26 @@ export default async function TeamPage() {
 
   return (
     <div className="space-y-6">
+      {/* Weekly updates used to be a top-level menu item competing with four
+          other things that also sounded like "the work". It belongs with the
+          people it is about. */}
+      <Card>
+        <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle>Weekly updates</CardTitle>
+            <CardDescription>
+              What each person did this week, and what stopped them.
+            </CardDescription>
+          </div>
+          <Link
+            href="/fulfillment"
+            className="inline-flex items-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Open weekly work
+          </Link>
+        </CardHeader>
+      </Card>
+
       {data.isDegraded ? (
         <Card className="border-amber-200 bg-amber-50">
           <CardHeader>

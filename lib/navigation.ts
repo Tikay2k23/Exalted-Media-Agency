@@ -9,6 +9,12 @@ import type { Permission } from "@/lib/permissions";
  *
  * Only routes that exist are listed here. A navigation entry pointing at an
  * unbuilt page is a broken link, not a roadmap.
+ *
+ * Kept deliberately short. Five of the eleven entries this replaced - Accounts,
+ * Client Journey, Pipeline, My Work, Weekly Work - all read as "where the work
+ * is", and nobody could tell which one to open. Pages that are real but rarely
+ * the first thing you want now live where they belong rather than competing for
+ * a top-level slot: weekly updates under Team, user accounts under Settings.
  */
 
 export interface NavigationItem {
@@ -34,7 +40,13 @@ export const NAVIGATION: NavigationGroup[] = [
         href: "/dashboard",
         label: "Dashboard",
         icon: "LayoutDashboard",
-        description: "Agency command centre",
+        description: "Where the agency stands today",
+      },
+      {
+        href: "/work",
+        label: "My Work",
+        icon: "CalendarRange",
+        description: "What needs you, and your board",
       },
     ],
   },
@@ -43,10 +55,10 @@ export const NAVIGATION: NavigationGroup[] = [
     items: [
       {
         href: "/leads",
-        label: "Leads and Sales",
+        label: "Sales",
         icon: "Flame",
         anyOf: ["leads.view.all", "leads.view.assigned"],
-        description: "Lead pipeline, qualification, and conversion",
+        description: "Leads, qualification and closing",
       },
     ],
   },
@@ -55,37 +67,17 @@ export const NAVIGATION: NavigationGroup[] = [
     items: [
       {
         href: "/clients",
-        label: "Accounts",
+        label: "Clients",
         icon: "BriefcaseBusiness",
         anyOf: ["clients.view.all", "clients.view.assigned"],
-        description: "Client account directory",
+        description: "Every account and everything on it",
       },
       {
         href: "/journey",
-        label: "Client Journey",
+        label: "Journey",
         icon: "Route",
         anyOf: ["journey.view"],
-        description: "Stage gates and journey control",
-      },
-      {
-        href: "/pipeline",
-        label: "Pipeline",
-        icon: "KanbanSquare",
-        anyOf: ["journey.view"],
-        description: "Drag-and-drop account movement",
-      },
-      {
-        href: "/work",
-        label: "My Work",
-        icon: "CalendarRange",
-        description: "Your board and what needs you today",
-      },
-      {
-        href: "/fulfillment",
-        label: "Weekly Work",
-        icon: "CalendarRange",
-        anyOf: ["workItems.view.all", "workItems.view.assigned"],
-        description: "Weekly execution and EOD updates",
+        description: "Where every account is, and what is blocking it",
       },
     ],
   },
@@ -97,27 +89,20 @@ export const NAVIGATION: NavigationGroup[] = [
         label: "Team",
         icon: "Users2",
         anyOf: ["team.view", "dashboard.view.own"],
-        description: "Workload and capacity",
+        description: "Workload, capacity and weekly updates",
       },
       {
         href: "/governance",
-        label: "Governance",
+        label: "SOPs and Audits",
         icon: "ScrollText",
         anyOf: ["governance.view"],
-        description: "SOPs, audits and improvement",
-      },
-      {
-        href: "/admin/users",
-        label: "Users",
-        icon: "ShieldCheck",
-        anyOf: ["users.manage"],
-        description: "Accounts, roles, and positions",
+        description: "The rules, and whether they are followed",
       },
       {
         href: "/settings",
         label: "Settings",
         icon: "Settings2",
-        description: "Your profile and preferences",
+        description: "Your profile, and user accounts",
       },
     ],
   },
