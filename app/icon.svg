@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="The Exalted Media">
+  <title>The Exalted Media</title>
+  <!--
+    The X from the wordmark, on its own.
+
+    Colours are sampled from the artwork rather than eyeballed: cyan #00D9F8 at
+    the top-left, through blue #0057FE, to magenta #FA01CC at the bottom-right.
+    The sweep runs corner to corner, which is why the gradient is defined in
+    object bounding-box space along the same diagonal as the strokes.
+
+    Drawn as a vector rather than exported from the PNG so it stays sharp at
+    16px, which is the size that actually matters for a tab icon.
+  -->
+  <defs>
+    <linearGradient id="exalted" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00D9F8" />
+      <stop offset="0.42" stop-color="#0057FE" />
+      <stop offset="1" stop-color="#FA01CC" />
+    </linearGradient>
+  </defs>
+  <path
+    fill="url(#exalted)"
+    d="M4 2H36l15 24 15-24h30L66 50l31 48H66L50 76l-17 22H3l31-48Z"
+  />
+</svg>

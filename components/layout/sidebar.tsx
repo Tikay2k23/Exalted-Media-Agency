@@ -18,6 +18,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { ExaltedLockup } from "@/components/brand/exalted-mark";
 import { Badge } from "@/components/ui/badge";
 import { visibleNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -107,12 +108,7 @@ export function Sidebar({
     <>
       {/* Compact bar shown only below the xl breakpoint. */}
       <div className="flex items-center justify-between rounded-[1.75rem] border border-white/70 bg-slate-950 px-5 py-4 text-slate-100 xl:hidden">
-        <div>
-          <p className="text-[0.65rem] uppercase tracking-[0.35em] text-sky-200/80">
-            Exalted Media
-          </p>
-          <h1 className="mt-1 text-lg font-semibold tracking-tight">Operations</h1>
-        </div>
+        <ExaltedLockup idSuffix="mobile-bar" />
         <button
           type="button"
           onClick={() => setIsOpen(true)}
@@ -135,10 +131,7 @@ export function Sidebar({
           <aside className="absolute inset-y-0 left-0 w-[min(20rem,85vw)] overflow-y-auto bg-slate-950 px-5 py-6 text-slate-100">
             <div className="mb-8 flex items-start justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-sky-200/80">
-                  Exalted Media
-                </p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight">Operations</h1>
+                <ExaltedLockup idSuffix="drawer" />
                 <Badge tone="sky" className="mt-3">
                   {roleLabel}
                 </Badge>
@@ -164,12 +157,7 @@ export function Sidebar({
 
       <aside className="hidden w-full max-w-xs rounded-[2rem] border border-white/70 bg-slate-950 px-5 py-6 text-slate-100 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.65)] xl:block">
         <div className="mb-10 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-sky-200/80">
-              Exalted Media
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Operations</h1>
-          </div>
+          <ExaltedLockup idSuffix="sidebar" />
           <Badge tone="sky">{roleLabel}</Badge>
         </div>
 

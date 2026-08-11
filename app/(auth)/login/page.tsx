@@ -1,4 +1,5 @@
-import { ArrowUpRight, BriefcaseBusiness, ClipboardCheck, KanbanSquare } from "lucide-react";
+import { ExaltedMark } from "@/components/brand/exalted-mark";
+import { BriefcaseBusiness, ClipboardCheck, KanbanSquare } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/auth/login-form";
@@ -36,11 +37,16 @@ export default async function LoginPage() {
     <main className="min-h-screen px-4 py-8 md:px-8 lg:px-12">
       <div className="mx-auto grid max-w-7xl gap-8 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-[2.5rem] bg-slate-950 px-8 py-10 text-white shadow-[0_24px_80px_-36px_rgba(15,23,42,0.8)] sm:px-10 lg:px-14 lg:py-14">
-          <div className="flex items-center gap-3 text-sky-300">
-            <div className="rounded-2xl bg-white/10 p-3">
-              <ArrowUpRight className="h-5 w-5" />
+          <div className="flex items-center gap-3">
+            <ExaltedMark className="h-11 w-11 shrink-0" idSuffix="login" />
+            <div>
+              <p className="text-[0.6rem] uppercase tracking-[0.32em] text-sky-200/80">
+                The Exalted
+              </p>
+              <p className="text-lg font-semibold leading-tight tracking-tight text-white">
+                Operations
+              </p>
             </div>
-            <p className="text-xs uppercase tracking-[0.35em]">Exalted Media Operations</p>
           </div>
 
           <div className="mt-14 max-w-2xl">

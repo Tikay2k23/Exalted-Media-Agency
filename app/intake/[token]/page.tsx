@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ExaltedMark } from "@/components/brand/exalted-mark";
 import { IntakeFormClient } from "@/components/intake/intake-form-client";
 import { loadIntakeByToken } from "@/lib/intake/intake-service";
 import { sectionsForService } from "@/lib/intake/question-catalogue";
@@ -42,9 +43,12 @@ export default async function IntakePage({
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 md:px-6 md:py-14">
       <header className="mb-8">
-        <p className="text-xs uppercase tracking-[0.3em] text-sky-600">
-          The Exalted Media
-        </p>
+        <div className="mb-5 flex items-center gap-3">
+          <ExaltedMark className="h-9 w-9 shrink-0" idSuffix="intake" />
+          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
+            The Exalted Media
+          </p>
+        </div>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
           Getting started with {form.client.companyName}
         </h1>
