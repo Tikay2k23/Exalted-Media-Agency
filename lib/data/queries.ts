@@ -964,7 +964,7 @@ export async function getWeeklyTaskTrackerData(user: AppUser, filters?: WeeklyTa
 export async function getTeamViewData(user: AppUser) {
   const dashboardData = await getDashboardData(user);
   try {
-    const [users, agencyTasks, clients, assignableUsers] = await Promise.all([
+    const [users, agencyTasks, clients, assignableUsers, projects, sops] = await Promise.all([
       prisma.user.findMany({
         where: canViewAllAgencyData(user.role) ? { isActive: true } : { id: user.id },
         orderBy: { name: "asc" },
@@ -1025,16 +1025,32 @@ export async function getTeamViewData(user: AppUser) {
         : Promise.resolve([]),
       canManageEmployeeTasks(user.role)
         ? prisma.user.findMany({
-            where: { isActive: true },
+            where: { isActive: true, deletedAt: null },
             orderBy: { name: "asc" },
             select: {
               id: true,
               name: true,
               role: true,
+              // The seat, so the form can suggest who normally does this work.
+              teamRole: true,
               department: true,
               jobTitle: true,
               weeklyCapacityHours: true,
             },
+          })
+        : Promise.resolve([]),
+      // Campaigns a task can belong to, and the SOPs the guidance panel links.
+      canManageEmployeeTasks(user.role)
+        ? prisma.project.findMany({
+            where: { deletedAt: null },
+            orderBy: { name: "asc" },
+            select: { id: true, name: true, clientId: true },
+          })
+        : Promise.resolve([]),
+      canManageEmployeeTasks(user.role)
+        ? prisma.sop.findMany({
+            orderBy: { reference: "asc" },
+            select: { id: true, reference: true, title: true, status: true },
           })
         : Promise.resolve([]),
     ]);
@@ -1055,6 +1071,8 @@ export async function getTeamViewData(user: AppUser) {
       taskOptions: {
         clients,
         users: assignableUsers,
+        projects,
+        sops,
       },
     };
   } catch (error) {
@@ -1072,6 +1090,8 @@ export async function getTeamViewData(user: AppUser) {
       taskOptions: {
         clients: [],
         users: [],
+        projects: [],
+        sops: [],
       },
     };
   }

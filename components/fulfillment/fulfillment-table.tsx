@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ALL_STATUSES } from "@/lib/tasks/task-catalogue";
 import { cn, formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
 
 type TrackerTask = {
@@ -58,23 +59,13 @@ type TrackerTask = {
 };
 
 /**
- * Every status a work item can hold, labelled the way someone would say it out
- * loud. The list had fallen behind the database, so six statuses existed that
- * nobody could actually select.
+ * Every status a work item can hold, from the one catalogue.
+ *
+ * This list used to be restated here and had fallen behind the database. Now
+ * the tracker, the assignment form and the stage gates all read the same set,
+ * so a status cannot exist on one screen and not another.
  */
-const statusOptions: { value: string; label: string }[] = [
-  { value: "TODO", label: "Not started" },
-  { value: "READY", label: "Ready to start" },
-  { value: "IN_PROGRESS", label: "In progress" },
-  { value: "WAITING_INTERNAL", label: "Waiting on someone here" },
-  { value: "WAITING_CLIENT", label: "Waiting on the client" },
-  { value: "BLOCKED", label: "Blocked" },
-  { value: "READY_FOR_QA", label: "Ready for QA" },
-  { value: "IN_REVIEW", label: "In review" },
-  { value: "CHANGES_REQUIRED", label: "Changes needed" },
-  { value: "DONE", label: "Done" },
-  { value: "CANCELLED", label: "Cancelled" },
-];
+const statusOptions: { value: string; label: string }[] = ALL_STATUSES;
 const briefPreviewThreshold = 260;
 
 function toneForStatus(status: string): "slate" | "sky" | "amber" | "rose" | "emerald" {
@@ -82,9 +73,12 @@ function toneForStatus(status: string): "slate" | "sky" | "amber" | "rose" | "em
     case "IN_PROGRESS":
       return "sky";
     case "BLOCKED":
+    case "REVISION_REQUIRED":
       return "rose";
-    case "IN_REVIEW":
+    case "WAITING_CLIENT":
+    case "NEEDS_REVIEW":
       return "amber";
+    case "APPROVED":
     case "DONE":
       return "emerald";
     default:

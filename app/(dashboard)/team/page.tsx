@@ -56,6 +56,8 @@ export default async function TeamPage() {
         tasks={data.agencyTasks}
         users={data.taskOptions.users}
         clients={data.taskOptions.clients}
+        projects={data.taskOptions.projects}
+        sops={data.taskOptions.sops}
         canManageTasks={canManageTasks}
         currentUserId={user.id}
         summary={data.agencyTaskSummary}

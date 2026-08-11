@@ -18,6 +18,7 @@ import {
 } from "@/lib/approvals/approval-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import { hasCurrentHealthAssessment } from "@/lib/success/health-service";
+import { OPEN_STATUSES } from "@/lib/tasks/task-catalogue";
 
 /**
  * Stage gates.
@@ -33,18 +34,13 @@ import { hasCurrentHealthAssessment } from "@/lib/success/health-service";
  * gate at all.
  */
 
-/** Work item statuses that mean "still outstanding". */
-const OPEN_TASK_STATUSES: ReadonlySet<EmployeeTaskStatus> = new Set([
-  "TODO",
-  "READY",
-  "IN_PROGRESS",
-  "WAITING_INTERNAL",
-  "WAITING_CLIENT",
-  "BLOCKED",
-  "IN_REVIEW",
-  "CHANGES_REQUIRED",
-  "READY_FOR_QA",
-]);
+/**
+ * Work item statuses that mean "still outstanding".
+ *
+ * Taken from the task catalogue rather than restated here, so a gate and a
+ * dropdown can never disagree about whether something is finished.
+ */
+const OPEN_TASK_STATUSES: ReadonlySet<EmployeeTaskStatus> = new Set(OPEN_STATUSES);
 
 export function isOpenTask(status: EmployeeTaskStatus) {
   return OPEN_TASK_STATUSES.has(status);
@@ -269,15 +265,24 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
     label: "Production work complete",
     description: "No production work item is still open.",
     check: (client) => {
+      // The categories that represent building something for the client.
+      // Client management and internal operations are deliberately absent:
+      // an open "send the client an update" task should not hold production.
       const productionCategories: TaskCategory[] = [
-        "CONTENT_CALENDAR",
+        "CONTENT_PLANNING",
         "COPYWRITING",
-        "CREATIVE_PRODUCTION",
-        "PAID_MEDIA_OPTIMIZATION",
-        "SEO_AUDIT",
-        "EMAIL_CAMPAIGN",
-        "WEBSITE_UPDATE",
-        "COMMUNITY_MANAGEMENT",
+        "CREATIVE_DESIGN",
+        "VIDEO_PRODUCTION",
+        "PAID_MEDIA",
+        "SEO",
+        "SOCIAL_MEDIA",
+        "EMAIL_AND_SMS_MARKETING",
+        "CRM_AND_AUTOMATION",
+        "FUNNELS_AND_LANDING_PAGES",
+        "WEBSITE_UPDATES",
+        "ANALYTICS_AND_TRACKING",
+        "REPUTATION_MANAGEMENT",
+        "INTEGRATIONS",
       ];
 
       const open = client.agencyTasks.filter(

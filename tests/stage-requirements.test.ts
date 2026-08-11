@@ -470,9 +470,13 @@ describe("requirement catalogue integrity", () => {
   });
 
   it("treats every non-terminal status as open work", () => {
+    assert.equal(isOpenTask("BACKLOG"), true);
     assert.equal(isOpenTask("TODO"), true);
     assert.equal(isOpenTask("BLOCKED"), true);
-    assert.equal(isOpenTask("READY_FOR_QA"), true);
+    assert.equal(isOpenTask("NEEDS_REVIEW"), true);
+    assert.equal(isOpenTask("REVISION_REQUIRED"), true);
+    // Approved is finished work waiting to ship, not work still to do.
+    assert.equal(isOpenTask("APPROVED"), false);
     assert.equal(isOpenTask("DONE"), false);
     assert.equal(isOpenTask("CANCELLED"), false);
   });

@@ -43,7 +43,9 @@ import {
   Role,
   ServiceType,
   TaskCategory,
+  TaskPlatform,
   TaskPriority,
+  TaskRecurrence,
 } from "@prisma/client";
 import { z } from "zod";
 
@@ -118,6 +120,25 @@ export const employeeTaskFormSchema = z.object({
   estimatedHours: z.coerce.number().int().min(1).max(40),
   status: z.nativeEnum(EmployeeTaskStatus).default(EmployeeTaskStatus.TODO),
   clientId: z.string().optional().or(z.literal("")),
+
+  // The detail that turns "do the thing" into something somebody can act on
+  // without asking three questions first. All optional: a quick task should
+  // stay quick.
+  projectId: z.string().optional().or(z.literal("")),
+  platform: z.nativeEnum(TaskPlatform).optional().nullable(),
+  objective: z.string().max(300).optional().or(z.literal("")),
+  completionCriteria: z.string().max(2000).optional().or(z.literal("")),
+  reviewerId: z.string().optional().or(z.literal("")),
+  startDate: z.string().optional().or(z.literal("")),
+  requiredAssets: z.string().max(4000).optional().or(z.literal("")),
+  kpi: z.string().max(300).optional().or(z.literal("")),
+  blocker: z.string().max(1000).optional().or(z.literal("")),
+  recurrence: z.nativeEnum(TaskRecurrence).optional(),
+  /**
+   * Sent by the form so a double-click cannot create the task twice. The
+   * server treats a repeat within the dedupe window as the same submission.
+   */
+  submissionKey: z.string().max(80).optional().or(z.literal("")),
 });
 
 export const employeeTaskUpdateSchema = z.object({

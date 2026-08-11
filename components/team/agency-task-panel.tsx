@@ -1,11 +1,11 @@
 "use client";
 
-import { LoaderCircle, Plus, Save } from "lucide-react";
+import { LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { AssignTaskForm } from "@/components/team/assign-task-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -13,9 +13,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { ALL_STATUSES } from "@/lib/tasks/task-catalogue";
 import { formatDate } from "@/lib/utils";
 
 type AgencyTask = {
@@ -55,30 +54,20 @@ type Option = {
   weeklyCapacityHours?: number;
 };
 
-const statusOptions = ["TODO", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "DONE"];
-const priorityOptions = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-const categoryOptions = [
-  "CONTENT_CALENDAR",
-  "COPYWRITING",
-  "CREATIVE_PRODUCTION",
-  "PAID_MEDIA_OPTIMIZATION",
-  "SEO_AUDIT",
-  "EMAIL_CAMPAIGN",
-  "CLIENT_REPORTING",
-  "COMMUNITY_MANAGEMENT",
-  "WEBSITE_UPDATE",
-  "ANALYTICS_REVIEW",
-  "INTERNAL_OPERATIONS",
-];
+/** The statuses the queue can switch a task to, from the one catalogue. */
+const statusOptions = ALL_STATUSES.map((status) => status.value);
 
 function toneForStatus(status: string): "slate" | "sky" | "amber" | "rose" | "emerald" {
   switch (status) {
     case "IN_PROGRESS":
       return "sky";
     case "BLOCKED":
+    case "REVISION_REQUIRED":
       return "rose";
-    case "IN_REVIEW":
+    case "WAITING_CLIENT":
+    case "NEEDS_REVIEW":
       return "amber";
+    case "APPROVED":
     case "DONE":
       return "emerald";
     default:
@@ -103,6 +92,8 @@ export function AgencyTaskPanel({
   tasks,
   users,
   clients,
+  projects,
+  sops,
   canManageTasks,
   currentUserId,
   summary,
@@ -110,6 +101,8 @@ export function AgencyTaskPanel({
   tasks: AgencyTask[];
   users: Option[];
   clients: { id: string; companyName: string }[];
+  projects: { id: string; name: string; clientId: string }[];
+  sops: { id: string; reference: string; title: string; status: string }[];
   canManageTasks: boolean;
   currentUserId: string;
   summary: {
@@ -119,46 +112,8 @@ export function AgencyTaskPanel({
   };
 }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  function createTask(formData: FormData) {
-    setError(null);
-    setMessage(null);
-
-    startTransition(async () => {
-      const response = await fetch("/api/employee-tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: formData.get("title"),
-          note: formData.get("note"),
-          assignedToId: formData.get("assignedToId"),
-          dueDate: formData.get("dueDate"),
-          priority: formData.get("priority"),
-          category: formData.get("category"),
-          estimatedHours: formData.get("estimatedHours"),
-          status: formData.get("status"),
-          clientId: formData.get("clientId"),
-        }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        setError(data?.error ?? "Unable to assign task.");
-        return;
-      }
-
-      setMessage("Marketing task assigned successfully.");
-      router.refresh();
-    });
-  }
 
   function updateTaskStatus(taskId: string, status: string) {
     setSavingTaskId(taskId);
@@ -184,108 +139,17 @@ export function AgencyTaskPanel({
           <CardHeader>
             <CardTitle>Assign Marketing Task</CardTitle>
             <CardDescription>
-              Give a teammate a marketing deliverable with the right category, hours, and agency
-              brief.
+              Create and assign a marketing task with all the details your team needs to
+              deliver.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={createTask} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-2 xl:col-span-2">
-                <span className="text-sm font-medium text-slate-600">Task title</span>
-                <Input name="title" placeholder="Build monthly paid social insights deck" required />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Assign to</span>
-                <Select name="assignedToId" defaultValue={users[0]?.id} required>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                      {user.department ? ` - ${user.department.replaceAll("_", " ")}` : ""}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Due date</span>
-                <Input
-                  name="dueDate"
-                  type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  required
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Priority</span>
-                <Select name="priority" defaultValue="MEDIUM">
-                  {priorityOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Task category</span>
-                <Select name="category" defaultValue="CONTENT_CALENDAR">
-                  {categoryOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Estimated hours</span>
-                <Input
-                  name="estimatedHours"
-                  type="number"
-                  min={1}
-                  max={40}
-                  defaultValue={2}
-                  required
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Starting status</span>
-                <Select name="status" defaultValue="TODO">
-                  {statusOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-slate-600">Client link</span>
-                <Select name="clientId" defaultValue="">
-                  <option value="">Internal / no client</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.companyName}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <label className="space-y-2 md:col-span-2 xl:col-span-4">
-                <span className="text-sm font-medium text-slate-600">Agency note / brief</span>
-                <Textarea
-                  name="note"
-                  placeholder="Add campaign context, deliverables, CTA, reporting expectations, blockers, and what approved work should look like."
-                />
-              </label>
-              <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-3">
-                <Button type="submit" className="gap-2" disabled={isPending}>
-                  {isPending ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                  Assign task
-                </Button>
-                {message ? <p className="text-sm text-emerald-600">{message}</p> : null}
-                {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-              </div>
-            </form>
+            <AssignTaskForm
+              users={users}
+              clients={clients}
+              projects={projects}
+              sops={sops}
+            />
           </CardContent>
         </Card>
       ) : null}

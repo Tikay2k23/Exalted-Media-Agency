@@ -4,7 +4,13 @@ import { differenceInCalendarDays, endOfDay, startOfDay } from "date-fns";
 import { type AuthContext } from "@/lib/authz";
 import { isOpenTask } from "@/lib/journey/stage-requirements";
 import { can } from "@/lib/permissions";
+import type { EmployeeTaskStatus } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
+import {
+  ALL_STATUSES,
+  OPEN_STATUSES as CATALOGUE_OPEN_STATUSES,
+} from "@/lib/tasks/task-catalogue";
 
 /**
  * Role dashboards.
@@ -88,17 +94,10 @@ function describeDue(due: Date | null) {
   return `Due in ${days} days`;
 }
 
-const STATUS_WORDING: Record<string, string> = {
-  TODO: "Not started",
-  READY: "Ready to start",
-  IN_PROGRESS: "In progress",
-  WAITING_INTERNAL: "Waiting on someone here",
-  WAITING_CLIENT: "Waiting on the client",
-  BLOCKED: "Blocked",
-  READY_FOR_QA: "Ready for QA",
-  IN_REVIEW: "In review",
-  CHANGES_REQUIRED: "Changes needed",
-};
+/** Plain wording for a dashboard. Built from the one catalogue of statuses. */
+const STATUS_WORDING: Record<string, string> = Object.fromEntries(
+  ALL_STATUSES.map((status) => [status.value, status.label]),
+);
 
 // ---------------------------------------------------------------------------
 // Shared building blocks
@@ -155,17 +154,8 @@ const OPEN_LEAD_STATUSES: LeadStatus[] = [
   LeadStatus.NURTURE,
 ];
 
-const OPEN_STATUSES = [
-  "TODO",
-  "READY",
-  "IN_PROGRESS",
-  "WAITING_INTERNAL",
-  "WAITING_CLIENT",
-  "BLOCKED",
-  "IN_REVIEW",
-  "CHANGES_REQUIRED",
-  "READY_FOR_QA",
-] as const;
+// Re-exported under the old local name so the queries below read unchanged.
+const OPEN_STATUSES = CATALOGUE_OPEN_STATUSES;
 
 /** The work sitting with one person. Used by every specialist seat. */
 async function myWorkSections(actor: AuthContext): Promise<DashboardSection[]> {
@@ -184,9 +174,12 @@ async function myWorkSections(actor: AuthContext): Promise<DashboardSection[]> {
     }),
     loadTasks({
       assignedToId: actor.id,
-      status: { in: ["BLOCKED", "WAITING_INTERNAL", "WAITING_CLIENT"] },
+      status: { in: ["BLOCKED", "WAITING_CLIENT"] satisfies EmployeeTaskStatus[] },
     }),
-    loadTasks({ reviewerId: actor.id, status: { in: ["IN_REVIEW", "READY_FOR_QA"] } }),
+    loadTasks({
+      reviewerId: actor.id,
+      status: { in: ["NEEDS_REVIEW"] satisfies EmployeeTaskStatus[] },
+    }),
   ]);
 
   return [
