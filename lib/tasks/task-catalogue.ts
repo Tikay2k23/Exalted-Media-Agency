@@ -267,6 +267,65 @@ export const ALL_STATUSES: { value: EmployeeTaskStatus; label: string }[] = [
   { value: "CANCELLED", label: "Cancelled" },
 ];
 
+const STATUS_LABELS = new Map(ALL_STATUSES.map((status) => [status.value, status.label]));
+
+/** The status in words, for a badge. */
+export function statusLabel(status: EmployeeTaskStatus): string {
+  return STATUS_LABELS.get(status) ?? status.replaceAll("_", " ");
+}
+
+/**
+ * The colour a status wears.
+ *
+ * One mapping, because the same status showing amber on one screen and rose on
+ * another teaches people to read the words instead of the colours, which is the
+ * whole point of having colours.
+ */
+export function statusTone(
+  status: EmployeeTaskStatus | string,
+): "slate" | "sky" | "amber" | "rose" | "emerald" | "violet" {
+  switch (status) {
+    case "IN_PROGRESS":
+      return "sky";
+    case "NEEDS_REVIEW":
+      return "violet";
+    case "WAITING_CLIENT":
+      return "amber";
+    case "BLOCKED":
+    case "REVISION_REQUIRED":
+      return "rose";
+    case "APPROVED":
+    case "DONE":
+      return "emerald";
+    default:
+      return "slate";
+  }
+}
+
+/** The colour a priority wears. */
+export function priorityTone(
+  priority: string,
+): "slate" | "sky" | "amber" | "rose" | "emerald" | "violet" {
+  switch (priority) {
+    case "CRITICAL":
+    case "URGENT":
+      return "rose";
+    case "HIGH":
+      return "amber";
+    case "MEDIUM":
+      return "sky";
+    default:
+      return "slate";
+  }
+}
+
+export const PRIORITY_OPTIONS = [
+  { value: "URGENT", label: "Urgent" },
+  { value: "HIGH", label: "High" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "LOW", label: "Low" },
+];
+
 /** Statuses that mean the work is still live. */
 export const OPEN_STATUSES: EmployeeTaskStatus[] = [
   "BACKLOG",

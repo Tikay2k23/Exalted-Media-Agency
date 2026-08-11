@@ -59,6 +59,9 @@ export const PERMISSIONS = [
   "workItems.assign",
   "workItems.edit",
   "workItems.updateOwn",
+  "workItems.review",
+  "workItems.archive",
+  "workItems.delete",
 
   // Quality assurance
   "qa.view",
@@ -153,6 +156,13 @@ const DELIVERY_OVERSIGHT: readonly Permission[] = [
   "workItems.view.all",
   "workItems.assign",
   "workItems.edit",
+  // Reviewing anything, as opposed to reviewing what you were named on. Being
+  // named reviewer on a task is authority enough for that one task and needs
+  // no permission; this is the blanket version, for the seats that run
+  // delivery. Archiving belongs with it - deciding work is finished with and
+  // taking it off the board are the same judgement.
+  "workItems.review",
+  "workItems.archive",
   "journey.view",
   "journey.move",
   "qa.view",

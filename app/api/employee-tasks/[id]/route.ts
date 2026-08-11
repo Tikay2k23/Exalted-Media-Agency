@@ -4,14 +4,53 @@ import { NextResponse } from "next/server";
 
 import { getServerAuthSession } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
+import { loadAuthContext } from "@/lib/authz";
 import {
   canManageEmployeeTasks,
   canUpdateEmployeeTask,
 } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { TASK_FAILURE_STATUS, deleteTaskPermanently } from "@/lib/tasks/task-workflow";
 import { employeeTaskUpdateSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
+
+/**
+ * Permanent deletion.
+ *
+ * The one action with no undo, so it has two gates rather than one: the
+ * permission, which only the owner tier holds, and the archive, which the
+ * service insists on first. Both are checked in the service - this handler
+ * only proves who is asking.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getServerAuthSession();
+  const { id } = await params;
+
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const actor = await loadAuthContext(session.user.id);
+
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const result = await deleteTaskPermanently({ actor, taskId: id });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.message, code: result.code },
+      { status: TASK_FAILURE_STATUS[result.code] },
+    );
+  }
+
+  return NextResponse.json({ ok: true, taskId: result.taskId });
+}
 
 export async function PATCH(
   request: Request,

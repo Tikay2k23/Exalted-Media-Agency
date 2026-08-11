@@ -27,6 +27,9 @@ enum NotificationType {
   MISSING_PAYMENT
   QA_DEFECT
   REVISION_REQUEST
+  /// Somebody handed work over and is waiting on a decision. Distinct from
+  /// APPROVAL_RECEIVED, which is the answer coming back.
+  APPROVAL_REQUIRED
   APPROVAL_RECEIVED
   LAUNCH_SCHEDULED
   LAUNCH_INCIDENT

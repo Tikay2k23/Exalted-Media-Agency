@@ -220,12 +220,31 @@ model EmployeeTask {
   completedAt    DateTime?
   deletedAt      DateTime?
 
+  /// When the assignee handed it over. Cleared on a revision request, because
+  /// resubmitting is a new hand-over and the reviewer's clock restarts.
+  submittedAt    DateTime?
+  /// Who signed it off, and when. Separate from completedAt: approval is a
+  /// judgement somebody made, completion is a state the work reached, and a
+  /// report that cannot tell them apart cannot answer "who approved this".
+  approvedById   String?
+  approvedAt     DateTime?
+  /// What the reviewer asked for. Kept after the fix so the next reviewer can
+  /// see what the last one objected to.
+  revisionNote   String?
+  /// Out of the active board, still in the history and the reports. Archiving
+  /// is not deleting: the row stays, the queries stop counting it as work.
+  archivedAt     DateTime?
+  archivedById   String?
+
   assignedTo User                   @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
   client     Client?                @relation(fields: [clientId], references: [id])
   createdBy  User?                  @relation("EmployeeTaskCreator", fields: [createdById], references: [id])
   reviewer   User?                  @relation("EmployeeTaskReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  approvedBy User?                  @relation("EmployeeTaskApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  archivedBy User?                  @relation("EmployeeTaskArchiver", fields: [archivedById], references: [id], onDelete: SetNull)
   project    Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
   eodEntries EmployeeTaskEodEntry[]
+  comments   TaskComment[]
   blockedBy  TaskDependency[]       @relation("DependentTask")
   blocking   TaskDependency[]       @relation("PrerequisiteTask")
 
@@ -238,6 +257,31 @@ model EmployeeTask {
   @@index([projectId])
   @@index([reviewerId])
   @@index([deletedAt])
+  @@index([archivedAt])
+  @@index([approvedById])
+}
+
+/// Talking about one piece of work, on the piece of work.
+///
+/// Deliberately not a messaging system. A thread that lives beside the task it
+/// is about is one somebody reads when they pick the task up; a separate inbox
+/// is one they read on Monday.
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  body      String
+  /// Set when the comment is the reviewer's reason for sending work back, so
+  /// the thread shows why without the reader piecing it together from dates.
+  isRevisionNote Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task   EmployeeTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User         @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
 }
 
 /// "Task A cannot start until Task B completes."
