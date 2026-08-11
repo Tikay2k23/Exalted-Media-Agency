@@ -2,7 +2,7 @@
 
 import { AssignTaskForm } from "@/components/team/assign-task-form";
 import { AssignedTasks } from "@/components/work/assigned-tasks";
-import type { TaskRow, ViewerCapabilities } from "@/components/work/task-types";
+import type { TaskEvent, TaskRow, ViewerCapabilities } from "@/components/work/task-types";
 import {
   Card,
   CardContent,
@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { MyWorkView } from "@/lib/tasks/my-work-view";
 
 type Option = {
   id: string;
@@ -21,12 +22,13 @@ type Option = {
 };
 
 /**
- * Assigning work, and then the work itself.
+ * My Work: the daily overview, the task table, and - for whoever hands work out
+ * - the form that creates it.
  *
- * Two things on one page because they are two halves of one job: somebody hands
- * a task out, and then watches what happens to it. The queue below used to be
- * stacked cards with the whole brief inside each one, which meant seeing eight
- * tasks meant scrolling past eight paragraphs; it is now the scannable list.
+ * One screen rather than three, because they are one job: see what needs you,
+ * work through it, and assign what somebody else should pick up. The assign
+ * form sits below the overview so it does not push the day's work off the top
+ * for the people who never use it.
  */
 export function AgencyTaskPanel({
   tasks,
@@ -39,6 +41,9 @@ export function AgencyTaskPanel({
   viewer,
   capped,
   serverNow,
+  identity,
+  overview,
+  recentActivity,
 }: {
   tasks: TaskRow[];
   users: Option[];
@@ -51,9 +56,29 @@ export function AgencyTaskPanel({
   viewer: ViewerCapabilities;
   capped: boolean;
   serverNow: string;
+  identity: { eyebrow: string; title: string; subtitle: string };
+  overview: MyWorkView;
+  recentActivity: TaskEvent[];
 }) {
   return (
     <div className="space-y-6">
+      {/*
+        Deliberately not wrapped in a Card. Card carries backdrop-blur, which
+        makes a containing block and would trap the detail drawer's fixed
+        positioning inside it - the bug that clipped the Add Client dialog.
+      */}
+      <AssignedTasks
+        tasks={tasks}
+        clients={taskClients}
+        viewer={viewer}
+        capped={capped}
+        serverNow={serverNow}
+        identity={identity}
+        overview={overview}
+        recentActivity={recentActivity}
+        heading="All My Tasks"
+      />
+
       {canManageTasks ? (
         <Card>
           <CardHeader>
@@ -73,20 +98,6 @@ export function AgencyTaskPanel({
           </CardContent>
         </Card>
       ) : null}
-
-      {/*
-        Deliberately not wrapped in a Card. Card carries backdrop-blur, which
-        makes a containing block and would trap the detail drawer's fixed
-        positioning inside it - the bug that clipped the Add Client dialog.
-      */}
-      <AssignedTasks
-        tasks={tasks}
-        clients={taskClients}
-        viewer={viewer}
-        capped={capped}
-        serverNow={serverNow}
-        heading={canManageTasks ? "Marketing Ops Queue" : "My Assigned Tasks"}
-      />
     </div>
   );
 }

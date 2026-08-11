@@ -1,17 +1,6 @@
 "use client";
 
-import {
-  CheckCircle2,
-  ClipboardList,
-  Clock,
-  Download,
-  Eye,
-  ListFilter,
-  MoreVertical,
-  Search,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { Download, ListFilter, MoreVertical, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -46,6 +35,9 @@ import {
 } from "@/lib/tasks/task-filters";
 import { formatEnumLabel } from "@/lib/utils";
 
+import type { MyWorkView } from "@/lib/tasks/my-work-view";
+
+import { MyWorkOverview } from "./my-work-overview";
 import { TaskDetailDrawer } from "./task-detail-drawer";
 import type { TaskComment, TaskEvent, TaskRow, ViewerCapabilities } from "./task-types";
 
@@ -62,43 +54,6 @@ const FILTER_STATUSES = [
 ];
 
 const PAGE_SIZES = [10, 25, 50];
-
-function SummaryCard({
-  label,
-  value,
-  hint,
-  icon: Icon,
-  tone,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  icon: typeof ClipboardList;
-  tone: "violet" | "amber" | "rose" | "slate" | "emerald";
-}) {
-  const tones = {
-    violet: "border-violet-200/70 bg-violet-50/60 text-violet-700",
-    amber: "border-amber-200/70 bg-amber-50/60 text-amber-700",
-    rose: "border-rose-200/70 bg-rose-50/60 text-rose-700",
-    slate: "border-slate-200/70 bg-slate-50/60 text-slate-700",
-    emerald: "border-emerald-200/70 bg-emerald-50/60 text-emerald-700",
-  } as const;
-
-  return (
-    <div className={`rounded-2xl border p-3.5 ${tones[tone]}`}>
-      <div className="flex items-start gap-2.5">
-        <span className="rounded-xl bg-white/70 p-2">
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold">{label}</p>
-          <p className="mt-0.5 text-2xl font-semibold leading-7 text-slate-950">{value}</p>
-          <p className="text-[11px] leading-4 opacity-80">{hint}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function downloadCsv(csv: string, filename: string) {
   // The byte order mark stops Excel mangling anything non-ASCII in a client
@@ -129,7 +84,10 @@ export function AssignedTasks({
   viewer,
   capped,
   serverNow,
-  heading = "My Assigned Tasks",
+  heading = "All My Tasks",
+  identity,
+  overview,
+  recentActivity,
 }: {
   tasks: TaskRow[];
   clients: { id: string; companyName: string }[];
@@ -137,10 +95,14 @@ export function AssignedTasks({
   capped: boolean;
   /** When the server rendered. Seeds the clock so the first paint has counts. */
   serverNow: string;
-  /** "My Assigned Tasks" for the person doing the work, the queue for whoever
-   *  hands it out. Same screen either way - the scope of what arrives is what
-   *  differs, and the server decides that. */
+  /** Heading on the detailed table below the overview. */
   heading?: string;
+  /** Who is looking, for the page header. Derived from the session, never typed. */
+  identity: { eyebrow: string; title: string; subtitle: string };
+  /** The daily overview, derived from these same rows on the server. */
+  overview: MyWorkView;
+  /** Recent events on this person's work. */
+  recentActivity: TaskEvent[];
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<TaskFilterState>(EMPTY_FILTERS);
@@ -158,6 +120,12 @@ export function AssignedTasks({
   const [, startTransition] = useTransition();
   const [showFilters, setShowFilters] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
+
+  /** Takes the reader down to the table, for actions that act on it. */
+  function jumpToTable() {
+    tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   /*
    * The clock is seeded from the server's timestamp rather than read during
@@ -352,15 +320,16 @@ export function AssignedTasks({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Page header. The role comes from the session, never a literal. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-            {heading}
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            {`${summary.active} active ${summary.active === 1 ? "task" : "tasks"}, ${summary.dueSoon} due soon, ${summary.overdue} overdue, ${summary.needsReview} needs review`}
+          <p className="text-xs uppercase tracking-[0.32em] text-sky-600">
+            {identity.eyebrow}
           </p>
+          <h1 className="mt-1.5 text-3xl font-semibold tracking-tight text-slate-950">
+            {identity.title}
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">{identity.subtitle}</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -409,54 +378,41 @@ export function AssignedTasks({
             ) : null}
           </div>
 
-          <Button
-            size="sm"
-            variant={filters.todayOnly ? "primary" : "secondary"}
-            onClick={() => update("todayOnly", !filters.todayOnly)}
-          >
-            <Clock className="mr-1.5 h-3.5 w-3.5" />
-            My Tasks Today
+          <Button size="sm" onClick={jumpToTable}>
+            View All Assigned Tasks
           </Button>
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard
-          label="Active Tasks"
-          value={summary.active}
-          hint="In progress or pending"
-          icon={ClipboardList}
-          tone="violet"
-        />
-        <SummaryCard
-          label="Due Soon"
-          value={summary.dueSoon}
-          hint="Due in next 3 days"
-          icon={Clock}
-          tone="amber"
-        />
-        <SummaryCard
-          label="Overdue"
-          value={summary.overdue}
-          hint="Past due date"
-          icon={TriangleAlert}
-          tone="rose"
-        />
-        <SummaryCard
-          label="Needs Review"
-          value={summary.needsReview}
-          hint="Waiting for approval"
-          icon={Eye}
-          tone="slate"
-        />
-        <SummaryCard
-          label="Completed This Month"
-          value={summary.completedThisMonth}
-          hint="Approved and done"
-          icon={CheckCircle2}
-          tone="emerald"
-        />
+      {/*
+        The overview. Derived on the server from the same rows the table below
+        filters, so a card can never disagree with the list it sits above.
+      */}
+      <MyWorkOverview
+        view={overview}
+        activity={recentActivity}
+        now={now}
+        onOpenTask={(taskId) => {
+          // The drawer lives beside the table below, so opening from up here
+          // has to take the reader with it - otherwise the click looks like it
+          // did nothing.
+          open(taskId);
+          jumpToTable();
+        }}
+        onFocusToday={() => {
+          // Focus mode is the existing filter, not a second page.
+          update("todayOnly", !filters.todayOnly);
+          jumpToTable();
+        }}
+        focusActive={filters.todayOnly}
+      />
+
+      {/* The detailed management area: everything, with every filter on it. */}
+      <div ref={tableRef} className="scroll-mt-6 pt-2">
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">{heading}</h2>
+        <p className="mt-0.5 text-sm text-slate-600">
+          {`${summary.active} active, ${summary.dueSoon} due soon, ${summary.overdue} overdue, ${summary.needsReview} needs review`}
+        </p>
       </div>
 
       {/* Filters */}

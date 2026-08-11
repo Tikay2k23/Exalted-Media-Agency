@@ -25,6 +25,7 @@ export const TASK_LIST_SELECT = {
   dueDate: true,
   startDate: true,
   createdAt: true,
+  updatedAt: true,
   submittedAt: true,
   completedAt: true,
   approvedAt: true,
@@ -131,6 +132,48 @@ export async function getTaskActivity(taskId: string) {
     where: { entityType: "EMPLOYEE_TASK", entityId: taskId },
     orderBy: { createdAt: "desc" },
     take: 100,
+    select: {
+      id: true,
+      action: true,
+      fieldName: true,
+      previousValue: true,
+      newValue: true,
+      createdAt: true,
+      actor: { select: { id: true, name: true, teamRole: true } },
+    },
+  });
+}
+
+/**
+ * What has happened lately on this person's work.
+ *
+ * Their own actions plus anything done to a task they are on, so "Owner Account
+ * assigned you X" and "you submitted Y for review" both appear. Scoped by task
+ * id rather than by actor alone, because the useful half of this feed is other
+ * people acting on your work.
+ */
+export async function getMyRecentActivity(actor: AuthContext, take = 6) {
+  const myTasks = await prisma.employeeTask.findMany({
+    where: {
+      deletedAt: null,
+      OR: [
+        { assignedToId: actor.id },
+        { createdById: actor.id },
+        { reviewerId: actor.id },
+      ],
+    },
+    select: { id: true },
+    take: 300,
+  });
+
+  const ids = myTasks.map((task) => task.id);
+
+  if (!ids.length) return [];
+
+  return prisma.activityLog.findMany({
+    where: { entityType: "EMPLOYEE_TASK", entityId: { in: ids } },
+    orderBy: { createdAt: "desc" },
+    take,
     select: {
       id: true,
       action: true,

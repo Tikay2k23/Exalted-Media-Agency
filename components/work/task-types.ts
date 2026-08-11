@@ -11,6 +11,8 @@ export interface TaskRow extends FilterableTask {
   platform: string | null;
   recurrence: string;
   startDate: string | null;
+  /** Last write to the task. Stands in for "waiting since" on parked work. */
+  updatedAt: string;
   submittedAt: string | null;
   approvedAt: string | null;
   actualHours: number | null;
