@@ -1,22 +1,89 @@
 import Link from "next/link";
 
+import { notFound } from "next/navigation";
+
 import { AgencyTaskPanel } from "@/components/team/agency-task-panel";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { PerformanceTable } from "@/components/team/performance-table";
+import type { TaskRow } from "@/components/work/task-types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { loadAuthContext } from "@/lib/authz";
 import { getTeamViewData } from "@/lib/data/queries";
-import { canManageEmployeeTasks } from "@/lib/permissions";
+import { can, canManageEmployeeTasks } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
+import { getAssignedTasks } from "@/lib/tasks/task-queries";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export default async function TeamPage() {
   const user = await requireUser();
-  const data = await getTeamViewData(user);
+  const actor = await loadAuthContext(user.id);
+
+  if (!actor) {
+    notFound();
+  }
+
+  const [data, work] = await Promise.all([
+    getTeamViewData(user),
+    getAssignedTasks(actor),
+  ]);
+
   const canManageTasks = canManageEmployeeTasks(user.role);
+
+  /*
+   * Dates become strings on the way to the browser, and the client component
+   * expects them that way. Narrowed field by field rather than spread, which is
+   * also what stops a Prisma Decimal reaching a client component - that has
+   * broken this app before.
+   */
+  const tasks: TaskRow[] = work.tasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    category: task.category,
+    platform: task.platform,
+    recurrence: task.recurrence,
+    dueDate: task.dueDate.toISOString(),
+    startDate: task.startDate?.toISOString() ?? null,
+    createdAt: task.createdAt.toISOString(),
+    submittedAt: task.submittedAt?.toISOString() ?? null,
+    completedAt: task.completedAt?.toISOString() ?? null,
+    approvedAt: task.approvedAt?.toISOString() ?? null,
+    archivedAt: task.archivedAt?.toISOString() ?? null,
+    estimatedHours: task.estimatedHours,
+    actualHours: task.actualHours,
+    requiresApproval: task.requiresApproval,
+    objective: task.objective,
+    completionCriteria: task.completionCriteria,
+    note: task.note,
+    kpi: task.kpi,
+    blocker: task.blocker,
+    requiredAssets: task.requiredAssets,
+    revisionNote: task.revisionNote,
+    evidenceUrl: task.evidenceUrl,
+    client: task.client,
+    project: task.project,
+    assignedTo: task.assignedTo,
+    createdBy: task.createdBy,
+    reviewer: task.reviewer,
+    approvedBy: task.approvedBy,
+    commentCount: task._count.comments,
+  }));
+
+  // What the interface may offer. Every one is checked again in the service
+  // before anything is written; this only decides what gets drawn.
+  const viewer = {
+    id: actor.id,
+    canEdit: can(actor, "workItems.edit"),
+    canReviewAny: can(actor, "workItems.review"),
+    canArchive: can(actor, "workItems.archive"),
+    canDelete: can(actor, "workItems.delete"),
+    canAssign: can(actor, "workItems.assign"),
+  };
 
   return (
     <div className="space-y-6">
@@ -53,14 +120,16 @@ export default async function TeamPage() {
       ) : null}
 
       <AgencyTaskPanel
-        tasks={data.agencyTasks}
+        tasks={tasks}
         users={data.taskOptions.users}
         clients={data.taskOptions.clients}
+        taskClients={work.clients}
         projects={data.taskOptions.projects}
         sops={data.taskOptions.sops}
         canManageTasks={canManageTasks}
-        currentUserId={user.id}
-        summary={data.agencyTaskSummary}
+        viewer={viewer}
+        capped={work.capped}
+        serverNow={new Date().toISOString()}
       />
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">

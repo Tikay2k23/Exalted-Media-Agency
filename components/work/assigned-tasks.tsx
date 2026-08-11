@@ -129,6 +129,7 @@ export function AssignedTasks({
   viewer,
   capped,
   serverNow,
+  heading = "My Assigned Tasks",
 }: {
   tasks: TaskRow[];
   clients: { id: string; companyName: string }[];
@@ -136,6 +137,10 @@ export function AssignedTasks({
   capped: boolean;
   /** When the server rendered. Seeds the clock so the first paint has counts. */
   serverNow: string;
+  /** "My Assigned Tasks" for the person doing the work, the queue for whoever
+   *  hands it out. Same screen either way - the scope of what arrives is what
+   *  differs, and the server decides that. */
+  heading?: string;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<TaskFilterState>(EMPTY_FILTERS);
@@ -351,7 +356,7 @@ export function AssignedTasks({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-            My Assigned Tasks
+            {heading}
           </h2>
           <p className="mt-1 text-sm text-slate-600">
             {`${summary.active} active ${summary.active === 1 ? "task" : "tasks"}, ${summary.dueSoon} due soon, ${summary.overdue} overdue, ${summary.needsReview} needs review`}
