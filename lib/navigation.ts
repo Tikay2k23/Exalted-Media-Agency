@@ -51,6 +51,12 @@ export const NAVIGATION: NavigationGroup[] = [
         icon: "CalendarRange",
         description: "What needs you today, and everything assigned to you",
       },
+      {
+        href: "/fulfillment",
+        label: "Weekly Work",
+        icon: "NotebookPen",
+        description: "Daily reporting, and each person's week",
+      },
     ],
   },
   {

@@ -165,6 +165,8 @@ model User {
   approvedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskApprover")
   archivedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskArchiver")
   taskComments           TaskComment[]            @relation("TaskCommentAuthor")
+  weeklyReports          WeeklyReport[]           @relation("WeeklyReportAuthor")
+  weeklyReportsApproved  WeeklyReport[]           @relation("WeeklyReportApprover")
   employeeTaskEodEntries EmployeeTaskEodEntry[]
   assignedSocialTasks    SocialMediaTask[]        @relation("TaskAssignee")
   permissionOverrides    UserPermissionOverride[] @relation("PermissionSubject")

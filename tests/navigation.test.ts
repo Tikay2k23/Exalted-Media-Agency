@@ -43,12 +43,12 @@ describe("navigation stays short enough to scan", () => {
 
   it("has no two entries that read as the same thing", () => {
     // Accounts / Client Journey / Pipeline / My Work / Weekly Work was the
-    // problem. Nothing should say "pipeline" or "work" more than once.
+    // problem. Nothing should say "pipeline" or "client" more than once.
     const labels = NAVIGATION.flatMap((group) =>
       group.items.map((item) => item.label.toLowerCase()),
     );
 
-    for (const word of ["pipeline", "work", "client"]) {
+    for (const word of ["pipeline", "client"]) {
       const matches = labels.filter((label) => label.includes(word));
 
       assert.ok(
@@ -56,6 +56,25 @@ describe("navigation stays short enough to scan", () => {
         `${matches.length} entries mention "${word}": ${matches.join(", ")}`,
       );
     }
+  });
+
+  it("allows exactly the two work entries the agency asked for", () => {
+    /*
+     * "Work" is the one word allowed to appear twice, and only as this pair.
+     *
+     * My Work is what one person has to do; Weekly Work is how the team is
+     * reporting. The agency named both deliberately and they are adjacent in
+     * the menu, so the ambiguity that sank the old eleven-entry navigation -
+     * five entries all meaning "where the work is" - does not apply.
+     *
+     * The ratchet stays: a third one, or a rename, fails here rather than
+     * drifting back into the old mess.
+     */
+    const labels = NAVIGATION.flatMap((group) =>
+      group.items.map((item) => item.label),
+    ).filter((label) => label.toLowerCase().includes("work"));
+
+    assert.deepEqual(labels, ["My Work", "Weekly Work"]);
   });
 });
 

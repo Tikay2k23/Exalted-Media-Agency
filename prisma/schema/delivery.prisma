@@ -299,6 +299,11 @@ model TaskDependency {
   @@index([prerequisiteTaskId])
 }
 
+/// One person's end-of-day note on one task, for one day.
+///
+/// The unique constraint below is what makes a second submission an edit rather
+/// than a duplicate: there is exactly one row per person, per task, per date,
+/// and pressing submit again updates the one that exists.
 model EmployeeTaskEodEntry {
   id        String   @id @default(cuid())
   taskId    String
@@ -307,8 +312,22 @@ model EmployeeTaskEodEntry {
   summary   String
   blockers  String?
   nextSteps String?
-  hoursSpent Int?
+  /// Hours, to the half hour. Float rather than Decimal on purpose - Decimal
+  /// does not survive the trip to a client component, which has broken this
+  /// app before.
+  hoursSpent Float?
   supportNeeded String?
+
+  /// Where the work stood at the end of that day, 0-100. The history of these
+  /// is the progress trail a manager reads.
+  progressPercent Int?
+  /// Somewhere the work can be seen - a page, a doc, a Loom. Never a
+  /// credential; the access register holds those and has no password field.
+  workLink   String?
+  /// The status the task was in when this was written, so the history reads
+  /// on its own rather than against a task that has since moved on.
+  taskStatus EmployeeTaskStatus?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -318,4 +337,61 @@ model EmployeeTaskEodEntry {
   @@unique([taskId, authorId, entryDate])
   @@index([taskId, entryDate])
   @@index([authorId, entryDate])
+}
+
+
+enum WeeklyReportStatus {
+  NOT_STARTED
+  DRAFT
+  SUBMITTED
+  NEEDS_CHANGES
+  APPROVED
+}
+
+/// One person's week, compiled from the daily entries they already wrote.
+///
+/// Deliberately thin. Everything a report says about the work is derived from
+/// that week's EOD rows at read time rather than copied in here - a snapshot
+/// taken on submission would be wrong the moment somebody corrected a typo in
+/// an entry, and there would be two versions of the same week with no way to
+/// tell which was true. The only stored prose is the employee's own summary
+/// and the reviewer's note.
+model WeeklyReport {
+  id            String             @id @default(cuid())
+  userId        String
+  /// Monday of the reporting week, at midnight.
+  weekStartDate DateTime
+  status        WeeklyReportStatus @default(NOT_STARTED)
+
+  /// The employee's own words, in addition to the compiled work. Optional:
+  /// nobody should have to retype what their entries already say.
+  summary     String?
+  submittedAt DateTime?
+
+  approvedAt   DateTime?
+  approvedById String?
+  /// Why it was sent back. Kept apart from the summary so a reviewer can never
+  /// overwrite what the employee wrote.
+  managerNote  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User  @relation("WeeklyReportAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("WeeklyReportApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, weekStartDate])
+  @@index([weekStartDate, status])
+  @@index([userId])
+}
+
+/// Small key/value store for things the agency configures once.
+///
+/// A table rather than an environment variable because the reporting deadline
+/// is an operational decision somebody should be able to change without a
+/// deploy.
+model WorkspaceSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

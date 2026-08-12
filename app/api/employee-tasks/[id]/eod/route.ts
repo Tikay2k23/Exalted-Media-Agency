@@ -1,15 +1,34 @@
-import { ActivityEntityType } from "@prisma/client";
-import { startOfDay } from "date-fns";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { getServerAuthSession } from "@/lib/auth";
-import { logActivity } from "@/lib/activity";
-import { canUpdateEmployeeTask } from "@/lib/permissions";
+import { loadAuthContext } from "@/lib/authz";
+import { EOD_FAILURE_STATUS, getTaskEodHistory, submitEod } from "@/lib/eod/eod-service";
 import { prisma } from "@/lib/prisma";
-import { employeeTaskEodEntrySchema } from "@/lib/validators";
+import { canViewTask } from "@/lib/tasks/task-workflow";
 
 export const runtime = "nodejs";
 
+const bodySchema = z.object({
+  entryDate: z.string().min(1).nullish(),
+  summary: z.string().trim().min(2).max(4000),
+  nextSteps: z.string().trim().min(2).max(2000),
+  blockers: z.string().max(2000).nullish(),
+  progressPercent: z.number().int().min(0).max(100).nullish(),
+  hoursSpent: z.number().min(0).max(24).nullish(),
+  workLink: z.string().max(500).nullish(),
+  supportNeeded: z.string().max(2000).nullish(),
+  taskStatus: z
+    .enum(["IN_PROGRESS", "WAITING_CLIENT", "BLOCKED", "NEEDS_REVIEW", "TODO"])
+    .nullish(),
+});
+
+/**
+ * Writing today's entry.
+ *
+ * The rule lives in the service, not here: only the person doing the work may
+ * file it. This handler proves who is asking and hands over.
+ */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -21,90 +40,77 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const task = await prisma.employeeTask.findUnique({
-    where: { id },
-    include: {
-      assignedTo: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      client: {
-        select: {
-          id: true,
-          companyName: true,
-        },
-      },
+  const actor = await loadAuthContext(session.user.id);
+
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid EOD details" },
+      { status: 400 },
+    );
+  }
+
+  const result = await submitEod({
+    actor,
+    taskId: id,
+    entry: {
+      ...parsed.data,
+      entryDate: parsed.data.entryDate ?? null,
+      progressPercent: parsed.data.progressPercent ?? null,
+      hoursSpent: parsed.data.hoursSpent ?? null,
+      blockers: parsed.data.blockers ?? null,
+      workLink: parsed.data.workLink ?? null,
+      supportNeeded: parsed.data.supportNeeded ?? null,
+      taskStatus: parsed.data.taskStatus ?? null,
     },
   });
 
-  if (!task) {
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.message, code: result.code },
+      { status: EOD_FAILURE_STATUS[result.code] },
+    );
+  }
+
+  return NextResponse.json(
+    { ok: true, entry: result.entry, revised: result.revised },
+    { status: result.revised ? 200 : 201 },
+  );
+}
+
+/** The entry history on one task, for whoever can see the task. */
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getServerAuthSession();
+  const { id } = await params;
+
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const actor = await loadAuthContext(session.user.id);
+
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const task = await prisma.employeeTask.findFirst({
+    where: { id, deletedAt: null },
+    select: { id: true, assignedToId: true, createdById: true, reviewerId: true },
+  });
+
+  // Not found rather than forbidden: confirming a task exists on an account
+  // somebody is not on is itself a leak.
+  if (!task || !canViewTask(actor, task)) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
 
-  if (
-    !canUpdateEmployeeTask(
-      session.user.role,
-      session.user.id,
-      task.assignedToId,
-    )
-  ) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const payload = await request.json();
-  const parsed = employeeTaskEodEntrySchema.safeParse(payload);
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid EOD payload" }, { status: 400 });
-  }
-
-  const entryDate = startOfDay(new Date(parsed.data.entryDate));
-
-  const entry = await prisma.employeeTaskEodEntry.upsert({
-    where: {
-      taskId_authorId_entryDate: {
-        taskId: task.id,
-        authorId: session.user.id,
-        entryDate,
-      },
-    },
-    update: {
-      summary: parsed.data.summary,
-      blockers: parsed.data.blockers || null,
-      nextSteps: parsed.data.nextSteps || null,
-    },
-    create: {
-      taskId: task.id,
-      authorId: session.user.id,
-      entryDate,
-      summary: parsed.data.summary,
-      blockers: parsed.data.blockers || null,
-      nextSteps: parsed.data.nextSteps || null,
-    },
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          role: true,
-        },
-      },
-    },
-  });
-
-  await logActivity({
-    actorId: session.user.id,
-    action: `Posted EOD update for "${task.title}"`,
-    entityType: ActivityEntityType.EMPLOYEE_TASK,
-    entityId: task.id,
-    metadataJson: {
-      entryDate: entry.entryDate.toISOString(),
-      clientId: task.client?.id ?? null,
-      assigneeId: task.assignedTo.id,
-    },
-  });
-
-  return NextResponse.json(entry, { status: 201 });
+  return NextResponse.json({ entries: await getTaskEodHistory(id) });
 }

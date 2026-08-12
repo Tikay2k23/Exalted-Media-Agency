@@ -36,6 +36,7 @@ import { formatEnumLabel } from "@/lib/utils";
 
 import type { MyWorkView } from "@/lib/tasks/my-work-view";
 
+import type { EodEntry } from "./eod-panel";
 import { MyWorkOverview } from "./my-work-overview";
 import { RowMenu } from "./row-menu";
 import { TaskDetailModal } from "./task-detail-modal";
@@ -124,11 +125,14 @@ export function AssignedTasks({
     taskId: string;
     comments: TaskComment[];
     activity: TaskEvent[];
+    eod: EodEntry[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
   const [showFilters, setShowFilters] = useState(false);
+  /** Bumped to refetch the thread after an entry is written. */
+  const [threadVersion, setThreadVersion] = useState(0);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
 
@@ -194,12 +198,30 @@ export function AssignedTasks({
     let cancelled = false;
     const taskId = openId;
 
-    fetch(`/api/employee-tasks/${taskId}/comments`)
-      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
-      .then((data: { comments: TaskComment[]; activity: TaskEvent[] }) => {
-        if (cancelled) return;
-        setThread({ taskId, comments: data.comments, activity: data.activity });
-      })
+    // The thread and the entries arrive together. Two round trips would only
+    // buy a second spinner on a panel somebody opens as one thing.
+    Promise.all([
+      fetch(`/api/employee-tasks/${taskId}/comments`).then((response) =>
+        response.ok ? response.json() : Promise.reject(response),
+      ),
+      fetch(`/api/employee-tasks/${taskId}/eod`).then((response) =>
+        response.ok ? response.json() : Promise.reject(response),
+      ),
+    ])
+      .then(
+        ([thread, eod]: [
+          { comments: TaskComment[]; activity: TaskEvent[] },
+          { entries: EodEntry[] },
+        ]) => {
+          if (cancelled) return;
+          setThread({
+            taskId,
+            comments: thread.comments,
+            activity: thread.activity,
+            eod: eod.entries,
+          });
+        },
+      )
       .catch(() => {
         if (!cancelled) setError("Couldn't load the thread for this task.");
       });
@@ -207,7 +229,7 @@ export function AssignedTasks({
     return () => {
       cancelled = true;
     };
-  }, [openId]);
+  }, [openId, threadVersion]);
 
   /*
    * Loading is worked out from what has arrived rather than tracked in its own
@@ -218,6 +240,7 @@ export function AssignedTasks({
   const threadLoading = Boolean(openId) && !loaded;
   const comments = loaded?.comments ?? [];
   const activity = loaded?.activity ?? [];
+  const eodEntries = loaded?.eod ?? [];
 
   /** Opening a task clears whatever the last one complained about. */
   function open(taskId: string | null) {
@@ -837,12 +860,17 @@ export function AssignedTasks({
             viewer={viewer}
             comments={comments}
             activity={activity}
+            eodEntries={eodEntries}
             loading={threadLoading}
             busy={busy}
             error={error}
             onClose={() => open(null)}
             onAction={runAction}
             onComment={addComment}
+            onEodSaved={() => {
+              setThreadVersion((version) => version + 1);
+              startTransition(() => router.refresh());
+            }}
           />
         ) : null}
       </div>

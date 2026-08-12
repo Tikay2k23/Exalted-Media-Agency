@@ -32,9 +32,10 @@ import {
 import { parseTaskAssets, relativeDue } from "@/lib/tasks/task-filters";
 import { formatEnumLabel } from "@/lib/utils";
 
+import { EodPanel, type EodEntry } from "./eod-panel";
 import type { TaskComment, TaskEvent, TaskRow, ViewerCapabilities } from "./task-types";
 
-type ModalTab = "details" | "activity" | "comments" | "files";
+type ModalTab = "details" | "eod" | "activity" | "comments" | "files";
 
 const ASSET_ICONS = {
   drive: FileText,
@@ -99,10 +100,12 @@ export function TaskDetailModal({
   viewer,
   comments,
   activity,
+  eodEntries,
   loading,
   onClose,
   onAction,
   onComment,
+  onEodSaved,
   busy,
   error,
 }: {
@@ -110,10 +113,13 @@ export function TaskDetailModal({
   viewer: ViewerCapabilities;
   comments: TaskComment[];
   activity: TaskEvent[];
+  eodEntries: EodEntry[];
   loading: boolean;
   onClose: () => void;
   onAction: (body: Record<string, unknown>) => void;
   onComment: (body: string) => void;
+  /** Refetches the thread after an entry is written. */
+  onEodSaved: () => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -169,6 +175,7 @@ export function TaskDetailModal({
 
   const tabs: { value: ModalTab; label: string; count?: number }[] = [
     { value: "details", label: "Details" },
+    { value: "eod", label: "EOD", count: eodEntries.length },
     { value: "activity", label: "Activity" },
     { value: "comments", label: "Comments", count: comments.length },
     { value: "files", label: "Files", count: assets.length },
@@ -371,7 +378,18 @@ export function TaskDetailModal({
             </div>
           ) : null}
 
-          {tab === "activity" ? (
+          {tab === "eod" ? (
+          <EodPanel
+            taskId={task.id}
+            taskStatus={task.status}
+            isAssignee={isAssignee}
+            entries={eodEntries}
+            loading={loading}
+            onSaved={onEodSaved}
+          />
+        ) : null}
+
+        {tab === "activity" ? (
             loading ? (
               <p className="text-xs text-slate-500">Loading the trail…</p>
             ) : activity.length === 0 ? (
