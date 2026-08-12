@@ -38,7 +38,7 @@ import { formatEnumLabel } from "@/lib/utils";
 import type { MyWorkView } from "@/lib/tasks/my-work-view";
 
 import { MyWorkOverview } from "./my-work-overview";
-import { TaskDetailDrawer } from "./task-detail-drawer";
+import { TaskDetailModal } from "./task-detail-modal";
 import type { TaskComment, TaskEvent, TaskRow, ViewerCapabilities } from "./task-types";
 
 const FILTER_STATUSES = [
@@ -316,8 +316,6 @@ export function AssignedTasks({
     startTransition(() => router.refresh());
   }
 
-  const showDrawer = Boolean(openTask);
-
   return (
     <div className="space-y-4">
       {/* Page header. The role comes from the session, never a literal. */}
@@ -392,13 +390,9 @@ export function AssignedTasks({
         view={overview}
         activity={recentActivity}
         now={now}
-        onOpenTask={(taskId) => {
-          // The drawer lives beside the table below, so opening from up here
-          // has to take the reader with it - otherwise the click looks like it
-          // did nothing.
-          open(taskId);
-          jumpToTable();
-        }}
+        // The detail opens as a modal over the page, so there is nowhere to
+        // scroll to - it comes to the reader wherever they clicked from.
+        onOpenTask={open}
         onFocusToday={() => {
           // Focus mode is the existing filter, not a second page.
           update("todayOnly", !filters.todayOnly);
@@ -591,10 +585,8 @@ export function AssignedTasks({
         </p>
       ) : null}
 
-      {/* List + drawer */}
-      <div
-        className={`grid gap-4 ${showDrawer ? "xl:grid-cols-[minmax(0,1fr)_26rem]" : ""}`}
-      >
+      {/* The list, full width. The detail opens over it rather than beside it. */}
+      <div className="grid gap-4">
         <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="hidden grid-cols-[minmax(0,3fr)_minmax(0,2fr)_6rem_8rem_9rem_2.5rem] gap-3 border-b border-slate-100 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 lg:grid">
             <span>Task</span>
@@ -852,7 +844,7 @@ export function AssignedTasks({
         </div>
 
         {openTask ? (
-          <TaskDetailDrawer
+          <TaskDetailModal
             task={openTask}
             viewer={viewer}
             comments={comments}

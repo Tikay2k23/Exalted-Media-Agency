@@ -15,7 +15,8 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ import { formatEnumLabel } from "@/lib/utils";
 
 import type { TaskComment, TaskEvent, TaskRow, ViewerCapabilities } from "./task-types";
 
-type DrawerTab = "details" | "activity" | "comments" | "files";
+type ModalTab = "details" | "activity" | "comments" | "files";
 
 const ASSET_ICONS = {
   drive: FileText,
@@ -86,14 +87,14 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /**
- * One task, opened without leaving the list.
+ * One task, opened over the page rather than beside it.
  *
  * The tabs are the four questions somebody has about a piece of work: what is
  * it, what has happened to it, what have people said, and where are the files.
  * The actions at the bottom are only the ones this person may actually take -
  * a greyed-out Approve on somebody else's work just invites a click that fails.
  */
-export function TaskDetailDrawer({
+export function TaskDetailModal({
   task,
   viewer,
   comments,
@@ -116,13 +117,35 @@ export function TaskDetailDrawer({
   busy: boolean;
   error: string | null;
 }) {
-  const [tab, setTab] = useState<DrawerTab>("details");
+  const [tab, setTab] = useState<ModalTab>("details");
   const [draft, setDraft] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [showRevisionBox, setShowRevisionBox] = useState(false);
   const [hours, setHours] = useState("");
   const [nextStatus, setNextStatus] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * Escape closes it, and the page behind stops scrolling while it is open.
+   * Both are what people expect of a modal, and both are cheap to get wrong by
+   * leaving out.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    const previous = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
 
   const guide = categoryGuide(task.category as never);
   const assets = parseTaskAssets(task.requiredAssets, task.evidenceUrl);
@@ -144,34 +167,43 @@ export function TaskDetailDrawer({
     && task.status !== "NEEDS_REVIEW"
     && (isAssignee || viewer.canEdit);
 
-  const tabs: { value: DrawerTab; label: string; count?: number }[] = [
+  const tabs: { value: ModalTab; label: string; count?: number }[] = [
     { value: "details", label: "Details" },
     { value: "activity", label: "Activity" },
     { value: "comments", label: "Comments", count: comments.length },
     { value: "files", label: "Files", count: assets.length },
   ];
 
-  return (
-    <>
-      {/*
-        A scrim, below the desktop breakpoint only. Up there the drawer sits in
-        its own column beside the list and dimming the list would be wrong; down
-        here it covers the list, and without a scrim the panel reads as part of
-        the page rather than on top of it.
+  /*
+   * Rendered into the body rather than where it sits in the tree.
+   *
+   * Card carries backdrop-blur, and an element with backdrop-filter becomes the
+   * containing block for any fixed-position descendant - which is what clipped
+   * the Add Client dialog to the size of its parent. A portal puts this above
+   * all of that, so the modal is measured against the viewport wherever it is
+   * opened from.
+   */
+  if (typeof document === "undefined") return null;
 
-        Deliberately not inside a Card: Card carries backdrop-blur, which makes
-        a containing block and would trap this panel inside it - the bug that
-        clipped the Add Client dialog.
-      */}
-      <div
-        className="fixed inset-0 z-40 bg-slate-950/20 xl:hidden"
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Task details"
+    >
+      {/* The scrim. Clicking it is the fastest way out of a modal. */}
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default bg-slate-950/40"
         onClick={onClose}
-        aria-hidden="true"
+        aria-label="Close task details"
+        tabIndex={-1}
       />
 
-      <aside
-        className="fixed inset-0 z-50 flex flex-col overflow-hidden border-slate-200 bg-white shadow-2xl sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[28rem] sm:border-l xl:sticky xl:top-6 xl:inset-auto xl:z-auto xl:max-h-[calc(100vh-3rem)] xl:w-auto xl:rounded-3xl xl:border xl:shadow-[0_24px_80px_-36px_rgba(15,23,42,0.35)]"
-        aria-label="Task details"
+      <div
+        ref={panelRef}
+        className="relative flex max-h-full w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[min(46rem,90vh)] sm:max-w-2xl sm:rounded-3xl"
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
@@ -258,7 +290,7 @@ export function TaskDetailDrawer({
                 </div>
               ) : null}
 
-              <dl className="grid gap-x-6 sm:grid-cols-2">
+              <dl className="grid gap-x-8 sm:grid-cols-2">
                 <div className="divide-y divide-slate-100">
                   <Pair label="Client">
                     {task.client ? (
@@ -689,7 +721,8 @@ export function TaskDetailDrawer({
             </div>
           )}
         </div>
-      </aside>
-    </>
+      </div>
+    </div>,
+    document.body,
   );
 }
