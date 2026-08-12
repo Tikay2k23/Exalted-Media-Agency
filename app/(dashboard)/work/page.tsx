@@ -26,7 +26,12 @@ export const runtime = "nodejs";
  * old Team page rather than sitting beside it: two menu items both meaning
  * "the work" is exactly the confusion the navigation was cut down to fix.
  */
-export default async function WorkPage() {
+export default async function WorkPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
   const user = await requireUser();
   const actor = await loadAuthContext(user.id);
 
@@ -121,6 +126,19 @@ export default async function WorkPage() {
           subtitle: "Everything you need to focus on and get things done.",
         }}
         overview={overview}
+        /*
+         * Links from the dashboard land on a task or in focus mode. The task id
+         * is checked against the rows this person was allowed to fetch, so a
+         * guessed id in the URL opens nothing rather than confirming a task
+         * exists on an account they are not on.
+         */
+        initialTaskId={
+          typeof params.task === "string"
+          && tasks.some((task) => task.id === params.task)
+            ? params.task
+            : null
+        }
+        initialTodayOnly={params.focus === "today"}
         recentActivity={recentActivity.map((event) => ({
           id: event.id,
           action: event.action,

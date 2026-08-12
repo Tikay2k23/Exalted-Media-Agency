@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 
 import type { TaskRow } from "@/components/work/task-types";
 import {
+  deriveDashboard,
   deriveMyWork,
+  onTimeRate,
   myClients,
   needsMyAttention,
   startOfWeek,
@@ -12,6 +14,7 @@ import {
   todaysFocus,
   waitingAndBlocked,
   weekMetrics,
+  workloadThisWeek,
 } from "@/lib/tasks/my-work-view";
 
 /** A Wednesday, so the week has days either side of it. */
@@ -394,5 +397,216 @@ describe("the whole overview together", () => {
     assert.deepEqual(view.clients, []);
     assert.equal(view.summary.dueToday, 0);
     assert.equal(view.week.actualHours, 0);
+  });
+});
+
+describe("on time rate", () => {
+  it("counts a task finished on its due date as on time", () => {
+    // Finishing at six in the evening on the due date is on time, and anybody
+    // would say so. Comparing timestamps rather than days would call it late.
+    const rows = [
+      task({
+        status: "DONE",
+        dueDate: "2026-08-11T09:00:00",
+        completedAt: "2026-08-11T18:00:00",
+      }),
+    ];
+
+    assert.equal(onTimeRate(rows, NOW), 100);
+  });
+
+  it("works out the percentage across the week", () => {
+    const rows = [
+      task({ status: "DONE", dueDate: "2026-08-11T09:00:00", completedAt: "2026-08-11T09:00:00" }),
+      task({ status: "DONE", dueDate: "2026-08-10T09:00:00", completedAt: "2026-08-10T09:00:00" }),
+      task({ status: "DONE", dueDate: "2026-08-10T09:00:00", completedAt: "2026-08-12T09:00:00" }),
+      task({ status: "DONE", dueDate: "2026-08-11T09:00:00", completedAt: "2026-08-12T09:00:00" }),
+    ];
+
+    assert.equal(onTimeRate(rows, NOW), 50);
+  });
+
+  it("is absent rather than perfect when nothing has finished", () => {
+    // A rate with no denominator is not a good score. Showing 100% would
+    // flatter a week that has not started.
+    assert.equal(onTimeRate([], NOW), null);
+    assert.equal(onTimeRate([task({ status: "IN_PROGRESS" })], NOW), null);
+  });
+
+  it("ignores work finished before this week", () => {
+    const rows = [
+      task({ status: "DONE", dueDate: "2026-07-01T09:00:00", completedAt: "2026-07-30T09:00:00" }),
+    ];
+
+    assert.equal(onTimeRate(rows, NOW), null);
+  });
+});
+
+describe("workload this week", () => {
+  it("books estimated hours on live work and actual hours on finished work", () => {
+    const rows = [
+      task({ status: "IN_PROGRESS", estimatedHours: 6, actualHours: null }),
+      task({
+        status: "DONE",
+        estimatedHours: 4,
+        actualHours: 5,
+        completedAt: "2026-08-11T09:00:00",
+      }),
+    ];
+
+    assert.equal(workloadThisWeek(rows, NOW, 40).bookedHours, 11);
+  });
+
+  it("uses the person's own capacity rather than a constant", () => {
+    // A part-time seat measured against forty hours always looks healthy.
+    const rows = [task({ status: "IN_PROGRESS", estimatedHours: 16 })];
+
+    assert.equal(workloadThisWeek(rows, NOW, 40).state, "Healthy");
+    assert.equal(workloadThisWeek(rows, NOW, 20).state, "Near Capacity");
+    assert.equal(workloadThisWeek(rows, NOW, 16).state, "Over Capacity");
+  });
+
+  it("bands the state at seventy and ninety percent", () => {
+    const at = (hours: number) =>
+      workloadThisWeek([task({ status: "IN_PROGRESS", estimatedHours: hours })], NOW, 100).state;
+
+    assert.equal(at(69), "Healthy");
+    assert.equal(at(70), "Near Capacity");
+    assert.equal(at(90), "Near Capacity");
+    assert.equal(at(91), "Over Capacity");
+  });
+
+  it("never reports negative hours available", () => {
+    const workload = workloadThisWeek(
+      [task({ status: "IN_PROGRESS", estimatedHours: 60 })],
+      NOW,
+      40,
+    );
+
+    assert.equal(workload.availableHours, 0);
+    assert.equal(workload.percentUsed, 150);
+  });
+
+  it("falls back to the column default when no capacity is set", () => {
+    // Zero would divide by nothing and render NaN%.
+    const workload = workloadThisWeek(
+      [task({ status: "IN_PROGRESS", estimatedHours: 20 })],
+      NOW,
+      0,
+    );
+
+    assert.equal(workload.capacityHours, 40);
+    assert.equal(workload.percentUsed, 50);
+  });
+
+  it("leaves archived work out of the booking", () => {
+    const rows = [
+      task({ status: "IN_PROGRESS", estimatedHours: 8, archivedAt: "2026-08-01T09:00:00" }),
+    ];
+
+    assert.equal(workloadThisWeek(rows, NOW, 40).bookedHours, 0);
+  });
+});
+
+describe("client state", () => {
+  it("calls an account at risk when its work is overdue or blocked", () => {
+    assert.equal(myClients([task({ dueDate: "2026-08-01T09:00:00" })], NOW)[0].state, "At Risk");
+    assert.equal(myClients([task({ status: "BLOCKED" })], NOW)[0].state, "At Risk");
+  });
+
+  it("calls it waiting when the hold-up is the client's", () => {
+    assert.equal(myClients([task({ status: "WAITING_CLIENT" })], NOW)[0].state, "Waiting");
+  });
+
+  it("puts risk above waiting, because risk is the thing to act on", () => {
+    const rows = [
+      task({ status: "WAITING_CLIENT" }),
+      task({ dueDate: "2026-08-01T09:00:00" }),
+    ];
+
+    assert.equal(myClients(rows, NOW)[0].state, "At Risk");
+  });
+
+  it("calls it on track otherwise", () => {
+    assert.equal(myClients([task({ dueDate: "2026-09-01T09:00:00" })], NOW)[0].state, "On Track");
+  });
+});
+
+describe("priority alerts", () => {
+  it("raises waiting-for-client as its own alert", () => {
+    const items = needsMyAttention([task({ status: "WAITING_CLIENT" })], ME, NOW);
+
+    assert.equal(items[0].kind, "waiting");
+    assert.equal(items[0].action, "View Task");
+  });
+
+  it("raises a comment somebody else left", () => {
+    const items = needsMyAttention([], ME, NOW, 6, [
+      {
+        id: "c1",
+        taskId: "t1",
+        taskTitle: "Landing page",
+        authorName: "Owner Account",
+        body: "Can you check the form?",
+        createdAt: "2026-08-12T09:00:00",
+      },
+    ]);
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].kind, "comment");
+    assert.match(items[0].title, /Owner Account/);
+  });
+
+  it("ranks a revision above a comment above something merely due", () => {
+    const rows = [
+      task({ id: "due", dueDate: "2026-08-12T09:00:00" }),
+      task({ id: "sent-back", status: "REVISION_REQUIRED", revisionNote: "Fix it" }),
+    ];
+
+    const items = needsMyAttention(rows, ME, NOW, 6, [
+      {
+        id: "c1",
+        taskId: "t1",
+        taskTitle: "Landing page",
+        authorName: "Owner",
+        body: "Question",
+        createdAt: "2026-08-12T09:00:00",
+      },
+    ]);
+
+    assert.deepEqual(items.map((item) => item.kind), ["revision", "comment", "due-today"]);
+  });
+});
+
+describe("the dashboard together", () => {
+  it("agrees with My Work about the same numbers", () => {
+    // The two pages read one derivation. If these ever disagreed, somebody
+    // would be told they had three overdue tasks on one screen and one on the
+    // other, with no way to tell which was right.
+    const rows = [
+      task({ id: "a", dueDate: "2026-08-01T09:00:00" }),
+      task({ id: "b", status: "IN_PROGRESS", estimatedHours: 5 }),
+      task({ id: "c", status: "WAITING_CLIENT" }),
+    ];
+
+    const dashboard = deriveDashboard(rows, ME, NOW, 40);
+    const work = deriveMyWork(rows, ME, NOW);
+
+    assert.equal(dashboard.summary.overdue, work.summary.overdue);
+    assert.equal(dashboard.inProgress, work.week.inProgress);
+    assert.deepEqual(dashboard.clients, work.clients);
+  });
+
+  it("holds up for somebody with nothing on their plate", () => {
+    const view = deriveDashboard([], ME, NOW, 40);
+
+    assert.equal(view.summary.dueToday, 0);
+    assert.equal(view.inProgress, 0);
+    assert.equal(view.onTimeRate, null);
+    assert.equal(view.workload.bookedHours, 0);
+    assert.equal(view.workload.availableHours, 40);
+    assert.equal(view.workload.state, "Healthy");
+    assert.deepEqual(view.attention, []);
+    assert.deepEqual(view.clients, []);
   });
 });

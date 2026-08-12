@@ -37,15 +37,27 @@ export interface WaitingItem {
   since: string;
 }
 
+/** A comment somebody else left, for the alert that says so. */
+export interface RecentComment {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface AttentionItem {
   id: string;
-  kind: "revision" | "review" | "overdue" | "due-today" | "blocked";
+  kind: "revision" | "review" | "overdue" | "due-today" | "blocked" | "waiting" | "comment";
   title: string;
   detail: string;
   when: string;
   action: string;
   taskId: string;
 }
+
+export type ClientState = "On Track" | "At Risk" | "Waiting";
 
 export interface ClientCard {
   id: string | null;
@@ -55,6 +67,10 @@ export interface ClientCard {
   needsReview: number;
   nextDue: string | null;
   latestActivity: string | null;
+  /** Derived from the account's own work, not from a stored health field. */
+  state: ClientState;
+  overdue: number;
+  blocked: number;
 }
 
 export interface WeekMetrics {
@@ -241,6 +257,7 @@ export function needsMyAttention(
   userId: string,
   now: Date,
   limit = 6,
+  comments: RecentComment[] = [],
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   const mine = tasksAssignedTo(visible, userId);
@@ -256,6 +273,21 @@ export function needsMyAttention(
         detail: task.revisionNote?.trim() || task.title,
         when: task.updatedAt,
         action: "View Feedback",
+        taskId: task.id,
+      });
+      continue;
+    }
+
+    if (task.status === "WAITING_CLIENT") {
+      items.push({
+        id: `waiting-${task.id}`,
+        kind: "waiting",
+        title: "Waiting for client",
+        detail: task.blocker?.trim()
+          ? `${task.title} — ${task.blocker.trim()}`
+          : task.title,
+        when: task.updatedAt,
+        action: "View Task",
         taskId: task.id,
       });
       continue;
@@ -318,12 +350,28 @@ export function needsMyAttention(
     });
   }
 
+  // Somebody wrote to you about your work. Only counted when it was somebody
+  // else - your own comment is not news.
+  for (const comment of comments) {
+    items.push({
+      id: `comment-${comment.id}`,
+      kind: "comment",
+      title: `${comment.authorName} commented`,
+      detail: `${comment.taskTitle} — ${comment.body}`,
+      when: comment.createdAt,
+      action: "Open Task",
+      taskId: comment.taskId,
+    });
+  }
+
   const weight: Record<AttentionItem["kind"], number> = {
     revision: 0,
     review: 1,
     overdue: 2,
     blocked: 3,
-    "due-today": 4,
+    comment: 4,
+    "due-today": 5,
+    waiting: 6,
   };
 
   items.sort(
@@ -362,6 +410,9 @@ export function myClients(mine: TaskRow[], now: Date): ClientCard[] {
         needsReview: 0,
         nextDue: null,
         latestActivity: null,
+        state: "On Track",
+        overdue: 0,
+        blocked: 0,
       };
       groups.set(key, card);
     }
@@ -369,6 +420,8 @@ export function myClients(mine: TaskRow[], now: Date): ClientCard[] {
     if (ACTIVE_STATUSES.includes(task.status)) card.activeTasks += 1;
     if (task.status === "WAITING_CLIENT") card.waitingOnClient += 1;
     if (task.status === "NEEDS_REVIEW") card.needsReview += 1;
+    if (task.status === "BLOCKED") card.blocked += 1;
+    if (isLive(task) && new Date(task.dueDate) < startOfDay(now)) card.overdue += 1;
 
     // The next thing falling due that is not already late - what somebody
     // actually wants to see beside a client name.
@@ -383,9 +436,102 @@ export function myClients(mine: TaskRow[], now: Date): ClientCard[] {
     }
   }
 
+  /*
+   * The state is worked out from the account's own work rather than read from
+   * the stored health field. Health is a judgement somebody makes about the
+   * relationship; this answers the narrower question of whether the work is
+   * moving, which is what a person glancing at their own board wants.
+   */
+  for (const card of groups.values()) {
+    if (card.overdue > 0 || card.blocked > 0) card.state = "At Risk";
+    else if (card.waitingOnClient > 0) card.state = "Waiting";
+    else card.state = "On Track";
+  }
+
   return [...groups.values()].sort(
     (a, b) => b.activeTasks - a.activeTasks || a.name.localeCompare(b.name),
   );
+}
+
+/**
+ * How much of what finished this week landed on time.
+ *
+ * Null rather than 100% when nothing has finished yet - a rate with no
+ * denominator is not a good score, it is an absent one, and showing it as
+ * perfect flatters a week that has not started.
+ */
+export function onTimeRate(mine: TaskRow[], now: Date): number | null {
+  const weekStart = startOfWeek(now);
+  let finished = 0;
+  let onTime = 0;
+
+  for (const task of mine) {
+    if (!task.completedAt || !COMPLETED_STATUSES.includes(task.status)) continue;
+
+    const completed = new Date(task.completedAt);
+
+    if (completed < weekStart || completed > now) continue;
+
+    finished += 1;
+    // Compared by day rather than by timestamp: finishing at 6pm on the due
+    // date is on time, and anybody would say so.
+    if (startOfDay(completed) <= startOfDay(new Date(task.dueDate))) onTime += 1;
+  }
+
+  return finished === 0 ? null : Math.round((onTime / finished) * 100);
+}
+
+export interface Workload {
+  bookedHours: number;
+  capacityHours: number;
+  availableHours: number;
+  percentUsed: number;
+  state: "Healthy" | "Near Capacity" | "Over Capacity";
+}
+
+/**
+ * What is booked against this week, and how much room is left.
+ *
+ * Booked means estimated hours on work that is live or was finished this week -
+ * the hours this week actually asks of somebody. Capacity comes from the
+ * person's own record rather than a constant, because a part-time seat with a
+ * forty-hour bar would always look healthy.
+ */
+export function workloadThisWeek(
+  mine: TaskRow[],
+  now: Date,
+  capacityHours: number,
+): Workload {
+  const weekStart = startOfWeek(now);
+  let bookedHours = 0;
+
+  for (const task of mine) {
+    if (task.archivedAt) continue;
+
+    if (COMPLETED_STATUSES.includes(task.status) || task.status === "CANCELLED") {
+      const completed = task.completedAt ? new Date(task.completedAt) : null;
+      if (completed && completed >= weekStart && completed <= now) {
+        bookedHours += task.actualHours ?? task.estimatedHours;
+      }
+      continue;
+    }
+
+    bookedHours += task.estimatedHours;
+  }
+
+  // A capacity of zero would divide by nothing. Treat it as unset and fall back
+  // to the column default rather than rendering NaN%.
+  const capacity = capacityHours > 0 ? capacityHours : 40;
+  const percentUsed = Math.round((bookedHours / capacity) * 100);
+
+  return {
+    bookedHours,
+    capacityHours: capacity,
+    availableHours: Math.max(0, capacity - bookedHours),
+    percentUsed,
+    state:
+      percentUsed > 90 ? "Over Capacity" : percentUsed >= 70 ? "Near Capacity" : "Healthy",
+  };
 }
 
 /** This week's numbers, for this person only. */
@@ -429,15 +575,49 @@ export function weekMetrics(mine: TaskRow[], now: Date): WeekMetrics {
 }
 
 /** Everything the overview needs, from one pass over the rows. */
-export function deriveMyWork(visible: TaskRow[], userId: string, now: Date): MyWorkView {
+export function deriveMyWork(
+  visible: TaskRow[],
+  userId: string,
+  now: Date,
+  comments: RecentComment[] = [],
+): MyWorkView {
   const mine = tasksAssignedTo(visible, userId);
 
   return {
     summary: summariseMyWork(mine, now),
     focus: todaysFocus(mine, now),
     waiting: waitingAndBlocked(mine),
-    attention: needsMyAttention(visible, userId, now),
+    attention: needsMyAttention(visible, userId, now, 6, comments),
     clients: myClients(mine, now),
     week: weekMetrics(mine, now),
+  };
+}
+
+export interface DashboardView extends MyWorkView {
+  inProgress: number;
+  onTimeRate: number | null;
+  workload: Workload;
+}
+
+/**
+ * The dashboard, built from the same pass as My Work plus three figures only it
+ * shows. Deliberately not a second set of counts: the two pages disagreeing
+ * about how many tasks are overdue is exactly the failure worth preventing.
+ */
+export function deriveDashboard(
+  visible: TaskRow[],
+  userId: string,
+  now: Date,
+  capacityHours: number,
+  comments: RecentComment[] = [],
+): DashboardView {
+  const mine = tasksAssignedTo(visible, userId);
+  const base = deriveMyWork(visible, userId, now, comments);
+
+  return {
+    ...base,
+    inProgress: base.week.inProgress,
+    onTimeRate: onTimeRate(mine, now),
+    workload: workloadThisWeek(mine, now, capacityHours),
   };
 }

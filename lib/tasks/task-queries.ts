@@ -185,3 +185,40 @@ export async function getMyRecentActivity(actor: AuthContext, take = 6) {
     },
   });
 }
+
+/**
+ * Comments other people left on this person's work, lately.
+ *
+ * Their own comments are excluded - writing something is not news to the
+ * person who wrote it. Bounded to the last week so the dashboard surfaces a
+ * conversation somebody can still usefully join rather than one that closed a
+ * month ago.
+ */
+export async function getRecentCommentsOnMyWork(actor: AuthContext, take = 4) {
+  const since = new Date(Date.now() - 7 * 86_400_000);
+
+  return prisma.taskComment.findMany({
+    where: {
+      authorId: { not: actor.id },
+      createdAt: { gte: since },
+      task: {
+        deletedAt: null,
+        archivedAt: null,
+        OR: [
+          { assignedToId: actor.id },
+          { createdById: actor.id },
+          { reviewerId: actor.id },
+        ],
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: {
+      id: true,
+      body: true,
+      createdAt: true,
+      author: { select: { name: true } },
+      task: { select: { id: true, title: true } },
+    },
+  });
+}

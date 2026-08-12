@@ -44,6 +44,8 @@ export function AgencyTaskPanel({
   identity,
   overview,
   recentActivity,
+  initialTaskId,
+  initialTodayOnly,
 }: {
   tasks: TaskRow[];
   users: Option[];
@@ -59,6 +61,8 @@ export function AgencyTaskPanel({
   identity: { eyebrow: string; title: string; subtitle: string };
   overview: MyWorkView;
   recentActivity: TaskEvent[];
+  initialTaskId?: string | null;
+  initialTodayOnly?: boolean;
 }) {
   return (
     <div className="space-y-6">
@@ -76,6 +80,8 @@ export function AgencyTaskPanel({
         identity={identity}
         overview={overview}
         recentActivity={recentActivity}
+        initialTaskId={initialTaskId}
+        initialTodayOnly={initialTodayOnly}
         heading="All My Tasks"
       />
 

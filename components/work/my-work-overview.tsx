@@ -140,6 +140,8 @@ const ATTENTION_ICONS: Record<AttentionItem["kind"], typeof Target> = {
   overdue: TriangleAlert,
   "due-today": CalendarCheck,
   blocked: AlertCircle,
+  waiting: Hourglass,
+  comment: MessageSquare,
 };
 
 const ATTENTION_TONES: Record<AttentionItem["kind"], Tone> = {
@@ -148,6 +150,8 @@ const ATTENTION_TONES: Record<AttentionItem["kind"], Tone> = {
   overdue: "rose",
   "due-today": "amber",
   blocked: "slate",
+  waiting: "amber",
+  comment: "sky",
 };
 
 /**

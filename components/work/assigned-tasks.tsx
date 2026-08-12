@@ -88,6 +88,8 @@ export function AssignedTasks({
   identity,
   overview,
   recentActivity,
+  initialTaskId,
+  initialTodayOnly,
 }: {
   tasks: TaskRow[];
   clients: { id: string; companyName: string }[];
@@ -103,12 +105,20 @@ export function AssignedTasks({
   overview: MyWorkView;
   /** Recent events on this person's work. */
   recentActivity: TaskEvent[];
+  /** Open straight onto one task, so a link from elsewhere lands on it. */
+  initialTaskId?: string | null;
+  /** Arrive with the daily focus filter already on. */
+  initialTodayOnly?: boolean;
 }) {
   const router = useRouter();
-  const [filters, setFilters] = useState<TaskFilterState>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<TaskFilterState>(
+    initialTodayOnly ? { ...EMPTY_FILTERS, todayOnly: true } : EMPTY_FILTERS,
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Seeded from the link rather than set in an effect, so a task arrived at
+  // from the dashboard is open on the first paint instead of flashing shut.
+  const [openId, setOpenId] = useState<string | null>(initialTaskId ?? null);
   const [exportOpen, setExportOpen] = useState(false);
   const [thread, setThread] = useState<{
     taskId: string;
