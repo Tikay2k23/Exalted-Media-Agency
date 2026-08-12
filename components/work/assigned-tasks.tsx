@@ -1,7 +1,6 @@
 "use client";
 
-import { Download, ListFilter, MoreVertical, Search, X } from "lucide-react";
-import Link from "next/link";
+import { Download, ListFilter, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
@@ -38,6 +37,7 @@ import { formatEnumLabel } from "@/lib/utils";
 import type { MyWorkView } from "@/lib/tasks/my-work-view";
 
 import { MyWorkOverview } from "./my-work-overview";
+import { RowMenu } from "./row-menu";
 import { TaskDetailModal } from "./task-detail-modal";
 import type { TaskComment, TaskEvent, TaskRow, ViewerCapabilities } from "./task-types";
 
@@ -109,7 +109,7 @@ export function AssignedTasks({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [thread, setThread] = useState<{
     taskId: string;
     comments: TaskComment[];
@@ -119,7 +119,7 @@ export function AssignedTasks({
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
   const [showFilters, setShowFilters] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const exportRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   /** Takes the reader down to the table, for actions that act on it. */
@@ -166,17 +166,17 @@ export function AssignedTasks({
   const openTask = tasks.find((task) => task.id === openId) ?? null;
 
   useEffect(() => {
-    if (!menuId) return;
+    if (!exportOpen) return;
 
     function onPointerDown(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuId(null);
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportOpen(false);
       }
     }
 
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [menuId]);
+  }, [exportOpen]);
 
   useEffect(() => {
     if (!openId) return;
@@ -284,6 +284,25 @@ export function AssignedTasks({
     URL.revokeObjectURL(url);
   }
 
+  /** Picking a task up from the row menu, without opening it first. */
+  async function startTask(taskId: string) {
+    open(taskId);
+
+    const response = await fetch(`/api/employee-tasks/${taskId}/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status", status: "IN_PROGRESS" }),
+    });
+
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      setError(data?.error ?? "That task could not be started.");
+      return;
+    }
+
+    startTransition(() => router.refresh());
+  }
+
   async function addComment(body: string) {
     if (!openId) return;
 
@@ -335,14 +354,14 @@ export function AssignedTasks({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setMenuId(menuId === "__export" ? null : "__export")}
+              onClick={() => setExportOpen((current) => !current)}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export CSV
             </Button>
-            {menuId === "__export" ? (
+            {exportOpen ? (
               <div
-                ref={menuRef}
+                ref={exportRef}
                 className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
               >
                 <button
@@ -350,7 +369,7 @@ export function AssignedTasks({
                   className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                   onClick={() => {
                     downloadCsv(buildTaskCsv(filtered), taskCsvFilename("filtered"));
-                    setMenuId(null);
+                    setExportOpen(false);
                   }}
                 >
                   <span className="block font-semibold text-slate-900">
@@ -363,7 +382,7 @@ export function AssignedTasks({
                   type="button"
                   className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                   onClick={() => {
-                    setMenuId(null);
+                    setExportOpen(false);
                     void exportCompleted();
                   }}
                 >
@@ -703,66 +722,25 @@ export function AssignedTasks({
 
                     {/* Quick actions, outside the row button so it is not a nested button. */}
                     <div className="absolute right-3 top-3 lg:top-1/2 lg:-translate-y-1/2">
-                      <button
-                        type="button"
-                        aria-label={`Actions for ${task.title}`}
-                        onClick={() => setMenuId(menuId === task.id ? null : task.id)}
-                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200/70 hover:text-slate-700"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-
-                      {menuId === task.id ? (
-                        <div
-                          ref={menuRef}
-                          className="absolute right-0 z-40 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
-                        >
-                          <button
-                            type="button"
-                            className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
-                            onClick={() => {
-                              open(task.id);
-                              setMenuId(null);
-                            }}
-                          >
-                            View details
-                          </button>
-
-                          {task.assignedTo?.id === viewer.id
+                      <RowMenu
+                        label={`Actions for ${task.title}`}
+                        items={[
+                          { label: "View details", onSelect: () => open(task.id) },
+                          ...(task.assignedTo?.id === viewer.id
                           && task.status === "TODO"
-                          && !task.archivedAt ? (
-                            <button
-                              type="button"
-                              className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
-                              onClick={async () => {
-                                setMenuId(null);
-                                open(task.id);
-                                await fetch(`/api/employee-tasks/${task.id}/transition`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    action: "status",
-                                    status: "IN_PROGRESS",
-                                  }),
-                                });
-                                router.refresh();
-                              }}
-                            >
-                              Start task
-                            </button>
-                          ) : null}
-
-                          {task.client ? (
-                            <Link
-                              href={`/clients/${task.client.id}`}
-                              className="block rounded-lg px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
-                              onClick={() => setMenuId(null)}
-                            >
-                              Open client
-                            </Link>
-                          ) : null}
-                        </div>
-                      ) : null}
+                          && !task.archivedAt
+                            ? [
+                                {
+                                  label: "Start task",
+                                  onSelect: () => void startTask(task.id),
+                                },
+                              ]
+                            : []),
+                          ...(task.client
+                            ? [{ label: "Open client", href: `/clients/${task.client.id}` }]
+                            : []),
+                        ]}
+                      />
                     </div>
                   </li>
                 );
