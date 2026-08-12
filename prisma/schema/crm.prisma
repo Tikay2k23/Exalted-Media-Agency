@@ -44,6 +44,30 @@ enum LeadStatus {
   ABANDONED
 }
 
+/// Why an opportunity was lost. Coded so it can be counted; the free-text
+/// lostReason stays alongside for the detail that does not fit a category.
+enum LostReason {
+  NO_RESPONSE
+  NO_BUDGET
+  NOT_INTERESTED
+  WENT_WITH_COMPETITOR
+  BAD_FIT
+  OUTSIDE_SERVICE_AREA
+  TIMING
+  DUPLICATE_LEAD
+  OTHER
+}
+
+/// What happened to the strategy call. Booked is a promise; showed is the
+/// thing that actually moves a deal.
+enum StrategyCallStatus {
+  BOOKED
+  SHOWED
+  NO_SHOW
+  CANCELLED
+  RESCHEDULED
+}
+
 enum LeadSource {
   WEBSITE_FORM
   PAID_ADS
@@ -152,8 +176,37 @@ model Lead {
   proposalSentAt   DateTime?
   decisionDate     DateTime?
   objection        String?
+  /// Free text, kept as-is. The coded reason below was added beside it rather
+  /// than replacing it, so nothing already written is lost.
   lostReason       String?
+  lostReasonCode   LostReason?
+  lostAt           DateTime?
   nextFollowUpAt   DateTime?
+
+  /// What happens next, in somebody's own words. Deliberately separate from
+  /// nextFollowUpAt: "call the decision maker" and "Thursday at ten" are
+  /// different facts, and a pipeline that only stores the date tells you when
+  /// to act without telling you what to do.
+  nextAction       String?
+
+  /// The last time anybody actually reached this person. Stored rather than
+  /// derived from call logs, because an email or a text is contact too and a
+  /// lead chased three ways would otherwise read as never contacted.
+  lastContactAt    DateTime?
+
+  /// The strategy call, which is the hinge of this pipeline.
+  strategyCallAt     DateTime?
+  strategyCallStatus StrategyCallStatus?
+
+  /// Recorded on the win, so a converted lead can still answer "who closed
+  /// this, when, and for how much" after the client record takes over.
+  wonAt            DateTime?
+  wonById          String?
+  finalValue       Decimal?   @db.Decimal(12, 2)
+
+  /// Nurture is not lost. A date here keeps somebody out of today's follow-up
+  /// list without pretending the opportunity is dead.
+  nurtureUntil     DateTime?
   convertedClientId String?   @unique
   notes            String?
   createdAt        DateTime   @default(now())
@@ -163,6 +216,7 @@ model Lead {
   stage           PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
   convertedClient Client?        @relation("LeadConversion", fields: [convertedClientId], references: [id], onDelete: SetNull)
   assignedTo      User?          @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  wonBy           User?          @relation("LeadCloser", fields: [wonById], references: [id], onDelete: SetNull)
   callLogs        LeadCallLog[]
   referral        Referral?      @relation("ReferralLead")
 
@@ -172,6 +226,9 @@ model Lead {
   @@index([nextFollowUpAt])
   @@index([source])
   @@index([deletedAt])
+  @@index([strategyCallAt])
+  @@index([wonAt])
+  @@index([proposalSentAt])
 }
 
 enum CallOutcome {

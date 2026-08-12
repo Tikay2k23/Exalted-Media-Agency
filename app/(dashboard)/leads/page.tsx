@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { SalesWorkspace } from "@/components/sales/sales-workspace";
-import { Card, CardContent } from "@/components/ui/card";
+import { SalesBoard } from "@/components/sales/sales-board";
 import { loadAuthContext } from "@/lib/authz";
-import { getSalesWorkspaceData } from "@/lib/data/sales-queries";
+import { getSalesWorkspace } from "@/lib/data/sales-workspace-query";
 import { canAny } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 
@@ -14,6 +13,15 @@ export const metadata = {
   title: "Leads and Sales",
 };
 
+/**
+ * Leads and Sales.
+ *
+ * The workspace for moving prospects toward paying, rather than a general
+ * dashboard. Everything a salesperson opens it to ask - who needs chasing,
+ * which proposals have gone quiet, what happens next on each opportunity - is
+ * derived in the browser from one read, so the counters and the list are always
+ * the same set of leads.
+ */
 export default async function LeadsPage() {
   const user = await requireUser();
   const actor = await loadAuthContext(user.id);
@@ -26,71 +34,21 @@ export default async function LeadsPage() {
     redirect("/dashboard");
   }
 
-  const data = await getSalesWorkspaceData(actor);
-  const { metrics } = data;
+  const data = await getSalesWorkspace(actor);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-          Leads and Sales
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-          {data.canAssign
-            ? "Every lead in the agency, with the most urgent follow-ups first."
-            : "Your leads, with the most urgent follow-ups first."}
-        </p>
-      </div>
-
-      {data.isDegraded ? (
-        <Card>
-          <CardContent className="px-6 py-5">
-            <p className="text-sm text-amber-800">
-              This page could not load its data. Refresh, and tell an administrator if it
-              keeps happening.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* One line of plain English replaces eight metric tiles. It says what to
-          do, not just what is true. */}
-      {metrics.overdueFollowUps > 0 || metrics.unassigned > 0 ? (
-        <Card className="border-amber-200 bg-amber-50/70">
-          <CardContent className="px-6 py-5">
-            <p className="text-sm leading-6 text-amber-900">
-              {metrics.overdueFollowUps > 0 ? (
-                <>
-                  <span className="font-semibold">
-                    {metrics.overdueFollowUps} follow-up
-                    {metrics.overdueFollowUps === 1 ? " is" : "s are"} overdue.
-                  </span>{" "}
-                  Use the <span className="font-medium">Follow-up due</span> filter below.
-                </>
-              ) : null}
-              {metrics.overdueFollowUps > 0 && metrics.unassigned > 0 ? " " : null}
-              {metrics.unassigned > 0 ? (
-                <>
-                  <span className="font-semibold">
-                    {metrics.unassigned} lead{metrics.unassigned === 1 ? " has" : "s have"}{" "}
-                    nobody working {metrics.unassigned === 1 ? "it" : "them"}.
-                  </span>{" "}
-                  Open the lead and set an assigned representative.
-                </>
-              ) : null}
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <SalesWorkspace
-        leads={data.leads}
-        assignableUsers={data.assignableUsers}
-        canCreate={data.canCreate}
-        canEdit={data.canEdit}
-        canConvert={data.canConvert}
-        canAssign={data.canAssign}
-      />
-    </div>
+    <SalesBoard
+      stages={data.stages}
+      leads={data.leads}
+      owners={data.owners}
+      sources={data.sources}
+      proposalAgingDays={data.proposalAgingDays}
+      canSeeTeam={data.canSeeTeam}
+      canCreate={data.canCreate}
+      canEdit={data.canEdit}
+      canConvert={data.canConvert}
+      canAssign={data.canAssign}
+      serverNow={new Date().toISOString()}
+    />
   );
 }

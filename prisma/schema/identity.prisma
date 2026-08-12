@@ -176,6 +176,7 @@ model User {
   notifications          Notification[]           @relation("NotificationRecipient")
   savedViews             SavedView[]
   assignedLeads          Lead[]                   @relation("LeadOwner")
+  leadsWon               Lead[]                   @relation("LeadCloser")
   loggedCalls            LeadCallLog[]            @relation("CallLogger")
   managedProjects        Project[]                @relation("ProjectManager")
   approvedStageOverrides ClientStageHistory[]     @relation("StageOverrideApprover")

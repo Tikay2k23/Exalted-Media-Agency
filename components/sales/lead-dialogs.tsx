@@ -6,7 +6,6 @@ import { type ReactNode, useEffect, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { LeadRow } from "@/lib/data/sales-queries";
 
 const LEAD_SOURCES = [
   "WEBSITE_FORM",
@@ -118,13 +117,31 @@ function Field({ label: text, children }: { label: string; children: ReactNode }
   );
 }
 
+/**
+ * What the dialogs actually read off a lead.
+ *
+ * Deliberately narrower than any query's row type: the forms need nine fields,
+ * and naming those nine means any shape carrying them can be edited here.
+ */
+export interface LeadDialogRow {
+  id: string;
+  contactName: string;
+  businessName: string;
+  email: string | null;
+  phone: string | null;
+  source: string;
+  ownerId: string | null;
+  budgetAmount: number | null;
+  proposalValue: number | null;
+}
+
 export function LeadFormDialog({
   lead,
   assignableUsers,
   canAssign,
   onClose,
 }: {
-  lead: LeadRow | null;
+  lead: LeadDialogRow | null;
   assignableUsers: { id: string; name: string }[];
   canAssign: boolean;
   onClose: () => void;
@@ -314,7 +331,7 @@ export function LeadConvertDialog({
   canAssign,
   onClose,
 }: {
-  lead: LeadRow;
+  lead: LeadDialogRow;
   assignableUsers: { id: string; name: string }[];
   canAssign: boolean;
   onClose: () => void;

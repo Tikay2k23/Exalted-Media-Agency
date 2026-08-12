@@ -583,6 +583,18 @@ export async function convertLeadToClient(input: ConvertLeadInput) {
         status: LeadStatus.CONVERTED,
         convertedClientId: created.id,
         decisionDate: now,
+        /*
+         * The win is recorded on the lead as well as the client. Once the
+         * client record takes over, the lead is the only place that can still
+         * answer "who closed this, when, and for how much" - and that is what
+         * the sales reports are built on.
+         */
+        wonAt: now,
+        wonById: actor.id,
+        finalValue: data.monthlyValue ?? lead.proposalValue ?? lead.budgetAmount ?? null,
+        // Nothing further is chased on a converted lead.
+        nextFollowUpAt: null,
+        nextAction: null,
         ...(wonStage ? { stageId: wonStage.id } : {}),
       },
     });
