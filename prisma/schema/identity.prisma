@@ -178,6 +178,7 @@ model User {
   assignedLeads          Lead[]                   @relation("LeadOwner")
   leadsWon               Lead[]                   @relation("LeadCloser")
   loggedCalls            LeadCallLog[]            @relation("CallLogger")
+  leadNotes              LeadNote[]               @relation("LeadNoteAuthor")
   managedProjects        Project[]                @relation("ProjectManager")
   approvedStageOverrides ClientStageHistory[]     @relation("StageOverrideApprover")
 

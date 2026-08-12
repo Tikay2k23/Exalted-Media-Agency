@@ -218,6 +218,7 @@ model Lead {
   assignedTo      User?          @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
   wonBy           User?          @relation("LeadCloser", fields: [wonById], references: [id], onDelete: SetNull)
   callLogs        LeadCallLog[]
+  leadNotes       LeadNote[]
   referral        Referral?      @relation("ReferralLead")
 
   @@index([status])
@@ -240,6 +241,30 @@ enum CallOutcome {
   CALL_BOOKED
   CALL_SHOWED
   NO_SHOW
+}
+
+/// An internal note on a lead.
+///
+/// The Lead.notes column stays where it is - it holds the qualification detail
+/// captured when the lead was created - but it is one text field with no author
+/// and no timestamp, so it cannot answer "who said this, and when". This is the
+/// running conversation, shaped like TaskComment because it is the same idea
+/// applied to a lead.
+///
+/// Internal only. Nothing here is customer-facing.
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation("LeadNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@index([authorId])
 }
 
 model LeadCallLog {
