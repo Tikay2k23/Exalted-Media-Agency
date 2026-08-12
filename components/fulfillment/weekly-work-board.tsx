@@ -612,8 +612,27 @@ export function WeeklyWorkBoard({
                       Nothing here for this person under those filters.
                     </p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[52rem] text-left text-xs">
+                    <div className="hidden overflow-x-auto md:block">
+                      {/*
+                        Nine columns need a real floor, not a hopeful one. At
+                        52rem the browser was squeezing the last column until
+                        "View EOD" wrapped onto two lines; the widths below are
+                        declared once here so no cell has to fight for room.
+                        Narrower than this and the container scrolls, which is
+                        the right answer on a phone - the page itself never does.
+                      */}
+                      <table className="w-full min-w-[64rem] table-fixed text-left text-xs">
+                        <colgroup>
+                          <col className="w-[18%]" />
+                          <col className="w-[14%]" />
+                          <col className="w-[10%]" />
+                          <col className="w-[11%]" />
+                          <col className="w-[8%]" />
+                          <col className="w-[11%]" />
+                          <col className="w-[6%]" />
+                          <col className="w-[16%]" />
+                          <col className="w-[6.5rem]" />
+                        </colgroup>
                         <thead className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
                           <tr>
                             <th className="px-4 py-2.5 font-semibold">Task</th>
@@ -641,13 +660,20 @@ export function WeeklyWorkBoard({
                             return (
                               <tr key={task.id} className="align-top hover:bg-slate-50/60">
                                 <td className="px-4 py-3">
-                                  <p className="font-medium text-slate-900">{task.title}</p>
+                                  <p className="break-words font-medium text-slate-900">
+                                    {task.title}
+                                  </p>
                                 </td>
                                 <td className="px-3 py-3 text-slate-600">
-                                  {task.client?.companyName ?? "Internal"}
+                                  <span className="block truncate" title={task.client?.companyName}>
+                                    {task.client?.companyName ?? "Internal"}
+                                  </span>
                                 </td>
                                 <td className="px-3 py-3">
-                                  <Badge tone={statusTone(task.status)}>
+                                  <Badge
+                                    tone={statusTone(task.status)}
+                                    className="whitespace-nowrap"
+                                  >
                                     {statusLabel(task.status)}
                                   </Badge>
                                 </td>
@@ -669,33 +695,58 @@ export function WeeklyWorkBoard({
                                     <span className="text-slate-400">—</span>
                                   )}
                                 </td>
-                                <td className="px-3 py-3 text-slate-600">
+                                <td className="whitespace-nowrap px-3 py-3 text-slate-600">
                                   {dayLabel(task.dueDate)}
                                 </td>
                                 <td className="px-3 py-3">
                                   {todays ? (
                                     <div>
-                                      <Badge tone="emerald">Submitted</Badge>
-                                      <p className="mt-0.5 text-[11px] text-slate-500">
+                                      <Badge tone="emerald" className="whitespace-nowrap">
+                                        Submitted
+                                      </Badge>
+                                      <p className="mt-0.5 whitespace-nowrap text-[11px] text-slate-500">
                                         {timeLabel(todays.updatedAt)}
                                       </p>
                                     </div>
                                   ) : needed ? (
-                                    <Badge tone="rose">Missing</Badge>
+                                    <Badge tone="rose" className="whitespace-nowrap">
+                                      Missing
+                                    </Badge>
                                   ) : (
-                                    <span className="text-slate-400">Not due</span>
+                                    <span className="whitespace-nowrap text-slate-400">
+                                      Not due
+                                    </span>
                                   )}
                                 </td>
-                                <td className="px-3 py-3 text-slate-600">
+                                <td className="whitespace-nowrap px-3 py-3 text-slate-600">
                                   {todays?.hoursSpent ? `${todays.hoursSpent}h` : "—"}
                                 </td>
                                 <td className="px-3 py-3 text-slate-600">
-                                  {latest?.blockers?.trim() || task.blocker?.trim() || "—"}
+                                  {/*
+                                    Clamped to two lines with the full text on
+                                    hover. A long blocker used to stretch this
+                                    cell and starve every column after it.
+                                  */}
+                                  {(() => {
+                                    const blocker =
+                                      latest?.blockers?.trim() || task.blocker?.trim() || null;
+
+                                    return blocker ? (
+                                      <span
+                                        className="line-clamp-2 break-words"
+                                        title={blocker}
+                                      >
+                                        {blocker}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400">—</span>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-3 py-3">
                                   <Link
                                     href={`/work?task=${task.id}`}
-                                    className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
+                                    className="inline-block whitespace-nowrap rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
                                   >
                                     {todays ? "View EOD" : "Open"}
                                   </Link>
@@ -707,6 +758,78 @@ export function WeeklyWorkBoard({
                       </table>
                     </div>
                   )}
+
+                  {/*
+                    The same rows as cards on a phone. Nine columns cannot be
+                    read on a 375px screen whatever the widths are, and making
+                    somebody scroll a table sideways to reach the action is
+                    worse than stacking it.
+                  */}
+                  {memberTasks.length ? (
+                    <ul className="divide-y divide-slate-100 md:hidden">
+                      {memberTasks.map((task) => {
+                        const latest = latestEntry(entries, task.id, selected.userId);
+                        const todays = entries.find(
+                          (entry) =>
+                            entry.taskId === task.id
+                            && entry.authorId === selected.userId
+                            && sameDay(entry.entryDate, day),
+                        );
+                        const needed = requiredIds.has(task.id);
+                        const blocker =
+                          latest?.blockers?.trim() || task.blocker?.trim() || null;
+
+                        return (
+                          <li key={task.id} className="space-y-2 p-4">
+                            <div>
+                              <p className="break-words text-sm font-medium text-slate-900">
+                                {task.title}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {task.client?.companyName ?? "Internal"} · due{" "}
+                                {dayLabel(task.dueDate)}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Badge tone={statusTone(task.status)} className="whitespace-nowrap">
+                                {statusLabel(task.status)}
+                              </Badge>
+                              {todays ? (
+                                <Badge tone="emerald" className="whitespace-nowrap">
+                                  EOD {timeLabel(todays.updatedAt)}
+                                </Badge>
+                              ) : needed ? (
+                                <Badge tone="rose" className="whitespace-nowrap">
+                                  Missing EOD
+                                </Badge>
+                              ) : null}
+                              {latest?.progressPercent !== null
+                              && latest?.progressPercent !== undefined ? (
+                                <Badge tone="sky">{latest.progressPercent}%</Badge>
+                              ) : null}
+                              {todays?.hoursSpent ? (
+                                <Badge tone="slate">{todays.hoursSpent}h</Badge>
+                              ) : null}
+                            </div>
+
+                            {blocker ? (
+                              <p className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs leading-5 text-rose-700">
+                                {blocker}
+                              </p>
+                            ) : null}
+
+                            <Link
+                              href={`/work?task=${task.id}`}
+                              className="block rounded-lg bg-slate-100 py-2 text-center text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
+                            >
+                              {todays ? "View EOD" : "Open task"}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
                 </Panel>
               ) : null}
 
