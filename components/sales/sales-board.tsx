@@ -11,6 +11,7 @@ import {
   Phone,
   Search,
   TrendingUp,
+  Upload,
   TriangleAlert,
   UserPlus,
   X,
@@ -20,6 +21,7 @@ import { useMemo, useState } from "react";
 
 import { LeadConvertDialog, LeadFormDialog } from "@/components/sales/lead-dialogs";
 import { LeadDrawer } from "@/components/sales/lead-drawer";
+import { LeadImportDialog } from "@/components/sales/lead-import-dialog";
 import { RowMenu } from "@/components/work/row-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -195,6 +197,7 @@ export function SalesBoard({
    */
   const [formLeadId, setFormLeadId] = useState<string | null | "new">(null);
   const [convertLeadId, setConvertLeadId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const now = useMemo(() => new Date(serverNow), [serverNow]);
   const agingDays = proposalAgingDays ?? DEFAULT_PROPOSAL_AGING_DAYS;
@@ -316,6 +319,12 @@ export function SalesBoard({
             <Button size="md" onClick={() => setFormLeadId("new")}>
               <UserPlus className="mr-1.5 h-4 w-4" />
               Add Lead
+            </Button>
+          ) : null}
+          {canCreate ? (
+            <Button variant="secondary" size="md" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-1.5 h-4 w-4" />
+              Import Leads
             </Button>
           ) : null}
           <Button variant="secondary" size="md" onClick={exportCsv}>
@@ -1048,6 +1057,10 @@ export function SalesBoard({
           canAssign={canAssign}
           onClose={() => setFormLeadId(null)}
         />
+      ) : null}
+
+      {importOpen ? (
+        <LeadImportDialog owners={owners} onClose={() => setImportOpen(false)} />
       ) : null}
 
       {convertLead ? (
