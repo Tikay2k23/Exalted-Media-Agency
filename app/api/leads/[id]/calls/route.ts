@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { LEAD_FAILURE_STATUS } from "@/app/api/leads/route";
 import { getServerAuthSession } from "@/lib/auth";
 import { loadAuthContext } from "@/lib/authz";
-import { logLeadCall } from "@/lib/sales/lead-service";
+import { LEAD_FAILURE_STATUS, logLeadCall } from "@/lib/sales/lead-service";
 import { leadCallLogSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";

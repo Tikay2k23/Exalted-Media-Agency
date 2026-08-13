@@ -11,11 +11,22 @@
  * keystroke without a round trip.
  */
 
-/** The lead as the browser sees it. Dates are strings; money is a number. */
+/**
+ * One opportunity, as the browser sees it. Dates are strings; money is a
+ * number - Decimal does not survive the trip to a client component.
+ *
+ * Board and list are two renderings of this same array. There is no second
+ * query behind the list view and no separate lead record behind the board,
+ * which is why switching between them cannot show different deals.
+ */
 export interface SalesLead {
   id: string;
+  /** The contact this deal belongs to. Several deals may share one. */
+  contactId: string | null;
   contactName: string;
   businessName: string;
+  /** What this deal is for, when somebody named it. */
+  opportunityName: string | null;
   email: string | null;
   phone: string | null;
   source: string;
@@ -36,12 +47,68 @@ export interface SalesLead {
   lostAt: string | null;
   lostReasonCode: string | null;
   nurtureUntil: string | null;
+  expectedCloseAt: string | null;
+  /** What the agency expects to charge. See budgetAmount for the difference. */
+  opportunityValue: number | null;
   budgetAmount: number | null;
+  budgetRange: string | null;
   proposalValue: number | null;
   finalValue: number | null;
   convertedClientId: string | null;
+  serviceInterest: string | null;
+  campaign: string | null;
+
+  /** The qualification answers, as they were given. */
+  timeline: string | null;
+  isDecisionMaker: boolean | null;
+  mainProblem: string | null;
+  goal: string | null;
+  currentSolution: string | null;
+  qualificationNotes: string | null;
+  score: number | null;
+
+  /** Custom labels only. The stage tag is derived - see stageTag(). */
+  tags: string[];
   notes: string | null;
   createdAt: string;
+  updatedAt: string;
+  createdByName: string | null;
+  followerNames: string[];
+  /**
+   * What has actually happened on this deal, counted rather than guessed. The
+   * card only lights an icon it has a real number for; an icon that is always
+   * lit tells nobody anything.
+   */
+  activity: {
+    calls: number;
+    notes: number;
+    tasks: number;
+    appointments: number;
+    files: number;
+  };
+}
+
+/**
+ * What one opportunity is worth.
+ *
+ * Most committed number first: what was agreed, else what was quoted, else what
+ * the agency expects to charge, else what they said they could spend. Each step
+ * down is a weaker claim, and summing more than one of them would count the
+ * same deal twice - which is how a forecast comes to be worth nothing.
+ */
+export function dealValue(lead: SalesLead): number {
+  return (
+    lead.finalValue
+    ?? lead.proposalValue
+    ?? lead.opportunityValue
+    ?? lead.budgetAmount
+    ?? 0
+  );
+}
+
+/** What to call this deal. The name somebody gave it, else the account. */
+export function opportunityLabel(lead: SalesLead): string {
+  return lead.opportunityName?.trim() || lead.businessName;
 }
 
 /**
@@ -293,7 +360,7 @@ export function salesMetrics(
     if (lead.stageKey === "qualified" || lead.status === "QUALIFIED") qualified += 1;
     if (lead.stageKey === "proposal_sent") proposalsOpen += 1;
 
-    pipelineValue += lead.proposalValue ?? lead.budgetAmount ?? 0;
+    pipelineValue += dealValue(lead);
   }
 
   return {
@@ -607,7 +674,122 @@ export type SalesSort =
   | "newest"
   | "oldest"
   | "highest-value"
-  | "recently-contacted";
+  | "lowest-value"
+  | "recently-contacted"
+  | "least-recently-contacted"
+  | "recently-updated"
+  | "expected-close";
+
+export const SALES_SORTS: { value: SalesSort; label: string }[] = [
+  { value: "follow-up-soonest", label: "Follow Up Soonest" },
+  { value: "most-overdue", label: "Most Overdue" },
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "highest-value", label: "Highest Value" },
+  { value: "lowest-value", label: "Lowest Value" },
+  { value: "recently-contacted", label: "Recently Contacted" },
+  { value: "least-recently-contacted", label: "Least Recently Contacted" },
+  { value: "recently-updated", label: "Recently Updated" },
+  { value: "expected-close", label: "Expected Close Date" },
+];
+
+/**
+ * The chips above the list.
+ *
+ * Each one is a predicate, and its count comes from that same predicate - so a
+ * chip reading nine always filters to nine. "All" is a chip rather than the
+ * absence of one so that clearing is a click in the same row, not a hunt for a
+ * Clear button.
+ */
+export type QuickFilterKey =
+  | "all"
+  | "needs-follow-up"
+  | "overdue"
+  | "no-next-action"
+  | "strategy-calls"
+  | "proposals"
+  | "won";
+
+export function matchesQuickFilter(lead: SalesLead, key: QuickFilterKey, now: Date): boolean {
+  switch (key) {
+    case "all":
+      return true;
+    case "needs-follow-up":
+      return isFollowUpDue(lead, now);
+    case "overdue":
+      return isFollowUpOverdue(lead, now);
+    case "no-next-action":
+      return hasNoNextAction(lead);
+    case "strategy-calls":
+      // Booked and still live, whether or not the call has happened yet.
+      return (
+        Boolean(lead.strategyCallAt)
+        && !["CANCELLED", "NO_SHOW"].includes(lead.strategyCallStatus ?? "")
+      );
+    case "proposals":
+      return isOpen(lead) && Boolean(lead.proposalSentAt);
+    case "won":
+      return Boolean(lead.wonAt);
+  }
+}
+
+export interface QuickFilterChip {
+  key: QuickFilterKey;
+  label: string;
+  count: number;
+}
+
+const QUICK_FILTER_LABELS: Record<QuickFilterKey, string> = {
+  all: "All",
+  "needs-follow-up": "Needs Follow Up",
+  overdue: "Overdue",
+  "no-next-action": "No Next Action",
+  "strategy-calls": "Strategy Calls",
+  proposals: "Proposals",
+  won: "Won",
+};
+
+export const QUICK_FILTER_KEYS = Object.keys(QUICK_FILTER_LABELS) as QuickFilterKey[];
+
+export function quickFilterChips(leads: SalesLead[], now: Date): QuickFilterChip[] {
+  return QUICK_FILTER_KEYS.map((key) => ({
+    key,
+    label: QUICK_FILTER_LABELS[key],
+    count: leads.filter((lead) => matchesQuickFilter(lead, key, now)).length,
+  }));
+}
+
+/**
+ * When the next follow-up falls.
+ *
+ * One function, used by the filter and by the label, so a lead the filter calls
+ * overdue can never be labelled "today". Buckets are calendar days, not
+ * twenty-four hour windows - "tomorrow" means tomorrow, not "in a day".
+ */
+export type FollowUpStatus = "overdue" | "today" | "tomorrow" | "upcoming" | "none";
+
+export function followUpStatus(lead: SalesLead, now: Date): FollowUpStatus {
+  const at = lead.nextFollowUpAt ?? (isNurture(lead) ? lead.nurtureUntil : null);
+
+  if (!at) return "none";
+
+  const days = daysBetween(new Date(at), now);
+
+  if (days > 0) return "overdue";
+  if (days === 0) return "today";
+  if (days === -1) return "tomorrow";
+
+  return "upcoming";
+}
+
+export const FOLLOW_UP_STATUSES: { value: FollowUpStatus | ""; label: string }[] = [
+  { value: "", label: "All Follow Ups" },
+  { value: "overdue", label: "Overdue" },
+  { value: "today", label: "Due Today" },
+  { value: "tomorrow", label: "Due Tomorrow" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "none", label: "No Follow Up" },
+];
 
 export interface SalesFilters {
   search: string;
@@ -616,6 +798,16 @@ export interface SalesFilters {
   source: string;
   status: string;
   action: ActionKey | "";
+  quick: QuickFilterKey;
+  followUp: FollowUpStatus | "";
+  tag: string;
+  campaign: string;
+  minValue: string;
+  maxValue: string;
+  createdFrom: string;
+  createdTo: string;
+  closeFrom: string;
+  closeTo: string;
   sort: SalesSort;
 }
 
@@ -626,8 +818,33 @@ export const EMPTY_SALES_FILTERS: SalesFilters = {
   source: "",
   status: "",
   action: "",
+  quick: "all",
+  followUp: "",
+  tag: "",
+  campaign: "",
+  minValue: "",
+  maxValue: "",
+  createdFrom: "",
+  createdTo: "",
+  closeFrom: "",
+  closeTo: "",
   sort: "follow-up-soonest",
 };
+
+/** The filters that live behind More Filters, counted for its badge. */
+export function advancedFilterCount(filters: SalesFilters) {
+  return [
+    filters.tag,
+    filters.campaign,
+    filters.minValue,
+    filters.maxValue,
+    filters.createdFrom,
+    filters.createdTo,
+    filters.closeFrom,
+    filters.closeTo,
+    filters.status,
+  ].filter((value) => Boolean(value)).length;
+}
 
 export function hasActiveFilters(filters: SalesFilters) {
   return (
@@ -635,8 +852,10 @@ export function hasActiveFilters(filters: SalesFilters) {
     || Boolean(filters.stageId)
     || Boolean(filters.ownerId)
     || Boolean(filters.source)
-    || Boolean(filters.status)
     || Boolean(filters.action)
+    || Boolean(filters.followUp)
+    || filters.quick !== "all"
+    || advancedFilterCount(filters) > 0
     || filters.sort !== "follow-up-soonest"
   );
 }
@@ -649,12 +868,14 @@ export function matchesSearch(lead: SalesLead, term: string) {
   const haystack = [
     lead.contactName,
     lead.businessName,
+    lead.opportunityName,
     lead.email,
     lead.phone,
     lead.source.replaceAll("_", " "),
     lead.ownerName,
     lead.nextAction,
     lead.notes,
+    ...lead.tags,
   ]
     .filter(Boolean)
     .join(" ")
@@ -663,12 +884,27 @@ export function matchesSearch(lead: SalesLead, term: string) {
   return needle.split(/\s+/).every((word) => haystack.includes(word));
 }
 
+function onOrAfter(value: string | null, boundary: string) {
+  if (!boundary) return true;
+  if (!value) return false;
+  return new Date(value) >= startOfDay(new Date(boundary));
+}
+
+function onOrBefore(value: string | null, boundary: string) {
+  if (!boundary) return true;
+  if (!value) return false;
+  return new Date(value) <= endOfDay(new Date(boundary));
+}
+
 export function applySalesFilters(
   leads: SalesLead[],
   filters: SalesFilters,
   now: Date,
   agingDays = DEFAULT_PROPOSAL_AGING_DAYS,
 ): SalesLead[] {
+  const min = filters.minValue === "" ? null : Number(filters.minValue);
+  const max = filters.maxValue === "" ? null : Number(filters.maxValue);
+
   const filtered = leads.filter((lead) => {
     if (filters.stageId && lead.stageId !== filters.stageId) return false;
     if (filters.ownerId) {
@@ -678,6 +914,24 @@ export function applySalesFilters(
     if (filters.source && lead.source !== filters.source) return false;
     if (filters.status && lead.status !== filters.status) return false;
     if (filters.action && !matchesAction(lead, filters.action, now, agingDays)) return false;
+    if (!matchesQuickFilter(lead, filters.quick, now)) return false;
+    if (filters.followUp && followUpStatus(lead, now) !== filters.followUp) return false;
+    if (filters.tag && !lead.tags.includes(filters.tag)) return false;
+    if (
+      filters.campaign
+      && (lead.campaign ?? "").toLowerCase() !== filters.campaign.toLowerCase()
+    ) {
+      return false;
+    }
+
+    if (min !== null && !Number.isNaN(min) && dealValue(lead) < min) return false;
+    if (max !== null && !Number.isNaN(max) && dealValue(lead) > max) return false;
+
+    if (!onOrAfter(lead.createdAt, filters.createdFrom)) return false;
+    if (!onOrBefore(lead.createdAt, filters.createdTo)) return false;
+    if (!onOrAfter(lead.expectedCloseAt, filters.closeFrom)) return false;
+    if (!onOrBefore(lead.expectedCloseAt, filters.closeTo)) return false;
+
     if (!matchesSearch(lead, filters.search)) return false;
 
     return true;
@@ -698,6 +952,14 @@ export function sortLeads(leads: SalesLead[], sort: SalesSort, now: Date): Sales
   const overdueDepth = (lead: SalesLead) =>
     isFollowUpOverdue(lead, now) ? now.getTime() - followUpTime(lead) : -1;
 
+  // Same idea for the other "soonest" and "longest ago" orders: an absent date
+  // is not a very old one, so it goes to the end of whichever list it is in.
+  const closeTime = (lead: SalesLead) =>
+    lead.expectedCloseAt ? new Date(lead.expectedCloseAt).getTime() : Number.POSITIVE_INFINITY;
+
+  const contactTime = (lead: SalesLead) =>
+    lead.lastContactAt ? new Date(lead.lastContactAt).getTime() : null;
+
   copy.sort((a, b) => {
     switch (sort) {
       case "follow-up-soonest":
@@ -715,13 +977,32 @@ export function sortLeads(leads: SalesLead[], sort: SalesSort, now: Date): Sales
       case "oldest":
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       case "highest-value":
-        return (
-          (b.proposalValue ?? b.budgetAmount ?? 0) - (a.proposalValue ?? a.budgetAmount ?? 0)
-        );
-      case "recently-contacted":
-        return (
-          new Date(b.lastContactAt ?? 0).getTime() - new Date(a.lastContactAt ?? 0).getTime()
-        );
+        return dealValue(b) - dealValue(a);
+      case "lowest-value":
+        return dealValue(a) - dealValue(b);
+      case "recently-contacted": {
+        const at = contactTime(a);
+        const bt = contactTime(b);
+        // Never contacted is not "contacted a long time ago" - it is unknown,
+        // and it belongs at the bottom of both contact orders rather than the
+        // top of one of them.
+        if (at === null && bt === null) return 0;
+        if (at === null) return 1;
+        if (bt === null) return -1;
+        return bt - at;
+      }
+      case "least-recently-contacted": {
+        const at = contactTime(a);
+        const bt = contactTime(b);
+        if (at === null && bt === null) return 0;
+        if (at === null) return 1;
+        if (bt === null) return -1;
+        return at - bt;
+      }
+      case "recently-updated":
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      case "expected-close":
+        return closeTime(a) - closeTime(b);
       default:
         return followUpTime(a) - followUpTime(b);
     }

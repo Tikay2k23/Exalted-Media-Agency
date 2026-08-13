@@ -42,6 +42,8 @@ export default async function LeadsPage() {
       leads={data.leads}
       owners={data.owners}
       sources={data.sources}
+      tags={data.tags}
+      campaigns={data.campaigns}
       proposalAgingDays={data.proposalAgingDays}
       canSeeTeam={data.canSeeTeam}
       canCreate={data.canCreate}

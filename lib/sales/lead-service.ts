@@ -16,6 +16,10 @@ import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import {
+  createLeadWithOpportunity,
+  updateContactIdentity,
+} from "@/lib/sales/contact-service";
 import { scoreLead } from "@/lib/sales/lead-scoring";
 import { FULFILLMENT_PIPELINE_ID, SALES_PIPELINE_ID } from "@/lib/workspace-defaults";
 
@@ -42,6 +46,21 @@ export interface LeadFailure {
 function failure(code: LeadFailureCode, message: string): LeadFailure {
   return { ok: false, code, message };
 }
+
+/**
+ * How each failure reads over HTTP.
+ *
+ * Beside the codes rather than in a route, because four routes surface these
+ * and a copy in each is four chances for the same failure to come back as a
+ * different status depending on which door it went through.
+ */
+export const LEAD_FAILURE_STATUS: Record<LeadFailureCode, number> = {
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  ALREADY_CONVERTED: 409,
+  INVALID: 400,
+  STAGE_NOT_FOUND: 400,
+};
 
 /**
  * Restricts a query to the leads this user may see.
@@ -135,89 +154,53 @@ export interface CreateLeadInput {
   };
 }
 
+/**
+ * Creating a lead the long way round.
+ *
+ * Kept because callers and tests already speak this shape, but it no longer
+ * writes anything itself - every lead is a contact plus an opportunity now, and
+ * two functions that both create leads would eventually produce opportunities
+ * with no contact behind them. This one forces a new contact, which is what it
+ * always did; Add Lead goes through createLeadWithOpportunity directly so the
+ * salesperson gets the duplicate warning.
+ */
 export async function createLead(input: CreateLeadInput) {
   const { actor, data } = input;
 
-  if (!can(actor, "leads.create")) {
-    return failure("FORBIDDEN", "You do not have permission to create leads.");
-  }
-
-  // A rep who can only see their own leads cannot hand one to someone else.
-  const assignedToId = can(actor, "leads.view.all")
-    ? data.assignedToId || null
-    : actor.id;
-
-  const stage =
-    (data.stageId
-      ? await prisma.pipelineStage.findFirst({
-          where: { id: data.stageId, pipelineId: SALES_PIPELINE_ID },
-          select: { id: true },
-        })
-      : null)
-    ?? (await prisma.pipelineStage.findFirst({
-      where: { pipelineId: SALES_PIPELINE_ID, isDefault: true },
-      select: { id: true },
-    }));
-
-  if (!stage) {
-    return failure("STAGE_NOT_FOUND", "The sales pipeline has no stages configured.");
-  }
-
-  const score = scoreLead({
-    budgetAmount: data.budgetAmount ?? null,
-    timeline: data.timeline ?? null,
-    isDecisionMaker: data.isDecisionMaker ?? null,
-    mainProblem: data.mainProblem ?? null,
-    goal: data.goal ?? null,
-    source: data.source,
-    email: data.email ?? null,
-    phone: data.phone ?? null,
-  }).total;
-
-  const lead = await prisma.lead.create({
-    data: {
+  const result = await createLeadWithOpportunity({
+    actor,
+    contact: {
       contactName: data.contactName,
       businessName: data.businessName,
-      email: data.email?.toLowerCase() || null,
-      phone: data.phone || null,
+      email: data.email,
+      phone: data.phone,
+    },
+    opportunity: {
       source: data.source,
       serviceInterest: data.serviceInterest ?? null,
       budgetAmount: data.budgetAmount ?? null,
-      timeline: data.timeline || null,
+      timeline: data.timeline ?? null,
       isDecisionMaker: data.isDecisionMaker ?? null,
-      mainProblem: data.mainProblem || null,
-      goal: data.goal || null,
-      notes: data.notes || null,
-      assignedToId,
-      stageId: stage.id,
-      status: LeadStatus.NEW,
-      score,
-      nextFollowUpAt: toDate(data.nextFollowUpAt),
+      mainProblem: data.mainProblem ?? null,
+      goal: data.goal ?? null,
+      assignedToId: data.assignedToId ?? null,
+      stageId: data.stageId ?? null,
+      nextFollowUpAt: data.nextFollowUpAt ?? null,
+      notes: data.notes ?? null,
     },
+    allowDuplicate: true,
   });
 
-  await logActivity({
-    actorId: actor.id,
-    action: `Created lead ${lead.businessName}`,
-    entityType: "LEAD",
-    entityId: lead.id,
-    metadataJson: { source: lead.source, score },
-  });
-
-  if (assignedToId) {
-    await createNotifications(
-      resolveRecipients([assignedToId], actor.id).map((recipientId) => ({
-        recipientId,
-        type: "TASK_ASSIGNED" as const,
-        urgency: "HIGH" as const,
-        title: `New lead assigned: ${lead.businessName}`,
-        body: `${actor.name} assigned you this lead. Qualification score ${score}.`,
-        entityType: "LEAD" as const,
-        entityId: lead.id,
-        href: `/leads/${lead.id}`,
-      })),
+  if (!result.ok) {
+    // The contact service has one code this one does not, and it cannot be
+    // reached from here: allowDuplicate is always set.
+    return failure(
+      result.code === "DUPLICATE_CONTACT" ? "INVALID" : result.code,
+      result.message,
     );
   }
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: result.leadId } });
 
   return { ok: true as const, lead };
 }
@@ -298,18 +281,54 @@ export async function updateLead(input: UpdateLeadInput) {
     score: computeScore(merged),
   };
 
-  // These columns are NOT NULL, so an empty submission leaves them unchanged
-  // rather than trying to blank a required field.
-  for (const field of ["contactName", "businessName"] as const) {
-    const value = String(data[field] ?? "").trim();
+  /*
+   * Who the contact is belongs to the Contact record, and one writer keeps it
+   * and every opportunity against it in step. Writing these four columns here
+   * would rename the contact on one deal and leave their other deals showing
+   * the old name until somebody noticed.
+   */
+  const identityTouched = ["contactName", "businessName", "email", "phone"].some(
+    (field) => data[field] !== undefined,
+  );
 
-    if (data[field] !== undefined && value) {
-      updateData[field] = value;
+  if (identityTouched && existing.contactId) {
+    const result = await updateContactIdentity({
+      actor,
+      contactId: existing.contactId,
+      data: {
+        ...(data.contactName !== undefined
+          ? { name: String(data.contactName ?? "").trim() || existing.contactName }
+          : {}),
+        ...(data.businessName !== undefined
+          ? { businessName: String(data.businessName ?? "").trim() || existing.businessName }
+          : {}),
+        ...(data.email !== undefined ? { email: (data.email as string) || null } : {}),
+        ...(data.phone !== undefined ? { phone: (data.phone as string) || null } : {}),
+      },
+    });
+
+    if (!result.ok) {
+      return failure(result.code === "DUPLICATE_CONTACT" ? "INVALID" : result.code, result.message);
+    }
+  } else if (identityTouched) {
+    // A lead with no contact behind it predates the split, or lost its contact
+    // to a delete. Writing the columns directly is the only option, and it is
+    // still correct because there is nothing else holding the same values.
+    for (const field of ["contactName", "businessName"] as const) {
+      const value = String(data[field] ?? "").trim();
+
+      // These columns are NOT NULL, so an empty submission leaves them
+      // unchanged rather than trying to blank a required field.
+      if (data[field] !== undefined && value) updateData[field] = value;
+    }
+
+    if (data.phone !== undefined) updateData.phone = (data.phone as string) || null;
+    if (data.email !== undefined) {
+      updateData.email = String(data.email || "").toLowerCase() || null;
     }
   }
 
   for (const field of [
-    "phone",
     "timeline",
     "mainProblem",
     "goal",
@@ -322,9 +341,6 @@ export async function updateLead(input: UpdateLeadInput) {
     }
   }
 
-  if (data.email !== undefined) {
-    updateData.email = String(data.email || "").toLowerCase() || null;
-  }
   if (data.source !== undefined) {
     updateData.source = data.source as typeof existing.source;
   }

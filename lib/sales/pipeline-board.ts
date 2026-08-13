@@ -1,4 +1,4 @@
-import type { SalesLead } from "./sales-view";
+import { dealValue, type SalesLead } from "./sales-view";
 
 /**
  * The opportunity board.
@@ -118,10 +118,14 @@ export interface BoardCell {
   value: number;
 }
 
-/** The value of one opportunity: what has been offered, else what was budgeted. */
-export function opportunityValue(lead: SalesLead): number {
-  return lead.finalValue ?? lead.proposalValue ?? lead.budgetAmount ?? 0;
-}
+/**
+ * The value of one opportunity.
+ *
+ * Re-exported from sales-view rather than defined again here, so the column
+ * totals on the board and the Pipeline Value on the metric strip are the same
+ * arithmetic. They were two functions once, and they disagreed.
+ */
+export { dealValue as opportunityValue };
 
 /**
  * Sorts leads into columns, with totals.
@@ -144,7 +148,7 @@ export function buildBoard(leads: SalesLead[]): BoardCell[] {
       column,
       leads: inColumn,
       count: inColumn.length,
-      value: inColumn.reduce((sum, lead) => sum + opportunityValue(lead), 0),
+      value: inColumn.reduce((sum, lead) => sum + dealValue(lead), 0),
     };
   });
 }

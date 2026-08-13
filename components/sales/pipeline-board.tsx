@@ -16,21 +16,35 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import {
+  ActivityIndicators,
+  CustomTag,
+  NextActionText,
+  OwnerAvatar,
+  SourceText,
+  StageTag,
+  money,
+} from "@/components/sales/opportunity-bits";
+import {
   BOARD_COLUMNS,
   buildBoard,
   dropTargetStageKey,
-  initialsOf,
   isRealMove,
   opportunityValue,
   stageTag,
   type ColumnKey,
 } from "@/lib/sales/pipeline-board";
-import { followUpLabel, type SalesLead } from "@/lib/sales/sales-view";
-import { formatEnumLabel } from "@/lib/utils";
+import { followUpLabel, opportunityLabel, type SalesLead } from "@/lib/sales/sales-view";
 
-function money(value: number) {
-  return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
+/** A dot per column, matching the reference board's stage headers. */
+const COLUMN_DOTS: Record<ColumnKey, string> = {
+  "new-lead": "bg-sky-500",
+  contacted: "bg-violet-500",
+  "strategy-call": "bg-amber-500",
+  qualified: "bg-emerald-500",
+  proposal: "bg-indigo-500",
+  negotiation: "bg-orange-500",
+  won: "bg-teal-500",
+};
 
 /** One opportunity, as it reads on the board. */
 function Card({
@@ -42,65 +56,57 @@ function Card({
   lead: SalesLead;
   now: Date;
   dragging?: boolean;
-  onOpen?: (id: string) => void;
+  onOpen?: (id: string, section?: string) => void;
 }) {
   const due = followUpLabel(lead.nextFollowUpAt, now);
   const tag = stageTag(lead);
+  const value = opportunityValue(lead);
 
   return (
     <div
-      className={`rounded-xl border bg-white p-2.5 shadow-sm transition ${
+      className={`rounded-xl border bg-white p-3 shadow-sm transition ${
         dragging ? "border-sky-400 shadow-lg" : "border-slate-200 hover:border-slate-300"
       }`}
     >
       <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <button
-            type="button"
-            onClick={() => onOpen?.(lead.id)}
-            className="block w-full text-left"
-          >
-            <span className="block truncate text-xs font-semibold text-slate-900">
-              {lead.contactName}
-            </span>
-            <span className="block truncate text-[11px] text-slate-500">
-              {lead.businessName}
-            </span>
-          </button>
-        </div>
-
-        {/* Initials until there is an avatar to show. */}
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
-          title={lead.ownerName ?? "Unassigned"}
+        <button
+          type="button"
+          onClick={() => onOpen?.(lead.id)}
+          className="min-w-0 flex-1 text-left"
         >
-          {initialsOf(lead.ownerName)}
-        </span>
+          <span className="block truncate text-[13px] font-semibold text-slate-900">
+            {opportunityLabel(lead)}
+          </span>
+          <span className="block truncate text-[11px] text-slate-500">{lead.businessName}</span>
+          <span className="block truncate text-[11px] text-slate-400">{lead.contactName}</span>
+        </button>
+
+        <OwnerAvatar name={lead.ownerName} />
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1">
-        {tag ? (
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] text-slate-500">
-            {tag}
-          </span>
+        <StageTag tag={tag} />
+        {lead.tags.slice(0, 2).map((custom) => (
+          <CustomTag key={custom} tag={custom} />
+        ))}
+        {lead.tags.length > 2 ? (
+          <span className="text-[10px] text-slate-400">+{lead.tags.length - 2}</span>
         ) : null}
-        <span className="text-xs font-semibold text-slate-900">
-          {money(opportunityValue(lead))}
-        </span>
       </div>
 
-      <p className="mt-1.5 truncate text-[11px] text-slate-500">
-        {formatEnumLabel(lead.source)}
+      <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-sm font-semibold text-slate-900">
+          {value ? money(value) : "No value"}
+        </span>
+        <SourceText source={lead.source} />
+      </div>
+
+      <p className="mt-2 text-[11px] leading-4 text-slate-600">
+        <span className="font-medium text-slate-700">Next: </span>
+        <NextActionText value={lead.nextAction} />
       </p>
 
-      {lead.nextAction ? (
-        <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-600">
-          <span className="font-medium text-slate-700">Next: </span>
-          {lead.nextAction}
-        </p>
-      ) : null}
-
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
         <span
           className={`inline-flex items-center gap-1 text-[11px] ${
             due.tone === "overdue"
@@ -122,6 +128,27 @@ function Card({
           </span>
         )}
       </div>
+
+      <div className="mt-2.5 border-t border-slate-100 pt-2">
+        <ActivityIndicators
+          activity={lead.activity}
+          onOpenSection={
+            onOpen
+              ? (key) =>
+                  onOpen(
+                    lead.id,
+                    key === "calls" || key === "appointments"
+                      ? "activity"
+                      : key === "notes"
+                        ? "notes"
+                        : key === "tasks"
+                          ? "tasks"
+                          : "records",
+                  )
+              : undefined
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -135,7 +162,7 @@ function DraggableCard({
   lead: SalesLead;
   now: Date;
   canMove: boolean;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, section?: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -150,7 +177,7 @@ function DraggableCard({
             type="button"
             {...listeners}
             {...attributes}
-            aria-label={`Move ${lead.contactName}`}
+            aria-label={`Move ${opportunityLabel(lead)}`}
             className="absolute right-1 top-1 z-10 cursor-grab rounded p-0.5 text-slate-300 hover:text-slate-500 active:cursor-grabbing"
           >
             <GripVertical className="h-3.5 w-3.5" />
@@ -180,22 +207,27 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-w-0 flex-col rounded-xl border transition ${
+      className={`flex w-[19rem] shrink-0 flex-col rounded-xl border transition ${
         isOver ? "border-sky-400 bg-sky-50/50" : "border-slate-200 bg-slate-50/60"
       }`}
     >
-      <div className="border-b border-slate-200/70 p-2.5">
-        <p className="truncate text-xs font-semibold text-slate-900">{label}</p>
-        <p className="text-[11px] text-slate-500">
-          {count} {count === 1 ? "opportunity" : "opportunities"}
+      <div className="border-b border-slate-200/70 p-3">
+        <p className="flex items-center gap-1.5 truncate text-xs font-semibold text-slate-900">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${COLUMN_DOTS[columnKey]}`} />
+          {label}
         </p>
-        <p className="text-xs font-semibold text-slate-700">{money(value)}</p>
+        <p className="mt-0.5 flex items-baseline justify-between gap-2 text-[11px] text-slate-500">
+          <span>
+            {count} {count === 1 ? "opportunity" : "opportunities"}
+          </span>
+          <span className="font-semibold text-slate-700">{money(value)}</span>
+        </p>
       </div>
 
       <div className="flex-1 space-y-2 p-2">
         {children}
         {count === 0 ? (
-          <p className="py-6 text-center text-[11px] text-slate-400">Nothing here</p>
+          <p className="py-8 text-center text-[11px] text-slate-400">Nothing here</p>
         ) : null}
       </div>
     </div>
@@ -210,6 +242,12 @@ function Column({
  * card writes the earliest stage in the target column - dropping onto Strategy
  * Call means the call is booked, not that somebody already attended it.
  *
+ * Columns are a fixed 19rem and the board scrolls sideways inside its own
+ * card. Squeezing seven readable columns into a laptop screen means cards that
+ * cannot show a value, an owner and a next action at once, and a card that
+ * cannot show those is not worth looking at. The scroller is on this element
+ * and nowhere else, so the page itself never moves.
+ *
  * The move is optimistic: the card lands where it was dropped immediately, and
  * goes back if the server refuses. Waiting for a round trip before the card
  * moves makes a board feel broken even when it is working.
@@ -223,7 +261,7 @@ export function PipelineBoard({
   leads: SalesLead[];
   now: Date;
   canMove: boolean;
-  onOpenLead: (id: string) => void;
+  onOpenLead: (id: string, section?: string) => void;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -312,9 +350,9 @@ export function PipelineBoard({
   }
 
   return (
-    <div className="space-y-2 p-4">
+    <div className="space-y-2">
       {error ? (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
+        <p className="mx-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
       ) : null}
 
       <DndContext
@@ -324,13 +362,13 @@ export function PipelineBoard({
         onDragCancel={() => setDragging(null)}
       >
         {/*
-          Seven columns that shrink to fit rather than forcing the page sideways.
-          Below the widest breakpoints the board scrolls inside its own card,
-          which is the one place horizontal scrolling is the right answer - a
-          kanban with wrapped columns is not a kanban.
+          The one place in the application where horizontal scrolling is the
+          right answer. A kanban with wrapped columns is not a kanban, and
+          columns narrow enough to avoid the scrollbar cannot hold a readable
+          card. The overflow is on this element, so the page never moves.
         */}
-        <div className="-mx-1 overflow-x-auto px-1 pb-2">
-          <div className="grid min-w-[64rem] grid-cols-7 gap-2 2xl:min-w-0">
+        <div className="overflow-x-auto px-4 pb-3">
+          <div className="flex min-w-max gap-3">
             {board.map((cell) => (
               <Column
                 key={cell.column.key}
@@ -356,16 +394,16 @@ export function PipelineBoard({
         {/* The card follows the cursor rather than the column reflowing under it. */}
         <DragOverlay>
           {draggingLead ? (
-            <div className="w-56 rotate-2">
+            <div className="w-[18rem] rotate-2">
               <Card lead={draggingLead} now={now} dragging />
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
 
-      <p className="text-[11px] text-slate-400">
+      <p className="px-4 pb-3 text-[11px] text-slate-400">
         {canMove
-          ? "Drag a card by its handle to move it between stages."
+          ? "Drag a card by its handle to move it between stages. Click a card for the full opportunity."
           : "You can open an opportunity, but moving one is for its owner."}
       </p>
     </div>

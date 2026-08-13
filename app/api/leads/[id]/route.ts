@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { LEAD_FAILURE_STATUS } from "@/app/api/leads/route";
 import { getServerAuthSession } from "@/lib/auth";
 import { loadAuthContext } from "@/lib/authz";
 import { logActivity } from "@/lib/activity";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { leadVisibilityWhere, updateLead } from "@/lib/sales/lead-service";
+import { LEAD_FAILURE_STATUS, leadVisibilityWhere, updateLead } from "@/lib/sales/lead-service";
 import { leadUpdateSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";

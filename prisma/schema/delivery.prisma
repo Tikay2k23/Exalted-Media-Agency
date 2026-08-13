@@ -191,6 +191,10 @@ model EmployeeTask {
   assignedToId   String
   createdById    String?
   clientId       String?
+  /// Set when the task belongs to an open opportunity rather than a signed
+  /// client. Added so "Add task" on an opportunity uses this table instead of
+  /// growing a second, parallel task system that no report would ever see.
+  leadId         String?
   projectId      String?
   reviewerId     String?
   createdAt      DateTime           @default(now())
@@ -238,6 +242,7 @@ model EmployeeTask {
 
   assignedTo User                   @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
   client     Client?                @relation(fields: [clientId], references: [id])
+  lead       Lead?                  @relation(fields: [leadId], references: [id], onDelete: SetNull)
   createdBy  User?                  @relation("EmployeeTaskCreator", fields: [createdById], references: [id])
   reviewer   User?                  @relation("EmployeeTaskReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
   approvedBy User?                  @relation("EmployeeTaskApprover", fields: [approvedById], references: [id], onDelete: SetNull)
@@ -251,6 +256,7 @@ model EmployeeTask {
   @@index([assignedToId])
   @@index([createdById])
   @@index([clientId])
+  @@index([leadId])
   @@index([status])
   @@index([dueDate])
   @@index([weekStartDate])

@@ -3,43 +3,26 @@
 import {
   CalendarClock,
   CheckCircle2,
-  Download,
   FileText,
   Filter,
   Mail,
   Phone,
-  Search,
   TrendingUp,
-  Upload,
   TriangleAlert,
   UserPlus,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { LeadConvertDialog, LeadFormDialog } from "@/components/sales/lead-dialogs";
-import { LeadDrawer } from "@/components/sales/lead-drawer";
-import { LeadImportDialog } from "@/components/sales/lead-import-dialog";
-import { PipelineBoard } from "@/components/sales/pipeline-board";
-import { RowMenu } from "@/components/work/row-menu";
+import { OpportunityWorkspace } from "@/components/sales/opportunity-workspace";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import type { SalesStage } from "@/lib/data/sales-workspace-query";
-import { buildBoard } from "@/lib/sales/pipeline-board";
 import {
   DEFAULT_PROPOSAL_AGING_DAYS,
   EMPTY_SALES_FILTERS,
-  applySalesFilters,
   followUpLabel,
-  isOpen,
   followUpQueue,
-  hasActiveFilters,
-  lastContactLabel,
   needsAction,
-  proposalAgeDays,
   recentWins,
   repPerformance,
   resolveRange,
@@ -49,7 +32,6 @@ import {
   type RangePreset,
   type SalesFilters,
   type SalesLead,
-  type SalesSort,
 } from "@/lib/sales/sales-view";
 import { formatEnumLabel } from "@/lib/utils";
 
@@ -72,15 +54,6 @@ const RANGES: { value: RangePreset; label: string }[] = [
   { value: "last30", label: "Last 30 Days" },
 ];
 
-const SORTS: { value: SalesSort; label: string }[] = [
-  { value: "follow-up-soonest", label: "Follow Up Soonest" },
-  { value: "most-overdue", label: "Most Overdue" },
-  { value: "newest", label: "Newest Lead" },
-  { value: "oldest", label: "Oldest Lead" },
-  { value: "highest-value", label: "Highest Value" },
-  { value: "recently-contacted", label: "Recently Contacted" },
-];
-
 const ACTION_TONES: Record<ActionKey, Tone> = {
   overdue: "rose",
   "calls-today": "amber",
@@ -88,8 +61,6 @@ const ACTION_TONES: Record<ActionKey, Tone> = {
   "never-contacted": "violet",
   "no-follow-up": "amber",
 };
-
-const PAGE_SIZES = [10, 25, 50];
 
 function money(value: number) {
   return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -164,6 +135,8 @@ export function SalesBoard({
   leads,
   owners,
   sources,
+  tags,
+  campaigns,
   proposalAgingDays,
   canSeeTeam,
   canCreate,
@@ -176,6 +149,8 @@ export function SalesBoard({
   leads: SalesLead[];
   owners: { id: string; name: string }[];
   sources: string[];
+  tags: string[];
+  campaigns: string[];
   proposalAgingDays: number | null;
   canSeeTeam: boolean;
   canCreate: boolean;
@@ -186,18 +161,7 @@ export function SalesBoard({
 }) {
   const [range, setRange] = useState<RangePreset>("week");
   const [filters, setFilters] = useState<SalesFilters>(EMPTY_SALES_FILTERS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [showFilters, setShowFilters] = useState(false);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
-  /*
-   * The create and convert forms already existed and are reused as-is. Building
-   * a second lead form would have given the agency two ways to create a lead
-   * that drift apart.
-   */
-  const [formLeadId, setFormLeadId] = useState<string | null | "new">(null);
-  const [convertLeadId, setConvertLeadId] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
 
   const now = useMemo(() => new Date(serverNow), [serverNow]);
   const agingDays = proposalAgingDays ?? DEFAULT_PROPOSAL_AGING_DAYS;
@@ -205,100 +169,18 @@ export function SalesBoard({
 
   const metrics = useMemo(() => salesMetrics(leads, rangeWindow, now), [leads, rangeWindow, now]);
   const actions = useMemo(() => needsAction(leads, now, agingDays), [leads, now, agingDays]);
-  const board = useMemo(() => buildBoard(leads), [leads]);
   const queue = useMemo(() => followUpQueue(leads, now), [leads, now]);
   const bySource = useMemo(() => sourcePerformance(leads, rangeWindow), [leads, rangeWindow]);
   const byRep = useMemo(() => repPerformance(leads, rangeWindow), [leads, rangeWindow]);
   const wins = useMemo(() => recentWins(leads), [leads]);
 
-  const filtered = useMemo(
-    () => applySalesFilters(leads, filters, now, agingDays),
-    [leads, filters, now, agingDays],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const openLead = leads.find((lead) => lead.id === openLeadId) ?? null;
-  const convertLead = leads.find((lead) => lead.id === convertLeadId) ?? null;
-
   function update<K extends keyof SalesFilters>(key: K, value: SalesFilters[K]) {
     setFilters((current) => ({ ...current, [key]: value }));
-    setPage(1);
   }
 
   /** Clicking a Needs Action card is a filter, not a separate screen. */
   function toggleAction(key: ActionKey) {
     update("action", filters.action === key ? "" : key);
-  }
-
-  function exportCsv() {
-    const header = [
-      "Lead ID",
-      "Name",
-      "Company",
-      "Email",
-      "Phone",
-      "Source",
-      "Owner",
-      "Stage",
-      "Status",
-      "Created",
-      "Last Contact",
-      "Next Action",
-      "Next Follow Up",
-      "Strategy Call",
-      "Proposal Sent",
-      "Won",
-      "Lost",
-      "Lost Reason",
-      "Estimated Value",
-      "Final Value",
-    ];
-
-    const cell = (value: string | number | null) => {
-      const text = value === null || value === undefined ? "" : String(value);
-      // A leading =, + or - would be run as a formula when the file is opened.
-      const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-      return `"${safe.replaceAll('"', '""').replaceAll(/\r?\n/g, " ")}"`;
-    };
-
-    const day = (value: string | null) => (value ? value.slice(0, 10) : "");
-
-    const rows = filtered.map((lead) =>
-      [
-        lead.id,
-        lead.contactName,
-        lead.businessName,
-        lead.email,
-        lead.phone,
-        formatEnumLabel(lead.source),
-        lead.ownerName,
-        lead.stageName,
-        formatEnumLabel(lead.status),
-        day(lead.createdAt),
-        day(lead.lastContactAt),
-        lead.nextAction,
-        day(lead.nextFollowUpAt),
-        day(lead.strategyCallAt),
-        day(lead.proposalSentAt),
-        day(lead.wonAt),
-        day(lead.lostAt),
-        lead.lostReasonCode ? formatEnumLabel(lead.lostReasonCode) : "",
-        lead.proposalValue ?? lead.budgetAmount ?? "",
-        lead.finalValue ?? "",
-      ].map(cell).join(","),
-    );
-
-    const csv = [header.map(cell).join(","), ...rows].join("\r\n");
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-
-    anchor.href = url;
-    anchor.download = `exalted-leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   return (
@@ -314,24 +196,12 @@ export function SalesBoard({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {canCreate ? (
-            <Button size="md" onClick={() => setFormLeadId("new")}>
-              <UserPlus className="mr-1.5 h-4 w-4" />
-              Add Lead
-            </Button>
-          ) : null}
-          {canCreate ? (
-            <Button variant="secondary" size="md" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-1.5 h-4 w-4" />
-              Import Leads
-            </Button>
-          ) : null}
-          <Button variant="secondary" size="md" onClick={exportCsv}>
-            <Download className="mr-1.5 h-4 w-4" />
-            Export CSV
-          </Button>
-        </div>
+        {/*
+          Add Lead, Import and Export live on the pipeline toolbar rather than
+          up here. Two Add Lead buttons on one screen is two answers to "where
+          do I add a lead", and the one beside the pipeline is the one people
+          are already looking at.
+        */}
       </div>
 
       {/* Date range */}
@@ -444,400 +314,30 @@ export function SalesBoard({
             </div>
           </Panel>
 
-          {/* Opportunity board */}
-          <Panel
-            title="Sales Pipeline"
-            subtitle={`${
-              board.filter((cell) => cell.count > 0).reduce((sum, cell) => sum + cell.count, 0)
-            } opportunities on the board. Drag a card to move it.`}
-          >
-            <PipelineBoard
-              leads={leads}
-              now={now}
-              canMove={canEdit}
-              onOpenLead={setOpenLeadId}
-            />
-          </Panel>
+          {/*
+            Board, list, filters, the drawer and every opportunity dialog. One
+            component because they share one filtered array - the whole point
+            of the two views is that they are two renderings of the same deals.
+          */}
+          <OpportunityWorkspace
+            leads={leads}
+            stages={stages}
+            owners={owners}
+            sources={sources}
+            tags={tags}
+            campaigns={campaigns}
+            now={now}
+            agingDays={agingDays}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canAssign={canAssign}
+            canConvert={canConvert}
+            filters={filters}
+            onFilters={setFilters}
+            openLeadId={openLeadId}
+            onOpenLead={setOpenLeadId}
+          />
 
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="relative min-w-[12rem] flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                className="h-10 pl-9 text-sm"
-                placeholder="Search leads by name, email, phone, company…"
-                value={filters.search}
-                onChange={(event) => update("search", event.target.value)}
-                aria-label="Search leads"
-              />
-            </div>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              className="lg:hidden"
-              onClick={() => setShowFilters((open) => !open)}
-            >
-              <Filter className="mr-1.5 h-3.5 w-3.5" />
-              Filters
-            </Button>
-
-            <div
-              className={`${showFilters ? "grid" : "hidden"} w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-1 lg:flex-wrap lg:items-center`}
-            >
-              <Select
-                className="h-10 min-w-[9rem] flex-1 text-sm"
-                value={filters.stageId}
-                onChange={(event) => update("stageId", event.target.value)}
-                aria-label="Stage"
-              >
-                <option value="">All Stages</option>
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                className="h-10 min-w-[9rem] flex-1 text-sm"
-                value={filters.ownerId}
-                onChange={(event) => update("ownerId", event.target.value)}
-                aria-label="Lead owner"
-              >
-                <option value="">All Owners</option>
-                <option value="unassigned">Unassigned</option>
-                {owners.map((owner) => (
-                  <option key={owner.id} value={owner.id}>
-                    {owner.name}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                className="h-10 min-w-[9rem] flex-1 text-sm"
-                value={filters.source}
-                onChange={(event) => update("source", event.target.value)}
-                aria-label="Source"
-              >
-                <option value="">All Sources</option>
-                {sources.map((source) => (
-                  <option key={source} value={source}>
-                    {formatEnumLabel(source)}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                className="h-10 min-w-[10rem] flex-1 text-sm"
-                value={filters.sort}
-                onChange={(event) => update("sort", event.target.value as SalesSort)}
-                aria-label="Sort by"
-              >
-                {SORTS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            {hasActiveFilters(filters) ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setFilters(EMPTY_SALES_FILTERS);
-                  setPage(1);
-                }}
-              >
-                <X className="mr-1.5 h-3.5 w-3.5" />
-                Clear
-              </Button>
-            ) : null}
-          </div>
-
-          {/* Lead table */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            {visible.length === 0 ? (
-              <div className="p-10 text-center">
-                {leads.length === 0 ? (
-                  <>
-                    <p className="text-sm font-medium text-slate-900">No leads yet.</p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Add your first lead or import your existing list.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium text-slate-900">
-                      No leads match these filters.
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Try changing the stage, range, owner, or source.
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="mt-3"
-                      onClick={() => setFilters(EMPTY_SALES_FILTERS)}
-                    >
-                      Clear Filters
-                    </Button>
-                  </>
-                )}
-              </div>
-            ) : (
-              <>
-                {/*
-                  No min-width and no scroller. table-fixed plus percentage
-                  columns means the table is exactly as wide as the card, and
-                  the two lowest-priority columns drop out below xl rather than
-                  pushing the rest sideways - Last Contact and Value both live
-                  in the drawer, so nothing becomes unreachable.
-                */}
-                <div className="hidden md:block">
-                  <table className="w-full table-fixed text-left text-xs">
-                    <colgroup>
-                      <col className="w-[19%]" />
-                      <col className="w-[15%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[13%]" />
-                      <col className="hidden w-[9%] 2xl:table-column" />
-                      <col className="w-[18%]" />
-                      <col className="w-[13%]" />
-                      <col className="hidden w-[7%] 2xl:table-column" />
-                      <col className="w-[2.5rem]" />
-                    </colgroup>
-                    <thead className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="px-4 py-2.5 font-semibold">Lead</th>
-                        <th className="px-3 py-2.5 font-semibold">Company</th>
-                        <th className="px-3 py-2.5 font-semibold">Owner</th>
-                        <th className="px-3 py-2.5 font-semibold">Stage</th>
-                        <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">
-                          Last Contact
-                        </th>
-                        <th className="px-3 py-2.5 font-semibold">Next Action</th>
-                        <th className="px-3 py-2.5 font-semibold">Next Follow Up</th>
-                        <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">
-                          Value
-                        </th>
-                        <th className="px-3 py-2.5" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {visible.map((lead) => {
-                        const due = followUpLabel(lead.nextFollowUpAt, now);
-                        const age = proposalAgeDays(lead, now);
-
-                        return (
-                          <tr
-                            key={lead.id}
-                            className={`align-top transition hover:bg-slate-50/60 ${
-                              openLeadId === lead.id ? "bg-sky-50/50" : ""
-                            }`}
-                          >
-                            <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={() => setOpenLeadId(lead.id)}
-                                className="text-left"
-                              >
-                                <span className="block break-words font-medium text-slate-900">
-                                  {lead.contactName}
-                                </span>
-                                <span className="block truncate text-[11px] text-slate-500">
-                                  {lead.email ?? lead.phone ?? "No contact details"}
-                                </span>
-                              </button>
-                            </td>
-                            <td className="px-3 py-3 text-slate-600">
-                              <span className="block truncate" title={lead.businessName}>
-                                {lead.businessName}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3 text-slate-600">
-                              <span className="block truncate">
-                                {lead.ownerName ?? "Unassigned"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3">
-                              <Badge tone="slate" className="whitespace-nowrap">
-                                {lead.stageName ?? formatEnumLabel(lead.status)}
-                              </Badge>
-                              {age !== null && age >= agingDays ? (
-                                <p className="mt-1 whitespace-nowrap text-[11px] text-rose-600">
-                                  {age} days waiting
-                                </p>
-                              ) : null}
-                            </td>
-                            <td className="hidden whitespace-nowrap px-3 py-3 text-slate-600 2xl:table-cell">
-                              {lastContactLabel(lead.lastContactAt, now)}
-                            </td>
-                            <td className="px-3 py-3 text-slate-700">
-                              {lead.nextAction ? (
-                                <span className="line-clamp-2" title={lead.nextAction}>
-                                  {lead.nextAction}
-                                </span>
-                              ) : (
-                                <span className="text-amber-600">Not set</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3">
-                              <span
-                                className={`whitespace-nowrap ${
-                                  due.tone === "overdue"
-                                    ? "font-medium text-rose-600"
-                                    : due.tone === "today" || due.tone === "soon"
-                                      ? "text-amber-600"
-                                      : due.tone === "none"
-                                        ? "text-slate-400"
-                                        : "text-slate-600"
-                                }`}
-                              >
-                                {due.label}
-                              </span>
-                            </td>
-                            <td className="hidden whitespace-nowrap px-3 py-3 text-slate-700 2xl:table-cell">
-                              {lead.finalValue ?? lead.proposalValue ?? lead.budgetAmount
-                                ? money(
-                                    lead.finalValue
-                                    ?? lead.proposalValue
-                                    ?? lead.budgetAmount
-                                    ?? 0,
-                                  )
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-3">
-                              {/*
-                                Only what this person may actually do. A greyed
-                                out Convert on somebody else's lead just invites
-                                a click that fails.
-                              */}
-                              <RowMenu
-                                label={`Actions for ${lead.contactName}`}
-                                items={[
-                                  {
-                                    label: "Open lead",
-                                    onSelect: () => setOpenLeadId(lead.id),
-                                  },
-                                  ...(canEdit
-                                    ? [
-                                        {
-                                          label: "Edit lead",
-                                          onSelect: () => setFormLeadId(lead.id),
-                                        },
-                                      ]
-                                    : []),
-                                  ...(canConvert && !lead.convertedClientId && isOpen(lead)
-                                    ? [
-                                        {
-                                          label: "Convert to client",
-                                          onSelect: () => setConvertLeadId(lead.id),
-                                        },
-                                      ]
-                                    : []),
-                                  ...(lead.convertedClientId
-                                    ? [
-                                        {
-                                          label: "Open client",
-                                          href: `/clients/${lead.convertedClientId}`,
-                                        },
-                                      ]
-                                    : []),
-                                ]}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Cards below the table breakpoint. */}
-                <ul className="divide-y divide-slate-100 md:hidden">
-                  {visible.map((lead) => {
-                    const due = followUpLabel(lead.nextFollowUpAt, now);
-
-                    return (
-                      <li key={lead.id} className="space-y-2 p-4">
-                        <button
-                          type="button"
-                          onClick={() => setOpenLeadId(lead.id)}
-                          className="block text-left"
-                        >
-                          <span className="block text-sm font-medium text-slate-900">
-                            {lead.contactName}
-                          </span>
-                          <span className="block text-xs text-slate-500">
-                            {lead.businessName} · {lead.ownerName ?? "Unassigned"}
-                          </span>
-                        </button>
-
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge tone="slate">{lead.stageName ?? formatEnumLabel(lead.status)}</Badge>
-                          <Badge tone={due.tone === "overdue" ? "rose" : "amber"}>
-                            {due.label}
-                          </Badge>
-                        </div>
-
-                        <p className="text-xs text-slate-600">
-                          <span className="font-medium text-slate-800">Next: </span>
-                          {lead.nextAction ?? "Not set"}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                {/* Pagination */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
-                  <p className="text-xs text-slate-600">
-                    Showing {(currentPage - 1) * pageSize + 1} to{" "}
-                    {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} leads
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={currentPage === 1}
-                      onClick={() => setPage(currentPage - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <span className="text-xs text-slate-600">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={currentPage === totalPages}
-                      onClick={() => setPage(currentPage + 1)}
-                    >
-                      Next
-                    </Button>
-                    <Select
-                      className="h-9 w-auto text-xs"
-                      value={pageSize}
-                      onChange={(event) => {
-                        setPageSize(Number(event.target.value));
-                        setPage(1);
-                      }}
-                      aria-label="Rows per page"
-                    >
-                      {PAGE_SIZES.map((size) => (
-                        <option key={size} value={size}>
-                          {size} per page
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
         {/* Right rail */}
@@ -914,7 +414,15 @@ export function SalesBoard({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {bySource.map((row) => (
-                    <tr key={row.source}>
+                    <tr
+                      key={row.source}
+                      onClick={() =>
+                        update("source", filters.source === row.source ? "" : row.source)
+                      }
+                      className={`cursor-pointer transition hover:bg-slate-50 ${
+                        filters.source === row.source ? "bg-sky-50/60" : ""
+                      }`}
+                    >
                       <td className="px-4 py-2 text-slate-700">{formatEnumLabel(row.source)}</td>
                       <td className="px-2 py-2 text-right text-slate-700">{row.leads}</td>
                       <td className="px-2 py-2 text-right text-slate-700">{row.converted}</td>
@@ -975,7 +483,12 @@ export function SalesBoard({
             ) : (
               <ul className="divide-y divide-slate-100">
                 {wins.map((lead) => (
-                  <li key={lead.id} className="flex items-start justify-between gap-2 p-3">
+                  <li key={lead.id}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenLeadId(lead.id)}
+                      className="flex w-full items-start justify-between gap-2 p-3 text-left transition hover:bg-slate-50"
+                    >
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold text-slate-900">
                         {lead.businessName}
@@ -991,6 +504,7 @@ export function SalesBoard({
                         {lead.finalValue ? money(lead.finalValue) : ""}
                       </p>
                     </div>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -999,43 +513,6 @@ export function SalesBoard({
         </div>
       </div>
 
-      {openLead ? (
-        <LeadDrawer
-          lead={openLead}
-          now={now}
-          canEdit={canEdit}
-          canConvert={canConvert}
-          onClose={() => setOpenLeadId(null)}
-          onConvert={() => {
-            // The handoff form takes over from here; closing the drawer first
-            // avoids stacking one modal on top of another.
-            setOpenLeadId(null);
-            setConvertLeadId(openLead.id);
-          }}
-        />
-      ) : null}
-
-      {formLeadId ? (
-        <LeadFormDialog
-          lead={formLeadId === "new" ? null : (leads.find((row) => row.id === formLeadId) ?? null)}
-          assignableUsers={owners}
-          canAssign={canAssign}
-          onClose={() => setFormLeadId(null)}
-        />
-      ) : null}
-
-      {importOpen ? (
-        <LeadImportDialog owners={owners} onClose={() => setImportOpen(false)} />
-      ) : null}
-
-      {convertLead ? (
-        <LeadConvertDialog
-          lead={convertLead}
-          assignableUsers={owners}
-          canAssign={canAssign}
-          onClose={() => setConvertLeadId(null)}
-        />
-      ) : null}
     </div>
   );
 }

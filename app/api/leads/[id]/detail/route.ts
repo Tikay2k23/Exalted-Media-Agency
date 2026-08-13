@@ -23,7 +23,13 @@ async function visibleLead(userId: string, leadId: string) {
 
   const lead = await prisma.lead.findFirst({
     where: { ...scope, id: leadId, deletedAt: null },
-    select: { id: true, businessName: true, assignedToId: true },
+    select: {
+      id: true,
+      businessName: true,
+      assignedToId: true,
+      contactId: true,
+      convertedClientId: true,
+    },
   });
 
   return { actor, lead };
@@ -55,7 +61,7 @@ export async function GET(
   // else's book is itself a leak.
   if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
-  const [activity, notes, calls] = await Promise.all([
+  const [activity, notes, calls, tasks, followers] = await Promise.all([
     prisma.activityLog.findMany({
       where: { entityType: "LEAD", entityId: id },
       orderBy: { createdAt: "desc" },
@@ -96,9 +102,122 @@ export async function GET(
         loggedBy: { select: { id: true, name: true } },
       },
     }),
+    /*
+     * Tasks against this opportunity, from the one task table the whole agency
+     * uses. A second task list living only in the sales drawer would never
+     * appear in anybody's workload, their EOD, or the approval queue.
+     */
+    prisma.employeeTask.findMany({
+      where: { leadId: id, deletedAt: null },
+      orderBy: { dueDate: "asc" },
+      take: 40,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+        assignedTo: { select: { name: true } },
+      },
+    }),
+    prisma.leadFollower.findMany({
+      where: { leadId: id },
+      select: { user: { select: { id: true, name: true } } },
+    }),
   ]);
 
+  /*
+   * The two sections that only exist once a deal is won. Both read the linked
+   * client rather than holding sales-side copies: onboarding and money belong
+   * to the account, and duplicating them here would produce a second set of
+   * figures nobody reconciles.
+   */
+  const client = lead.convertedClientId
+    ? await prisma.client.findFirst({
+        where: { id: lead.convertedClientId, deletedAt: null },
+        select: {
+          id: true,
+          companyName: true,
+          status: true,
+          currentStage: { select: { name: true } },
+          stageEnteredAt: true,
+          onboarding: { select: { id: true, status: true, completedAt: true } },
+          invoices: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: {
+              id: true,
+              invoiceNumber: true,
+              amountDue: true,
+              amountPaid: true,
+              status: true,
+              issuedAt: true,
+              dueAt: true,
+            },
+          },
+        },
+      })
+    : null;
+
+  const siblings = lead.contactId
+    ? await prisma.lead.findMany({
+        where: { contactId: lead.contactId, id: { not: id }, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          opportunityName: true,
+          businessName: true,
+          status: true,
+          opportunityValue: true,
+          proposalValue: true,
+          finalValue: true,
+          budgetAmount: true,
+          stage: { select: { name: true } },
+        },
+      })
+    : [];
+
   return NextResponse.json({
+    followers: followers.map((row) => row.user),
+    tasks: tasks.map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      priority: row.priority,
+      dueDate: row.dueDate.toISOString(),
+      assigneeName: row.assignedTo?.name ?? null,
+    })),
+    client: client
+      ? {
+          id: client.id,
+          companyName: client.companyName,
+          status: client.status,
+          stageName: client.currentStage?.name ?? null,
+          stageEnteredAt: client.stageEnteredAt.toISOString(),
+          onboardingStatus: client.onboarding?.status ?? null,
+          onboardingCompletedAt: client.onboarding?.completedAt?.toISOString() ?? null,
+        }
+      : null,
+    invoices: (client?.invoices ?? []).map((row) => ({
+      id: row.id,
+      invoiceNumber: row.invoiceNumber,
+      amountDue: Number(row.amountDue),
+      amountPaid: Number(row.amountPaid),
+      status: row.status,
+      issuedAt: row.issuedAt?.toISOString() ?? null,
+      dueAt: row.dueAt?.toISOString() ?? null,
+    })),
+    siblings: siblings.map((row) => ({
+      id: row.id,
+      name: row.opportunityName ?? row.businessName,
+      stageName: row.stage?.name ?? null,
+      status: row.status,
+      value: Number(
+        row.finalValue ?? row.proposalValue ?? row.opportunityValue ?? row.budgetAmount ?? 0,
+      ),
+    })),
     activity: activity.map((row) => ({
       id: row.id,
       action: row.action,

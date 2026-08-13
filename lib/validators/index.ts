@@ -721,6 +721,54 @@ export const leadFormSchema = z.object({
   notes: optionalText(3000),
 });
 
+/**
+ * Everything Add Lead can carry.
+ *
+ * Only the contact name and the source are required here; the "email or phone"
+ * rule is enforced in the service rather than the schema, because the service
+ * is what the importer and any future integration go through too, and a rule
+ * that only exists on the form is a rule with a hole in it.
+ */
+export const opportunityFormSchema = z.object({
+  contactName: z.string().min(2).max(80),
+  businessName: optionalText(120),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: optionalText(40),
+
+  opportunityName: optionalText(120),
+  source: z.nativeEnum(LeadSource),
+  serviceInterest: z.nativeEnum(ServiceType).optional().nullable(),
+  opportunityValue: z.coerce.number().min(0).max(10_000_000).optional().nullable(),
+  budgetRange: optionalText(40),
+  budgetAmount: z.coerce.number().min(0).max(10_000_000).optional().nullable(),
+  timeline: optionalText(120),
+  isDecisionMaker: z.boolean().optional().nullable(),
+
+  mainProblem: optionalText(2000),
+  goal: optionalText(2000),
+  currentSolution: optionalText(2000),
+  qualificationNotes: optionalText(2000),
+
+  assignedToId: z.string().optional().or(z.literal("")),
+  stageId: z.string().optional().or(z.literal("")),
+  nextAction: optionalText(500),
+  nextFollowUpAt: z.string().optional().or(z.literal("")),
+  expectedCloseAt: z.string().optional().or(z.literal("")),
+
+  campaign: optionalText(120),
+  utmSource: optionalText(120),
+  utmMedium: optionalText(120),
+  utmCampaign: optionalText(120),
+  referralSource: optionalText(120),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  notes: optionalText(3000),
+
+  /** Attach to a contact that already exists rather than creating one. */
+  contactId: z.string().optional().or(z.literal("")),
+  /** Set only after somebody has seen the duplicate warning and chosen. */
+  allowDuplicate: z.boolean().optional(),
+});
+
 export const leadUpdateSchema = leadFormSchema.partial().extend({
   status: z.nativeEnum(LeadStatus).optional(),
   proposalValue: z.coerce.number().min(0).max(10_000_000).optional().nullable(),

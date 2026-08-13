@@ -242,6 +242,9 @@ describe("lead service (integration)", { skip: !hasDatabase }, () => {
       data: {
         contactName: "Pat Roe",
         businessName: `${TEST_PREFIX} Rescore`,
+        // A lead now needs one way to reach them, so this is the minimum a
+        // lead can be created with rather than an incidental detail.
+        email: "pat@rescore.test",
         source: LeadSource.OUTBOUND,
       },
     });

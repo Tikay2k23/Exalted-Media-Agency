@@ -2,6 +2,7 @@ import type { LostReason, StrategyCallStatus } from "@prisma/client";
 
 import { logActivity } from "@/lib/activity";
 import { type AuthContext } from "@/lib/authz";
+import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { SALES_PIPELINE_ID } from "@/lib/workspace-defaults";
@@ -59,8 +60,11 @@ async function loadLead(actor: AuthContext, leadId: string) {
       stageId: true,
       assignedToId: true,
       convertedClientId: true,
+      contactId: true,
       proposalValue: true,
       budgetAmount: true,
+      opportunityValue: true,
+      tags: true,
       stage: { select: { stageKey: true } },
     },
   });
@@ -509,6 +513,380 @@ export async function moveToNurture(input: {
   });
 
   return { ok: true as const, lead: updated };
+}
+
+/**
+ * Custom tags.
+ *
+ * The automatic stage tag is not in here and cannot be. It is derived from the
+ * stage every time it is displayed, so "remove the previous stage tag, apply
+ * the new one" is true by construction rather than by a routine somebody has to
+ * remember to call - and a stage move physically cannot disturb a source tag, a
+ * campaign tag or anything else somebody typed, because it never touches this
+ * column.
+ */
+export async function setTags(input: { actor: AuthContext; leadId: string; tags: string[] }) {
+  const lead = await loadLead(input.actor, input.leadId);
+
+  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
+  if (!mayEdit(input.actor, lead)) {
+    return failure("FORBIDDEN", "That lead is not yours to change.");
+  }
+
+  const seen = new Set<string>();
+
+  for (const tag of input.tags) {
+    const trimmed = tag.trim().slice(0, 40);
+    // A hand-typed stage tag would be a second opinion about where the deal is.
+    if (!trimmed || trimmed.toLowerCase().startsWith("stage_")) continue;
+    seen.add(trimmed);
+  }
+
+  const tags = [...seen].slice(0, 20);
+
+  const updated = await prisma.lead.update({
+    where: { id: lead.id },
+    data: { tags },
+    select: { id: true, tags: true },
+  });
+
+  await logActivity({
+    actorId: input.actor.id,
+    action: `Updated tags on ${lead.businessName}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    fieldName: "tags",
+    previousValue: lead.tags.join(", ") || null,
+    newValue: tags.join(", ") || null,
+  });
+
+  return { ok: true as const, tags: updated.tags };
+}
+
+/**
+ * Handing an opportunity to somebody else.
+ *
+ * Reassignment is a manager's move, not a rep's - a salesperson who could push
+ * their own difficult deals onto a colleague has a pipeline nobody can hold
+ * them to. Reps keep everything else they can do on their own leads.
+ */
+export async function setOwner(input: {
+  actor: AuthContext;
+  leadId: string;
+  ownerId: string | null;
+}) {
+  const lead = await loadLead(input.actor, input.leadId);
+
+  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
+
+  if (!can(input.actor, "leads.view.all")) {
+    return failure("FORBIDDEN", "Reassigning an opportunity is for whoever runs sales.");
+  }
+
+  if (input.ownerId) {
+    const owner = await prisma.user.findFirst({
+      where: { id: input.ownerId, isActive: true, deletedAt: null },
+      select: { id: true, name: true },
+    });
+
+    if (!owner) return failure("NOT_FOUND", "That person could not be found.");
+  }
+
+  if (input.ownerId === lead.assignedToId) {
+    return { ok: true as const, ownerId: input.ownerId, unchanged: true };
+  }
+
+  const previous = lead.assignedToId
+    ? await prisma.user.findUnique({
+        where: { id: lead.assignedToId },
+        select: { name: true },
+      })
+    : null;
+
+  const updated = await prisma.lead.update({
+    where: { id: lead.id },
+    data: { assignedToId: input.ownerId },
+    select: { id: true, assignedToId: true, assignedTo: { select: { name: true } } },
+  });
+
+  await logActivity({
+    actorId: input.actor.id,
+    action: `Assigned ${lead.businessName} to ${updated.assignedTo?.name ?? "nobody"}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    fieldName: "assignedToId",
+    previousValue: previous?.name ?? null,
+    newValue: updated.assignedTo?.name ?? null,
+  });
+
+  if (updated.assignedToId) {
+    await createNotifications(
+      resolveRecipients([updated.assignedToId], input.actor.id).map((recipientId) => ({
+        recipientId,
+        type: "TASK_ASSIGNED" as const,
+        urgency: "HIGH" as const,
+        title: `Opportunity assigned to you: ${lead.businessName}`,
+        body: `${input.actor.name} moved this opportunity to you.`,
+        entityType: "LEAD" as const,
+        entityId: lead.id,
+        href: `/leads?opportunity=${lead.id}`,
+      })),
+    );
+  }
+
+  return {
+    ok: true as const,
+    ownerId: updated.assignedToId,
+    ownerName: updated.assignedTo?.name ?? null,
+  };
+}
+
+/**
+ * Who else is watching.
+ *
+ * Followers are not owners: they are told what happens and are answerable for
+ * none of it. Sent as the whole list rather than add/remove calls, so the
+ * result of a save is exactly what the drawer was showing.
+ */
+export async function setFollowers(input: {
+  actor: AuthContext;
+  leadId: string;
+  userIds: string[];
+}) {
+  const lead = await loadLead(input.actor, input.leadId);
+
+  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
+  if (!mayEdit(input.actor, lead)) {
+    return failure("FORBIDDEN", "That lead is not yours to change.");
+  }
+
+  const wanted = [...new Set(input.userIds)].slice(0, 20);
+
+  const users = wanted.length
+    ? await prisma.user.findMany({
+        where: { id: { in: wanted }, isActive: true, deletedAt: null },
+        select: { id: true, name: true },
+      })
+    : [];
+
+  const valid = new Set(users.map((user) => user.id));
+  const existing = await prisma.leadFollower.findMany({
+    where: { leadId: lead.id },
+    select: { userId: true },
+  });
+
+  const before = new Set(existing.map((row) => row.userId));
+  const added = [...valid].filter((id) => !before.has(id));
+
+  await prisma.$transaction([
+    prisma.leadFollower.deleteMany({
+      where: { leadId: lead.id, userId: { notIn: [...valid] } },
+    }),
+    prisma.leadFollower.createMany({
+      data: added.map((userId) => ({ leadId: lead.id, userId, addedById: input.actor.id })),
+      skipDuplicates: true,
+    }),
+  ]);
+
+  await logActivity({
+    actorId: input.actor.id,
+    action: `Updated followers on ${lead.businessName}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    metadataJson: { followers: users.map((user) => user.name) },
+  });
+
+  if (added.length) {
+    await createNotifications(
+      resolveRecipients(added, input.actor.id).map((recipientId) => ({
+        recipientId,
+        type: "TASK_ASSIGNED" as const,
+        urgency: "NORMAL" as const,
+        title: `Following: ${lead.businessName}`,
+        body: `${input.actor.name} added you as a follower on this opportunity.`,
+        entityType: "LEAD" as const,
+        entityId: lead.id,
+        href: `/leads?opportunity=${lead.id}`,
+      })),
+    );
+  }
+
+  return { ok: true as const, followers: users };
+}
+
+/**
+ * The commercial detail: what the deal is called, what it is worth, when it
+ * should land.
+ *
+ * Writes opportunityValue rather than budgetAmount. What the agency expects to
+ * charge and what the prospect said they could spend are two different numbers,
+ * and a forecast built from the second is a forecast of somebody's guess.
+ */
+export async function setOpportunityDetails(input: {
+  actor: AuthContext;
+  leadId: string;
+  opportunityName?: string | null;
+  opportunityValue?: number | null;
+  expectedCloseAt?: string | null;
+  serviceInterest?: string | null;
+}) {
+  const lead = await loadLead(input.actor, input.leadId);
+
+  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
+  if (!mayEdit(input.actor, lead)) {
+    return failure("FORBIDDEN", "That lead is not yours to change.");
+  }
+
+  const closeAt = input.expectedCloseAt ? new Date(input.expectedCloseAt) : null;
+
+  if (closeAt && Number.isNaN(closeAt.getTime())) {
+    return failure("INVALID", "That is not a date.");
+  }
+
+  const updated = await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      opportunityName:
+        input.opportunityName === undefined
+          ? undefined
+          : input.opportunityName?.trim() || null,
+      opportunityValue: input.opportunityValue === undefined ? undefined : input.opportunityValue,
+      expectedCloseAt: input.expectedCloseAt === undefined ? undefined : closeAt,
+      serviceInterest:
+        input.serviceInterest === undefined
+          ? undefined
+          : ((input.serviceInterest || null) as never),
+    },
+    select: {
+      id: true,
+      opportunityName: true,
+      opportunityValue: true,
+      expectedCloseAt: true,
+      serviceInterest: true,
+    },
+  });
+
+  await logActivity({
+    actorId: input.actor.id,
+    action: `Updated the opportunity on ${lead.businessName}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    ...(input.opportunityValue !== undefined
+      ? {
+          fieldName: "opportunityValue",
+          previousValue: lead.opportunityValue === null ? null : String(lead.opportunityValue),
+          newValue: input.opportunityValue === null ? null : String(input.opportunityValue),
+        }
+      : {}),
+  });
+
+  return {
+    ok: true as const,
+    opportunity: {
+      ...updated,
+      opportunityValue:
+        updated.opportunityValue === null ? null : Number(updated.opportunityValue),
+      expectedCloseAt: updated.expectedCloseAt?.toISOString() ?? null,
+    },
+  };
+}
+
+/**
+ * A task against an open opportunity.
+ *
+ * Writes to EmployeeTask, the same table the delivery board, the workload
+ * report, the EOD entries and the approval queue all read. A sales-only task
+ * list would have been quicker to build and invisible to every one of them.
+ *
+ * A rep may give themselves work on their own deal; handing it to somebody else
+ * needs the same permission as assigning work anywhere else in the agency.
+ */
+export async function addOpportunityTask(input: {
+  actor: AuthContext;
+  leadId: string;
+  title: string;
+  dueDate: string;
+  assignedToId?: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT" | null;
+  note?: string | null;
+}) {
+  const lead = await loadLead(input.actor, input.leadId);
+
+  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
+  if (!mayEdit(input.actor, lead)) {
+    return failure("FORBIDDEN", "That lead is not yours to change.");
+  }
+
+  const title = input.title.trim();
+
+  if (!title) return failure("INVALID", "A task needs a title.");
+
+  const dueDate = new Date(input.dueDate);
+
+  if (Number.isNaN(dueDate.getTime())) return failure("INVALID", "That is not a date.");
+
+  const assignedToId = input.assignedToId || input.actor.id;
+
+  if (assignedToId !== input.actor.id && !can(input.actor, "workItems.assign")) {
+    return failure("FORBIDDEN", "Assigning work to somebody else is a manager's call.");
+  }
+
+  const assignee = await prisma.user.findFirst({
+    where: { id: assignedToId, isActive: true, deletedAt: null },
+    select: { id: true, name: true },
+  });
+
+  if (!assignee) return failure("NOT_FOUND", "That team member could not be found.");
+
+  const task = await prisma.employeeTask.create({
+    data: {
+      title,
+      note: input.note?.trim() || null,
+      leadId: lead.id,
+      assignedToId: assignee.id,
+      createdById: input.actor.id,
+      dueDate,
+      weekStartDate: dueDate,
+      priority: input.priority ?? "MEDIUM",
+      // Chasing a deal is outreach, which is the category the agency already
+      // has for it. Adding a sales-only one would fragment the workload report.
+      category: "LEAD_GENERATION_AND_OUTREACH",
+    },
+    select: { id: true, title: true, dueDate: true, status: true, priority: true },
+  });
+
+  await logActivity({
+    actorId: input.actor.id,
+    action: `Added a task on ${lead.businessName}: ${title}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    metadataJson: { taskId: task.id, assignedTo: assignee.name },
+  });
+
+  await createNotifications(
+    resolveRecipients([assignee.id], input.actor.id).map((recipientId) => ({
+      recipientId,
+      type: "TASK_ASSIGNED" as const,
+      urgency: "NORMAL" as const,
+      title: `New task: ${title}`,
+      body: `${input.actor.name} added this against ${lead.businessName}.`,
+      entityType: "LEAD" as const,
+      entityId: lead.id,
+      href: `/leads?opportunity=${lead.id}`,
+    })),
+  );
+
+  return {
+    ok: true as const,
+    task: {
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate.toISOString(),
+      assigneeName: assignee.name,
+    },
+  };
 }
 
 /**

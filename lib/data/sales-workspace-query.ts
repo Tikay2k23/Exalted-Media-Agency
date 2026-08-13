@@ -32,6 +32,9 @@ export interface SalesWorkspace {
   leads: SalesLead[];
   owners: { id: string; name: string }[];
   sources: string[];
+  /** Every tag and campaign in use, so a filter never offers an empty option. */
+  tags: string[];
+  campaigns: string[];
   /** How long a proposal may sit, read from the stage's own SLA. */
   proposalAgingDays: number | null;
   canCreate: boolean;
@@ -48,6 +51,8 @@ const EMPTY: Omit<SalesWorkspace, "canCreate" | "canEdit" | "canConvert" | "canD
   leads: [],
   owners: [],
   sources: [],
+  tags: [],
+  campaigns: [],
   proposalAgingDays: null,
   hasAccess: false,
 };
@@ -90,8 +95,10 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
       take: 1000,
       select: {
         id: true,
+        contactId: true,
         contactName: true,
         businessName: true,
+        opportunityName: true,
         email: true,
         phone: true,
         source: true,
@@ -106,24 +113,61 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
         lostAt: true,
         lostReasonCode: true,
         nurtureUntil: true,
+        expectedCloseAt: true,
+        opportunityValue: true,
         budgetAmount: true,
+        budgetRange: true,
         proposalValue: true,
         finalValue: true,
         convertedClientId: true,
+        serviceInterest: true,
+        campaign: true,
+        timeline: true,
+        isDecisionMaker: true,
+        mainProblem: true,
+        goal: true,
+        currentSolution: true,
+        qualificationNotes: true,
+        score: true,
+        tags: true,
         notes: true,
         createdAt: true,
+        updatedAt: true,
         stage: { select: { id: true, name: true, stageKey: true } },
         assignedTo: { select: { id: true, name: true } },
+        createdBy: { select: { name: true } },
         wonBy: { select: { name: true } },
+        followers: { select: { user: { select: { name: true } } } },
+        /*
+         * Counted in the same query rather than fetched per card. The board
+         * lights an activity icon only when its count is real - an icon that is
+         * always on is decoration, and one that lies about a call having been
+         * logged is worse than no icon.
+         *
+         * Files have no store yet, so that icon stays dark rather than being
+         * given an invented number.
+         */
+        _count: {
+          select: {
+            callLogs: true,
+            leadNotes: true,
+            tasks: { where: { deletedAt: null } },
+          },
+        },
       },
     }),
-    permissions.canAssign
-      ? prisma.user.findMany({
-          where: { isActive: true, deletedAt: null },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve([]),
+    /*
+     * The team, always - not only for the seats that may reassign. The owner
+     * filter, the follower picker and the owner avatars all need names, and a
+     * rep who cannot reassign still has to be able to read who holds what.
+     * Changing an owner is gated by canAssign in the service, not by hiding
+     * the list.
+     */
+    prisma.user.findMany({
+      where: { isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   /*
@@ -133,8 +177,10 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
    */
   const rows: SalesLead[] = leads.map((lead) => ({
     id: lead.id,
+    contactId: lead.contactId,
     contactName: lead.contactName,
     businessName: lead.businessName,
+    opportunityName: lead.opportunityName,
     email: lead.email,
     phone: lead.phone,
     source: lead.source,
@@ -155,12 +201,38 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
     lostAt: lead.lostAt?.toISOString() ?? null,
     lostReasonCode: lead.lostReasonCode,
     nurtureUntil: lead.nurtureUntil?.toISOString() ?? null,
+    expectedCloseAt: lead.expectedCloseAt?.toISOString() ?? null,
+    opportunityValue: lead.opportunityValue === null ? null : Number(lead.opportunityValue),
     budgetAmount: lead.budgetAmount === null ? null : Number(lead.budgetAmount),
+    budgetRange: lead.budgetRange,
     proposalValue: lead.proposalValue === null ? null : Number(lead.proposalValue),
     finalValue: lead.finalValue === null ? null : Number(lead.finalValue),
     convertedClientId: lead.convertedClientId,
+    serviceInterest: lead.serviceInterest,
+    campaign: lead.campaign,
+    timeline: lead.timeline,
+    isDecisionMaker: lead.isDecisionMaker,
+    mainProblem: lead.mainProblem,
+    goal: lead.goal,
+    currentSolution: lead.currentSolution,
+    qualificationNotes: lead.qualificationNotes,
+    score: lead.score,
+    tags: lead.tags,
     notes: lead.notes,
     createdAt: lead.createdAt.toISOString(),
+    updatedAt: lead.updatedAt.toISOString(),
+    createdByName: lead.createdBy?.name ?? null,
+    followerNames: lead.followers.map((follower) => follower.user.name),
+    activity: {
+      calls: lead._count.callLogs,
+      notes: lead._count.leadNotes,
+      tasks: lead._count.tasks,
+      // The strategy call is the only appointment this pipeline books, so this
+      // is one or nothing rather than a number pulled from a calendar the
+      // agency does not have yet.
+      appointments: lead.strategyCallAt ? 1 : 0,
+      files: 0,
+    },
   }));
 
   // The aging threshold comes from the proposal stage's own SLA rather than a
@@ -171,9 +243,13 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
     stages,
     leads: rows,
     owners,
-    // Only the sources that actually appear, so the filter never offers an
-    // option that matches nothing.
+    // Only the values that actually appear, so a filter never offers an option
+    // that matches nothing.
     sources: [...new Set(rows.map((lead) => lead.source))].sort(),
+    tags: [...new Set(rows.flatMap((lead) => lead.tags))].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    ),
+    campaigns: [...new Set(rows.map((lead) => lead.campaign).filter(Boolean))].sort() as string[],
     proposalAgingDays: proposalStage?.slaDays ?? null,
     hasAccess: true,
     ...permissions,

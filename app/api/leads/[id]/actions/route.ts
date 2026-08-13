@@ -5,14 +5,19 @@ import { getServerAuthSession } from "@/lib/auth";
 import { loadAuthContext } from "@/lib/authz";
 import {
   SALES_FAILURE_STATUS,
+  addOpportunityTask,
   logContact,
   markLost,
   markWon,
   moveLeadStage,
   moveToNurture,
   recordProposalSent,
+  setFollowers,
   setNextStep,
+  setOpportunityDetails,
+  setOwner,
   setStrategyCall,
+  setTags,
 } from "@/lib/sales/sales-actions";
 
 export const runtime = "nodejs";
@@ -73,6 +78,33 @@ const bodySchema = z.discriminatedUnion("action", [
     action: z.literal("nurture"),
     until: z.string().min(1),
     reason: z.string().max(500).nullish(),
+  }),
+  z.object({
+    action: z.literal("set-tags"),
+    tags: z.array(z.string().max(40)).max(20),
+  }),
+  z.object({
+    action: z.literal("set-owner"),
+    ownerId: z.string().nullable(),
+  }),
+  z.object({
+    action: z.literal("set-followers"),
+    userIds: z.array(z.string()).max(20),
+  }),
+  z.object({
+    action: z.literal("add-task"),
+    title: z.string().min(2).max(200),
+    dueDate: z.string().min(1),
+    assignedToId: z.string().nullish(),
+    priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).nullish(),
+    note: z.string().max(2000).nullish(),
+  }),
+  z.object({
+    action: z.literal("set-opportunity"),
+    opportunityName: z.string().max(120).nullish(),
+    opportunityValue: z.number().min(0).max(10_000_000).nullish(),
+    expectedCloseAt: z.string().nullish(),
+    serviceInterest: z.string().max(60).nullish(),
   }),
 ]);
 
@@ -152,6 +184,31 @@ export async function POST(
           leadId: id,
           until: body.until,
           reason: body.reason ?? null,
+        });
+      case "set-tags":
+        return setTags({ actor, leadId: id, tags: body.tags });
+      case "set-owner":
+        return setOwner({ actor, leadId: id, ownerId: body.ownerId });
+      case "set-followers":
+        return setFollowers({ actor, leadId: id, userIds: body.userIds });
+      case "add-task":
+        return addOpportunityTask({
+          actor,
+          leadId: id,
+          title: body.title,
+          dueDate: body.dueDate,
+          assignedToId: body.assignedToId ?? null,
+          priority: body.priority ?? null,
+          note: body.note ?? null,
+        });
+      case "set-opportunity":
+        return setOpportunityDetails({
+          actor,
+          leadId: id,
+          opportunityName: body.opportunityName,
+          opportunityValue: body.opportunityValue,
+          expectedCloseAt: body.expectedCloseAt,
+          serviceInterest: body.serviceInterest,
         });
     }
   })();

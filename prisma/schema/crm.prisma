@@ -154,21 +154,104 @@ model StageRequirement {
   @@index([stageId])
 }
 
+/// A person or company in the sales system.
+///
+/// Split out from Lead because a Lead is a *deal*, and one relationship can
+/// carry several: an account that buys automation this quarter and advertising
+/// the next is one contact with two opportunities, not two contacts. Without
+/// this, every new deal against a known account forced a duplicate record and
+/// the pipeline double-counted the relationship.
+///
+/// Contact owns the identity. The matching columns on Lead are kept in step by
+/// a single writer in lib/sales/contact-service.ts - see the note there for why
+/// they still exist.
+model Contact {
+  id           String    @id @default(cuid())
+  name         String
+  businessName String
+  email        String?
+  phone        String?
+
+  /// Normalised match keys: lowercased email, digits-only phone, lowercased
+  /// company. Stored rather than computed per query so duplicate detection is
+  /// an indexed lookup - the check runs on every lead creation and every
+  /// imported row, and a scan with a function over each of them does not hold
+  /// up under an import of a few thousand.
+  emailKey     String?
+  phoneKey     String?
+  companyKey   String
+
+  ownerId      String?
+  createdById  String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  owner         User?  @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy     User?  @relation("ContactCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  opportunities Lead[]
+
+  @@index([emailKey])
+  @@index([phoneKey])
+  @@index([companyKey])
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+/// One opportunity: a potential sale, and everything that happened to it.
+///
+/// Still called Lead because it is the same row the whole application already
+/// reads, and renaming it would have meant rewriting every query for no change
+/// in behaviour. `contactId` is what makes it an opportunity rather than a
+/// person - several of these may point at one Contact.
 model Lead {
   id               String     @id @default(cuid())
+  contactId        String?
+
+  /// What this particular deal is for - "CRM Automation", "Website Redesign".
+  /// Null on older rows, where the service falls back to the business name.
+  opportunityName  String?
+  expectedCloseAt  DateTime?
+  createdById      String?
+
   contactName      String
   businessName     String
   email            String?
   phone            String?
   source           LeadSource @default(WEBSITE_FORM)
   serviceInterest  ServiceType?
+
+  /// What this deal is worth before anybody has quoted it. Distinct from
+  /// budgetAmount on purpose: what the agency expects to charge and what the
+  /// prospect said they could spend are two different facts, and a forecast
+  /// built on the second is a forecast of somebody else's opinion.
+  opportunityValue Decimal?   @db.Decimal(12, 2)
+
   budgetAmount     Decimal?   @db.Decimal(12, 2)
+  /// The band they answered with, kept verbatim. A range is what people
+  /// actually say; budgetAmount is for the times somebody knows the number.
+  budgetRange      String?
   timeline         String?
   isDecisionMaker  Boolean?
   mainProblem      String?
   goal             String?
+  /// What they are doing about the problem today. Knowing there is an incumbent
+  /// changes the sale, so it is asked for and stored rather than left in notes.
+  currentSolution  String?
+  /// Qualification detail in the rep's own words, kept apart from `notes` so
+  /// the general note field does not become the only place anything lands.
+  qualificationNotes String?
   /// 0-100 qualification score.
   score            Int?
+
+  /// Where the lead came from, beyond the coarse `source` enum. Optional
+  /// throughout: manual entry should never require a UTM.
+  campaign         String?
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  referralSource   String?
   status           LeadStatus @default(NEW)
   stageId          String?
   assignedToId     String?
@@ -207,6 +290,14 @@ model Lead {
   /// Nurture is not lost. A date here keeps somebody out of today's follow-up
   /// list without pretending the opportunity is dead.
   nurtureUntil     DateTime?
+
+  /// Custom labels somebody put on this opportunity.
+  ///
+  /// The automatic stage tag is deliberately NOT stored here. It is derived
+  /// from the stage, so it can never disagree with where the deal actually is,
+  /// and keeping it out of this array is what makes "remove only the previous
+  /// stage tag" true by construction - a stage move cannot touch these.
+  tags             String[]  @default([])
   convertedClientId String?   @unique
   notes            String?
   createdAt        DateTime   @default(now())
@@ -214,15 +305,20 @@ model Lead {
   deletedAt        DateTime?
 
   stage           PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  contact         Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   convertedClient Client?        @relation("LeadConversion", fields: [convertedClientId], references: [id], onDelete: SetNull)
   assignedTo      User?          @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy       User?          @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
   wonBy           User?          @relation("LeadCloser", fields: [wonById], references: [id], onDelete: SetNull)
   callLogs        LeadCallLog[]
   leadNotes       LeadNote[]
+  followers       LeadFollower[]
+  tasks           EmployeeTask[]
   referral        Referral?      @relation("ReferralLead")
 
   @@index([status])
   @@index([assignedToId])
+  @@index([contactId])
   @@index([stageId])
   @@index([nextFollowUpAt])
   @@index([source])
@@ -230,6 +326,27 @@ model Lead {
   @@index([strategyCallAt])
   @@index([wonAt])
   @@index([proposalSentAt])
+  @@index([expectedCloseAt])
+}
+
+/// Somebody who wants to know what happens on an opportunity without owning it.
+///
+/// Separate from `assignedToId` on purpose: an opportunity has exactly one
+/// owner who is answerable for it, and any number of followers who are not.
+/// Collapsing the two would make "whose deal is this" unanswerable.
+model LeadFollower {
+  id        String   @id @default(cuid())
+  leadId    String
+  userId    String
+  addedById String?
+  createdAt DateTime @default(now())
+
+  lead    Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user    User  @relation("LeadFollowing", fields: [userId], references: [id], onDelete: Cascade)
+  addedBy User? @relation("LeadFollowerAdder", fields: [addedById], references: [id], onDelete: SetNull)
+
+  @@unique([leadId, userId])
+  @@index([userId])
 }
 
 enum CallOutcome {

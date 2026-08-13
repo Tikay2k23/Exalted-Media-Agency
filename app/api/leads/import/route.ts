@@ -6,6 +6,7 @@ import { getServerAuthSession } from "@/lib/auth";
 import { loadAuthContext } from "@/lib/authz";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { resolveImportContacts } from "@/lib/sales/contact-service";
 import {
   classifyRows,
   parseLeadCsv,
@@ -143,17 +144,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That owner could not be found." }, { status: 404 });
   }
 
-  const created = plan.create.length
-    ? await prisma.lead.createMany({
-        data: plan.create.map((row) => ({
+  /*
+   * Every imported row lands on a contact, and a row whose email or phone
+   * already belongs to somebody becomes another opportunity against them rather
+   * than a second copy of the person. Resolved as a batch, so a large file is
+   * still two queries rather than two per line.
+   */
+  const contactIds = plan.create.length
+    ? await resolveImportContacts(
+        actor.id,
+        owner?.id ?? null,
+        plan.create.map((row) => ({
           contactName: row.contactName,
           businessName: row.businessName,
           email: row.email,
           phone: row.phone,
+        })),
+      )
+    : new Map<number, string>();
+
+  const created = plan.create.length
+    ? await prisma.lead.createMany({
+        data: plan.create.map((row, index) => ({
+          contactId: contactIds.get(index) ?? null,
+          contactName: row.contactName,
+          businessName: row.businessName,
+          email: row.email,
+          phone: row.phone,
+          opportunityName: row.businessName,
           source: (row.source ?? "OTHER") as never,
           budgetAmount: row.budgetAmount,
           notes: row.notes,
           assignedToId: owner?.id ?? null,
+          createdById: actor.id,
           stageId: entryStage?.id ?? null,
           status: "NEW" as const,
         })),
