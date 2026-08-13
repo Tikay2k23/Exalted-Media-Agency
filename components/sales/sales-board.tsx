@@ -21,12 +21,14 @@ import { useMemo, useState } from "react";
 import { LeadConvertDialog, LeadFormDialog } from "@/components/sales/lead-dialogs";
 import { LeadDrawer } from "@/components/sales/lead-drawer";
 import { LeadImportDialog } from "@/components/sales/lead-import-dialog";
+import { PipelineBoard } from "@/components/sales/pipeline-board";
 import { RowMenu } from "@/components/work/row-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { SalesStage } from "@/lib/data/sales-workspace-query";
+import { buildBoard } from "@/lib/sales/pipeline-board";
 import {
   DEFAULT_PROPOSAL_AGING_DAYS,
   EMPTY_SALES_FILTERS,
@@ -37,7 +39,6 @@ import {
   hasActiveFilters,
   lastContactLabel,
   needsAction,
-  pipelineCounts,
   proposalAgeDays,
   recentWins,
   repPerformance,
@@ -204,7 +205,7 @@ export function SalesBoard({
 
   const metrics = useMemo(() => salesMetrics(leads, rangeWindow, now), [leads, rangeWindow, now]);
   const actions = useMemo(() => needsAction(leads, now, agingDays), [leads, now, agingDays]);
-  const counts = useMemo(() => pipelineCounts(leads, stages), [leads, stages]);
+  const board = useMemo(() => buildBoard(leads), [leads]);
   const queue = useMemo(() => followUpQueue(leads, now), [leads, now]);
   const bySource = useMemo(() => sourcePerformance(leads, rangeWindow), [leads, rangeWindow]);
   const byRep = useMemo(() => repPerformance(leads, rangeWindow), [leads, rangeWindow]);
@@ -443,82 +444,19 @@ export function SalesBoard({
             </div>
           </Panel>
 
-          {/* Pipeline strip */}
-          <Panel title="Sales Pipeline" subtitle="Click a stage to filter the list.">
-            {/*
-              A wrapping grid rather than a horizontal scroller.
-
-              The strip used to be a flex row with min-w-max inside overflow-x-auto,
-              which guaranteed a scrollbar at every width - twelve stages never fit,
-              so the browser was always scrolling. auto-fit with a minmax floor puts
-              as many stages on a row as genuinely fit and wraps the rest onto a
-              second, which keeps the order readable without the sideways scroll.
-
-              The arrows went with it. They only read correctly on a single
-              unbroken row, and pointing off the end of a wrapped line is worse
-              than not pointing at all - the left-to-right reading order already
-              carries the progression, and the numbered order does the rest.
-            */}
-            <div className="space-y-3 p-4">
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2">
-                {counts
-                  .filter((stage) => !stage.isTerminal)
-                  .map((stage, index) => (
-                    <button
-                      key={stage.stageId}
-                      type="button"
-                      onClick={() =>
-                        update("stageId", filters.stageId === stage.stageId ? "" : stage.stageId ?? "")
-                      }
-                      className={`flex min-w-0 flex-col rounded-xl border p-2.5 text-left transition ${
-                        filters.stageId === stage.stageId
-                          ? "border-slate-950 bg-slate-50"
-                          : "border-slate-200 hover:bg-slate-50/70"
-                      }`}
-                    >
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        {index + 1}
-                      </span>
-                      {/* Wraps rather than truncating: a half-read stage name is
-                          not a stage name. */}
-                      <span className="mt-0.5 text-[11px] leading-4 text-slate-600">
-                        {stage.name}
-                      </span>
-                      <span className="mt-1 text-xl font-semibold leading-6 text-slate-950">
-                        {stage.count}
-                      </span>
-                    </button>
-                  ))}
-              </div>
-
-              {/* Outcomes, separated by a rule rather than by position, so the
-                  split survives the stages above wrapping onto two rows. */}
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2 border-t border-slate-100 pt-3">
-                {counts
-                  .filter((stage) => stage.isTerminal)
-                  .map((stage) => (
-                    <button
-                      key={stage.stageId}
-                      type="button"
-                      onClick={() =>
-                        update("stageId", filters.stageId === stage.stageId ? "" : stage.stageId ?? "")
-                      }
-                      className={`flex min-w-0 flex-col rounded-xl border p-2.5 text-left transition ${
-                        filters.stageId === stage.stageId
-                          ? "border-slate-950 bg-slate-50"
-                          : "border-slate-200 hover:bg-slate-50/70"
-                      }`}
-                    >
-                      <span className="text-[11px] leading-4 text-slate-600">
-                        {stage.name}
-                      </span>
-                      <span className="mt-1 text-xl font-semibold leading-6 text-slate-950">
-                        {stage.count}
-                      </span>
-                    </button>
-                  ))}
-              </div>
-            </div>
+          {/* Opportunity board */}
+          <Panel
+            title="Sales Pipeline"
+            subtitle={`${
+              board.filter((cell) => cell.count > 0).reduce((sum, cell) => sum + cell.count, 0)
+            } opportunities on the board. Drag a card to move it.`}
+          >
+            <PipelineBoard
+              leads={leads}
+              now={now}
+              canMove={canEdit}
+              onOpenLead={setOpenLeadId}
+            />
           </Panel>
 
           {/* Filters */}

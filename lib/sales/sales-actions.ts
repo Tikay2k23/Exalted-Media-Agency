@@ -510,3 +510,109 @@ export async function moveToNurture(input: {
 
   return { ok: true as const, lead: updated };
 }
+
+/**
+ * Moving a card between board columns.
+ *
+ * The one entry point the board uses, so every drop is subject to the same
+ * rules a menu action would be. Dropping onto Won hands straight over to
+ * markWon rather than setting the stage directly - that is where the existing
+ * client is found and linked, and a stage write that skipped it would leave a
+ * won deal with no account against it.
+ *
+ * The stage change is recorded on the activity trail with who moved it, what it
+ * moved from, what it moved to, and when. That is the whole audit requirement:
+ * the previous stage is only knowable at the moment of the move, so it is read
+ * before the write rather than reconstructed afterwards.
+ */
+export async function moveLeadStage(input: {
+  actor: AuthContext;
+  leadId: string;
+  stageKey: string;
+}) {
+  const lead = await loadLead(input.actor, input.leadId);
+
+  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
+  if (!mayEdit(input.actor, lead)) {
+    return failure("FORBIDDEN", "That lead is not yours to move.");
+  }
+
+  // Winning is its own path, with the client lookup on it.
+  if (input.stageKey === "won") {
+    return markWon({ actor: input.actor, leadId: input.leadId });
+  }
+
+  if (lead.convertedClientId) {
+    return failure("ALREADY_CLOSED", "This lead already became a client.");
+  }
+
+  const [target, current] = await Promise.all([
+    prisma.pipelineStage.findFirst({
+      where: { pipelineId: SALES_PIPELINE_ID, stageKey: input.stageKey },
+      select: { id: true, name: true, stageKey: true },
+    }),
+    lead.stageId
+      ? prisma.pipelineStage.findUnique({
+          where: { id: lead.stageId },
+          select: { id: true, name: true, stageKey: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (!target) return failure("INVALID", "That is not a stage on the sales pipeline.");
+  if (target.id === lead.stageId) {
+    return { ok: true as const, lead, unchanged: true };
+  }
+
+  /*
+   * Status follows the stage, because the two are read together everywhere
+   * else. Leaving a lead in "NEW" while its stage says Negotiation is how the
+   * metric strip and the board come to disagree.
+   */
+  const status =
+    input.stageKey === "attempting_contact"
+      ? "ATTEMPTING_CONTACT"
+      : ["contacted", "strategy_call_booked", "strategy_call_showed"].includes(input.stageKey)
+        ? "CONTACTED"
+        : ["qualified", "proposal_sent", "negotiation"].includes(input.stageKey)
+          ? "QUALIFIED"
+          : input.stageKey === "long_term_nurture"
+            ? "NURTURE"
+            : "NEW";
+
+  const updated = await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      stageId: target.id,
+      status: status as never,
+      // Moving into the proposal column starts the aging clock if nobody has
+      // recorded a send date yet.
+      ...(input.stageKey === "proposal_sent" ? { proposalSentAt: new Date() } : {}),
+    },
+    select: {
+      id: true,
+      stageId: true,
+      status: true,
+      stage: { select: { name: true, stageKey: true } },
+    },
+  });
+
+  await logActivity({
+    actorId: input.actor.id,
+    action: `Moved ${lead.businessName} from ${current?.name ?? "no stage"} to ${target.name}`,
+    entityType: "LEAD",
+    entityId: lead.id,
+    fieldName: "stageId",
+    previousValue: current?.stageKey ?? null,
+    newValue: target.stageKey,
+    metadataJson: {
+      fromStage: current?.name ?? null,
+      toStage: target.name,
+      movedById: input.actor.id,
+      movedByName: input.actor.name,
+      movedAt: new Date().toISOString(),
+    },
+  });
+
+  return { ok: true as const, lead: updated };
+}

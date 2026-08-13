@@ -8,6 +8,7 @@ import {
   logContact,
   markLost,
   markWon,
+  moveLeadStage,
   moveToNurture,
   recordProposalSent,
   setNextStep,
@@ -63,6 +64,10 @@ const bodySchema = z.discriminatedUnion("action", [
     action: z.literal("mark-won"),
     finalValue: z.number().min(0).nullish(),
     clientId: z.string().nullish(),
+  }),
+  z.object({
+    action: z.literal("move-stage"),
+    stageKey: z.string().min(1).max(64),
   }),
   z.object({
     action: z.literal("nurture"),
@@ -139,6 +144,8 @@ export async function POST(
           finalValue: body.finalValue ?? null,
           clientId: body.clientId ?? null,
         });
+      case "move-stage":
+        return moveLeadStage({ actor, leadId: id, stageKey: body.stageKey });
       case "nurture":
         return moveToNurture({
           actor,
