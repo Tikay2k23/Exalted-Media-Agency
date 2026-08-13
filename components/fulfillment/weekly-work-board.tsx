@@ -511,7 +511,7 @@ export function WeeklyWorkBoard({
         </Button>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.6fr)_minmax(17rem,1fr)]">
         <div className="space-y-4">
           {/* Tabs */}
           <div className="flex gap-1 rounded-2xl border border-slate-200 bg-white p-1">
@@ -612,7 +612,7 @@ export function WeeklyWorkBoard({
                       Nothing here for this person under those filters.
                     </p>
                   ) : (
-                    <div className="hidden overflow-x-auto md:block">
+                    <div className="hidden md:block">
                       {/*
                         Nine columns need a real floor, not a hopeful one. At
                         52rem the browser was squeezing the last column until
@@ -621,28 +621,35 @@ export function WeeklyWorkBoard({
                         Narrower than this and the container scrolls, which is
                         the right answer on a phone - the page itself never does.
                       */}
-                      <table className="w-full min-w-[64rem] table-fixed text-left text-xs">
+                      {/*
+                        Was a 64rem floor inside a scroller, which no normal
+                        desktop could satisfy once the sidebar was accounted
+                        for. Fixed layout and percentage columns fit the card
+                        instead, and the three lowest-priority columns drop out
+                        below xl rather than forcing the row sideways.
+                      */}
+                      <table className="w-full table-fixed text-left text-xs">
                         <colgroup>
-                          <col className="w-[18%]" />
-                          <col className="w-[14%]" />
-                          <col className="w-[10%]" />
-                          <col className="w-[11%]" />
-                          <col className="w-[8%]" />
-                          <col className="w-[11%]" />
-                          <col className="w-[6%]" />
+                          <col className="w-[24%]" />
                           <col className="w-[16%]" />
-                          <col className="w-[6.5rem]" />
+                          <col className="w-[12%]" />
+                          <col className="hidden w-[11%] 2xl:table-column" />
+                          <col className="w-[10%]" />
+                          <col className="w-[13%]" />
+                          <col className="hidden w-[6%] 2xl:table-column" />
+                          <col className="hidden w-[14%] 22xl:table-column" />
+                          <col className="w-[5.5rem]" />
                         </colgroup>
                         <thead className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
                           <tr>
                             <th className="px-4 py-2.5 font-semibold">Task</th>
                             <th className="px-3 py-2.5 font-semibold">Client</th>
                             <th className="px-3 py-2.5 font-semibold">Status</th>
-                            <th className="px-3 py-2.5 font-semibold">Progress</th>
+                            <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">Progress</th>
                             <th className="px-3 py-2.5 font-semibold">Due</th>
                             <th className="px-3 py-2.5 font-semibold">EOD today</th>
-                            <th className="px-3 py-2.5 font-semibold">Time</th>
-                            <th className="px-3 py-2.5 font-semibold">Blocker</th>
+                            <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">Time</th>
+                            <th className="hidden px-3 py-2.5 font-semibold 22xl:table-cell">Blocker</th>
                             <th className="px-3 py-2.5" />
                           </tr>
                         </thead>
@@ -677,7 +684,7 @@ export function WeeklyWorkBoard({
                                     {statusLabel(task.status)}
                                   </Badge>
                                 </td>
-                                <td className="px-3 py-3">
+                                <td className="hidden px-3 py-3 2xl:table-cell">
                                   {latest?.progressPercent !== null
                                   && latest?.progressPercent !== undefined ? (
                                     <div className="flex items-center gap-1.5">
@@ -718,10 +725,10 @@ export function WeeklyWorkBoard({
                                     </span>
                                   )}
                                 </td>
-                                <td className="whitespace-nowrap px-3 py-3 text-slate-600">
+                                <td className="hidden whitespace-nowrap px-3 py-3 text-slate-600 2xl:table-cell">
                                   {todays?.hoursSpent ? `${todays.hoursSpent}h` : "—"}
                                 </td>
-                                <td className="px-3 py-3 text-slate-600">
+                                <td className="hidden px-3 py-3 text-slate-600 22xl:table-cell">
                                   {/*
                                     Clamped to two lines with the full text on
                                     hover. A long blocker used to stretch this

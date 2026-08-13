@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowRight,
   CalendarClock,
   CheckCircle2,
   Download,
@@ -139,7 +138,7 @@ function Metric({
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-xs font-semibold text-slate-600">{label}</p>
+        <p className="text-xs font-semibold leading-4 text-slate-600">{label}</p>
         <p className="mt-0.5 text-2xl font-semibold leading-7 text-slate-950">{value}</p>
         {hint ? <p className="text-[11px] leading-4 text-slate-500">{hint}</p> : null}
       </div>
@@ -353,7 +352,7 @@ export function SalesBoard({
       </div>
 
       {/* Metric strip */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 2xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 min-[1800px]:grid-cols-8">
         <Metric
           label="New Leads"
           value={String(metrics.newLeads)}
@@ -412,7 +411,7 @@ export function SalesBoard({
         />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.6fr)_minmax(18rem,1fr)]">
         <div className="space-y-4">
           {/* Needs Action */}
           <Panel
@@ -446,61 +445,78 @@ export function SalesBoard({
 
           {/* Pipeline strip */}
           <Panel title="Sales Pipeline" subtitle="Click a stage to filter the list.">
-            <div className="overflow-x-auto p-4">
-              <div className="flex min-w-max items-stretch gap-1.5">
+            {/*
+              A wrapping grid rather than a horizontal scroller.
+
+              The strip used to be a flex row with min-w-max inside overflow-x-auto,
+              which guaranteed a scrollbar at every width - twelve stages never fit,
+              so the browser was always scrolling. auto-fit with a minmax floor puts
+              as many stages on a row as genuinely fit and wraps the rest onto a
+              second, which keeps the order readable without the sideways scroll.
+
+              The arrows went with it. They only read correctly on a single
+              unbroken row, and pointing off the end of a wrapped line is worse
+              than not pointing at all - the left-to-right reading order already
+              carries the progression, and the numbered order does the rest.
+            */}
+            <div className="space-y-3 p-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2">
                 {counts
                   .filter((stage) => !stage.isTerminal)
-                  .map((stage, index, list) => (
-                    <div key={stage.stageId} className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          update("stageId", filters.stageId === stage.stageId ? "" : stage.stageId ?? "")
-                        }
-                        className={`w-[6.5rem] shrink-0 rounded-xl border p-2.5 text-center transition ${
-                          filters.stageId === stage.stageId
-                            ? "border-slate-950 bg-slate-50"
-                            : "border-slate-200 hover:bg-slate-50/70"
-                        }`}
-                      >
-                        <span className="block text-[11px] leading-4 text-slate-600">
-                          {stage.name}
-                        </span>
-                        <span className="mt-1 block text-xl font-semibold text-slate-950">
-                          {stage.count}
-                        </span>
-                      </button>
-                      {index < list.length - 1 ? (
-                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-                      ) : null}
-                    </div>
+                  .map((stage, index) => (
+                    <button
+                      key={stage.stageId}
+                      type="button"
+                      onClick={() =>
+                        update("stageId", filters.stageId === stage.stageId ? "" : stage.stageId ?? "")
+                      }
+                      className={`flex min-w-0 flex-col rounded-xl border p-2.5 text-left transition ${
+                        filters.stageId === stage.stageId
+                          ? "border-slate-950 bg-slate-50"
+                          : "border-slate-200 hover:bg-slate-50/70"
+                      }`}
+                    >
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        {index + 1}
+                      </span>
+                      {/* Wraps rather than truncating: a half-read stage name is
+                          not a stage name. */}
+                      <span className="mt-0.5 text-[11px] leading-4 text-slate-600">
+                        {stage.name}
+                      </span>
+                      <span className="mt-1 text-xl font-semibold leading-6 text-slate-950">
+                        {stage.count}
+                      </span>
+                    </button>
                   ))}
+              </div>
 
-                <div className="ml-2 flex items-stretch gap-1.5 border-l border-slate-200 pl-3">
-                  {counts
-                    .filter((stage) => stage.isTerminal)
-                    .map((stage) => (
-                      <button
-                        key={stage.stageId}
-                        type="button"
-                        onClick={() =>
-                          update("stageId", filters.stageId === stage.stageId ? "" : stage.stageId ?? "")
-                        }
-                        className={`w-[5.5rem] shrink-0 rounded-xl border p-2.5 text-center transition ${
-                          filters.stageId === stage.stageId
-                            ? "border-slate-950 bg-slate-50"
-                            : "border-slate-200 hover:bg-slate-50/70"
-                        }`}
-                      >
-                        <span className="block text-[11px] leading-4 text-slate-600">
-                          {stage.name}
-                        </span>
-                        <span className="mt-1 block text-xl font-semibold text-slate-950">
-                          {stage.count}
-                        </span>
-                      </button>
-                    ))}
-                </div>
+              {/* Outcomes, separated by a rule rather than by position, so the
+                  split survives the stages above wrapping onto two rows. */}
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2 border-t border-slate-100 pt-3">
+                {counts
+                  .filter((stage) => stage.isTerminal)
+                  .map((stage) => (
+                    <button
+                      key={stage.stageId}
+                      type="button"
+                      onClick={() =>
+                        update("stageId", filters.stageId === stage.stageId ? "" : stage.stageId ?? "")
+                      }
+                      className={`flex min-w-0 flex-col rounded-xl border p-2.5 text-left transition ${
+                        filters.stageId === stage.stageId
+                          ? "border-slate-950 bg-slate-50"
+                          : "border-slate-200 hover:bg-slate-50/70"
+                      }`}
+                    >
+                      <span className="text-[11px] leading-4 text-slate-600">
+                        {stage.name}
+                      </span>
+                      <span className="mt-1 text-xl font-semibold leading-6 text-slate-950">
+                        {stage.count}
+                      </span>
+                    </button>
+                  ))}
               </div>
             </div>
           </Panel>
@@ -635,18 +651,25 @@ export function SalesBoard({
               </div>
             ) : (
               <>
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full min-w-[62rem] table-fixed text-left text-xs">
+                {/*
+                  No min-width and no scroller. table-fixed plus percentage
+                  columns means the table is exactly as wide as the card, and
+                  the two lowest-priority columns drop out below xl rather than
+                  pushing the rest sideways - Last Contact and Value both live
+                  in the drawer, so nothing becomes unreachable.
+                */}
+                <div className="hidden md:block">
+                  <table className="w-full table-fixed text-left text-xs">
                     <colgroup>
-                      <col className="w-[17%]" />
+                      <col className="w-[19%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[12%]" />
                       <col className="w-[13%]" />
-                      <col className="w-[11%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[3rem]" />
+                      <col className="hidden w-[9%] 2xl:table-column" />
+                      <col className="w-[18%]" />
+                      <col className="w-[13%]" />
+                      <col className="hidden w-[7%] 2xl:table-column" />
+                      <col className="w-[2.5rem]" />
                     </colgroup>
                     <thead className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
                       <tr>
@@ -654,10 +677,14 @@ export function SalesBoard({
                         <th className="px-3 py-2.5 font-semibold">Company</th>
                         <th className="px-3 py-2.5 font-semibold">Owner</th>
                         <th className="px-3 py-2.5 font-semibold">Stage</th>
-                        <th className="px-3 py-2.5 font-semibold">Last Contact</th>
+                        <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">
+                          Last Contact
+                        </th>
                         <th className="px-3 py-2.5 font-semibold">Next Action</th>
                         <th className="px-3 py-2.5 font-semibold">Next Follow Up</th>
-                        <th className="px-3 py-2.5 font-semibold">Value</th>
+                        <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">
+                          Value
+                        </th>
                         <th className="px-3 py-2.5" />
                       </tr>
                     </thead>
@@ -707,7 +734,7 @@ export function SalesBoard({
                                 </p>
                               ) : null}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-3 text-slate-600">
+                            <td className="hidden whitespace-nowrap px-3 py-3 text-slate-600 2xl:table-cell">
                               {lastContactLabel(lead.lastContactAt, now)}
                             </td>
                             <td className="px-3 py-3 text-slate-700">
@@ -734,7 +761,7 @@ export function SalesBoard({
                                 {due.label}
                               </span>
                             </td>
-                            <td className="whitespace-nowrap px-3 py-3 text-slate-700">
+                            <td className="hidden whitespace-nowrap px-3 py-3 text-slate-700 2xl:table-cell">
                               {lead.finalValue ?? lead.proposalValue ?? lead.budgetAmount
                                 ? money(
                                     lead.finalValue

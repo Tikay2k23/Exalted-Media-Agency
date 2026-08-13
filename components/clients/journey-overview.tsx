@@ -91,9 +91,9 @@ export function JourneyOverview({
           </div>
         </div>
 
-        {/* The journey itself, as a strip. */}
-        <div className="overflow-x-auto">
-          <ol className="flex min-w-max items-center gap-1.5">
+        {/* The journey itself, as a strip that wraps rather than scrolls. */}
+        <div>
+          <ol className="flex flex-wrap items-center gap-1.5">
             {steps.map((step) => (
               <li key={step.stageKey} className="flex items-center gap-1.5">
                 <span

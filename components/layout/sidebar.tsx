@@ -157,7 +157,7 @@ export function Sidebar({
         </div>
       ) : null}
 
-      <aside className="hidden w-full max-w-xs rounded-[2rem] border border-white/70 bg-slate-950 px-5 py-6 text-slate-100 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.65)] xl:block">
+      <aside className="hidden w-full rounded-[2rem] border border-white/70 bg-slate-950 px-5 py-6 text-slate-100 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.65)] xl:block">
         <div className="mb-10 flex items-start justify-between gap-3">
           <ExaltedLockup idSuffix="sidebar" />
           <Badge tone="sky">{roleLabel}</Badge>

@@ -33,11 +33,29 @@ export default async function DashboardLayout({
   const identityLabel = teamRoleLabels[context.teamRole];
 
   return (
+    /*
+     * The workspace is the browser width minus the sidebar, and nothing else.
+     *
+     * This used to be capped at 1600px and centred, which on a 1920 screen left
+     * 160px of empty margin down each side while the tables inside were
+     * scrolling sideways to fit. The cap is gone; padding does the breathing
+     * room instead, 16px on a phone up to 32px on a desktop.
+     */
     <div className="min-h-screen px-4 py-5 md:px-6 md:py-6 xl:px-8 xl:py-8">
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6 xl:flex-row">
-        <div className="xl:sticky xl:top-8 xl:h-fit">
+      <div className="flex w-full flex-col gap-6 xl:flex-row">
+        {/*
+          A fixed basis rather than max-width, so the sidebar cannot be squeezed
+          by a wide child in the main column and the content column always knows
+          exactly how much room it has.
+        */}
+        <div className="xl:sticky xl:top-8 xl:h-fit xl:w-[17rem] xl:shrink-0">
           <Sidebar roleLabel={identityLabel} permissions={permissions} />
         </div>
+        {/*
+          min-w-0 is what actually stops the page scrolling sideways: a flex
+          child defaults to min-width:auto and refuses to shrink below its
+          content, so one wide table pushes the whole layout out.
+        */}
         <div className="min-w-0 flex-1 space-y-6">
           <Topbar
             name={context.name}
