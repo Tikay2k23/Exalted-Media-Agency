@@ -486,7 +486,75 @@ export function OpportunityDrawer({
                     </div>
                   </Section>
 
-                  <Section title="Opportunity">
+                  <Section
+                    title="Opportunity"
+                    hint={
+                      canEdit
+                        ? "Name, value and expected close save as you leave the field."
+                        : undefined
+                    }
+                  >
+                    {/*
+                      The three fields that change most often are editable here
+                      rather than only behind Edit, because a value that has
+                      moved is the reason somebody opened the drawer. They save
+                      on blur, so nothing needs a Save button beside it.
+                    */}
+                    {canEdit ? (
+                      <div className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-400">
+                            Opportunity name
+                          </span>
+                          <Input
+                            className="h-9 text-xs"
+                            defaultValue={lead.opportunityName ?? ""}
+                            placeholder={lead.businessName}
+                            disabled={busy}
+                            onBlur={(event) => {
+                              const next = event.target.value.trim() || null;
+                              if (next === (lead.opportunityName ?? null)) return;
+                              void post({ action: "set-opportunity", opportunityName: next });
+                            }}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-400">
+                            Opportunity value
+                          </span>
+                          <Input
+                            type="number"
+                            min={0}
+                            className="h-9 text-xs"
+                            defaultValue={lead.opportunityValue ?? ""}
+                            disabled={busy}
+                            onBlur={(event) => {
+                              const raw = event.target.value;
+                              const next = raw === "" ? null : Number(raw);
+                              if (next === (lead.opportunityValue ?? null)) return;
+                              void post({ action: "set-opportunity", opportunityValue: next });
+                            }}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-400">
+                            Expected close
+                          </span>
+                          <Input
+                            type="date"
+                            className="h-9 text-xs"
+                            defaultValue={lead.expectedCloseAt?.slice(0, 10) ?? ""}
+                            disabled={busy}
+                            onBlur={(event) => {
+                              const next = event.target.value || null;
+                              if (next === (lead.expectedCloseAt?.slice(0, 10) ?? null)) return;
+                              void post({ action: "set-opportunity", expectedCloseAt: next });
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+
                     <div className="grid gap-4 sm:grid-cols-3">
                       <Field label="Name">{opportunityLabel(lead)}</Field>
                       <Field label="Pipeline">The Exalted Media – Sales</Field>

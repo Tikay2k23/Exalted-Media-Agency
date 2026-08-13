@@ -288,6 +288,45 @@ export function OpportunityWorkspace({
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * The same body against every ticked opportunity.
+   *
+   * One request each rather than a bulk endpoint, so every change goes through
+   * the same permission checks and writes the same activity entry a single
+   * change would. A rep who ticks somebody else's deal gets that one refused
+   * and the rest applied, which is reported rather than swallowed.
+   */
+  async function bulkPerLead(bodyFor: (lead: SalesLead) => Record<string, unknown>) {
+    const rows = leads.filter((lead) => selected.has(lead.id));
+
+    setNotice(null);
+
+    const results = await Promise.all(
+      rows.map((lead) =>
+        fetch(`/api/leads/${lead.id}/actions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyFor(lead)),
+        }).then((response) => response.ok),
+      ),
+    );
+
+    report(rows.length, results.filter((ok) => !ok).length);
+  }
+
+  function report(total: number, failed: number) {
+    setSelected(new Set());
+    setNotice(
+      failed
+        ? `${total - failed} of ${total} updated. ${failed} were not yours to change.`
+        : `${total} opportunit${total === 1 ? "y" : "ies"} updated.`,
+    );
+
+    // Refresh rather than reload: a reload would throw away the filters and the
+    // message that just explained what happened.
+    startTransition(() => router.refresh());
+  }
+
   async function bulk(body: Record<string, unknown>) {
     const ids = [...selected];
 
@@ -303,18 +342,7 @@ export function OpportunityWorkspace({
       ),
     );
 
-    const failed = results.filter((ok) => !ok).length;
-
-    setSelected(new Set());
-    setNotice(
-      failed
-        ? `${ids.length - failed} of ${ids.length} updated. ${failed} were not yours to change.`
-        : `${ids.length} opportunit${ids.length === 1 ? "y" : "ies"} updated.`,
-    );
-
-    // Refresh rather than reload: a reload would throw away the filters and the
-    // message that just explained what happened.
-    startTransition(() => router.refresh());
+    report(ids.length, results.filter((ok) => !ok).length);
   }
 
   const selectedLeads = filtered.filter((lead) => selected.has(lead.id));
@@ -672,7 +700,7 @@ export function OpportunityWorkspace({
 
           {canAssign ? (
             <Select
-              className="h-8 w-44 text-xs"
+              className="h-8 w-40 text-xs"
               value=""
               onChange={(event) => {
                 if (!event.target.value) return;
@@ -687,6 +715,63 @@ export function OpportunityWorkspace({
                 </option>
               ))}
             </Select>
+          ) : null}
+
+          {canEdit ? (
+            <>
+              <Select
+                className="h-8 w-40 text-xs"
+                value=""
+                onChange={(event) => {
+                  const stage = stages.find((candidate) => candidate.id === event.target.value);
+                  if (!stage?.stageKey) return;
+                  void bulk({ action: "move-stage", stageKey: stage.stageKey });
+                }}
+                aria-label="Move the selected opportunities"
+              >
+                <option value="">Move stage…</option>
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </option>
+                ))}
+              </Select>
+
+              <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                Follow up
+                <Input
+                  type="datetime-local"
+                  className="h-8 w-48 text-xs"
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    void bulk({ action: "next-step", nextFollowUpAt: event.target.value });
+                  }}
+                  aria-label="Schedule a follow up on the selected opportunities"
+                />
+              </label>
+
+              {/*
+                Tags are merged per opportunity rather than replaced, because
+                set-tags takes the whole list and a bulk replace would wipe
+                every tag anybody had already put on these deals.
+              */}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const tag = window.prompt("Tag to add to the selected opportunities");
+
+                  if (!tag?.trim()) return;
+
+                  void bulkPerLead((lead) => ({
+                    action: "set-tags",
+                    tags: [...new Set([...lead.tags, tag.trim()])],
+                  }));
+                }}
+              >
+                Add tag
+              </Button>
+            </>
           ) : null}
 
           <Button
