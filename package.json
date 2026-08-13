@@ -16,7 +16,9 @@
     "db:seed-team": "node scripts/seed-team.mjs",
     "db:studio": "prisma studio",
     "db:bootstrap": "prisma db push && prisma db seed",
-    "postinstall": "node scripts/prisma-generate.mjs"
+    "postinstall": "node scripts/prisma-generate.mjs",
+    "db:inventory": "node --import tsx scripts/inventory.ts",
+    "db:sample": "node --import tsx scripts/seed-sample-data.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
