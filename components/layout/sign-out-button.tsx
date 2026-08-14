@@ -9,11 +9,13 @@ export function SignOutButton() {
   return (
     <Button
       variant="secondary"
+      aria-label="Sign out"
       className="gap-2"
       onClick={() => signOut({ callbackUrl: "/login" })}
     >
       <LogOut className="h-4 w-4" />
-      Sign out
+      {/* The icon carries it on a phone; the label was costing the name its room. */}
+      <span className="hidden sm:inline">Sign out</span>
     </Button>
   );
 }

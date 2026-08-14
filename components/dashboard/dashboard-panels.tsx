@@ -185,13 +185,21 @@ export function SummaryCards({ view }: { view: DashboardView }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
       {cards.map((card) => (
-        <div key={card.label} className={`rounded-2xl border p-3.5 ${TONES[card.tone].card}`}>
-          <div className="flex items-start gap-2.5">
-            <span className="rounded-xl bg-white/70 p-2">
+        <div key={card.label} className={`rounded-2xl border p-3 sm:p-3.5 ${TONES[card.tone].card}`}>
+          {/*
+            The icon sits above the text on a phone, not beside it. Two columns
+            on a 375px screen gives each card about 165px; once padding, a 40px
+            icon and the gap are taken out, the text column is left with under
+            90px - enough to wrap "Completed This Week" onto three lines and
+            leave the number looking squeezed next to it. Stacked, the label and
+            the figure get the full width of the card.
+          */}
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-2.5">
+            <span className="w-fit rounded-xl bg-white/70 p-2">
               <card.icon className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-semibold">{card.label}</p>
+              <p className="text-xs font-semibold leading-4">{card.label}</p>
               <p className="mt-0.5 text-2xl font-semibold leading-7 text-slate-950">
                 {card.value}
               </p>

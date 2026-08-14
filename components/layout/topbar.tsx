@@ -50,7 +50,7 @@ export function Topbar({
               {roleLabel}
             </Badge>
           </div>
-          <p className="mt-0.5 truncate text-xs text-slate-500 sm:mt-1 sm:text-sm">{email}</p>
+          <p className="mt-1 hidden truncate text-sm text-slate-500 sm:block">{email}</p>
         </div>
       </div>
 

@@ -126,9 +126,9 @@ export default async function DashboardPage() {
       {/* Greeting */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-slate-950">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
             Good day, {firstName}
-            <Sun className="h-6 w-6 text-amber-400" aria-hidden="true" />
+            <Sun className="h-5 w-5 shrink-0 text-amber-400 sm:h-6 sm:w-6" aria-hidden="true" />
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             Here&rsquo;s what needs your attention today.
