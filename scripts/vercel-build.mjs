@@ -109,8 +109,20 @@ if (isVercelDeployment && process.env.DATABASE_URL && !isInvalidDatabaseUrl(proc
   console.log("[vercel-build] Applying pending migrations to the hosted database.");
   runNpx(["prisma", "migrate", "deploy"]);
 
-  console.log("[vercel-build] Synchronizing required workspace records.");
-  run("node", ["scripts/bootstrap-seed.mjs"]);
+  /*
+   * The seed does NOT run here, and must not.
+   *
+   * `prisma db seed` runs prisma/seed.ts, which deletes the records it
+   * considers legacy before writing its canonical set - reasonable when
+   * setting a workspace up, indefensible on every deploy. It removed four
+   * users and five work items the first time this ran, and the only reason
+   * that was survivable is that the accounts it kept happened to be the real
+   * ones.
+   *
+   * Required workspace records are handled at runtime by
+   * ensureRequiredWorkspaceInitialized, which upserts and never deletes. Seed
+   * a new environment by hand with `npm run db:seed`.
+   */
 }
 
 runNpx(["next", "build"]);
