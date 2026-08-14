@@ -1,49 +1,44 @@
-import type { ClientStatus } from "@prisma/client";
-import Link from "next/link";
+import type { TeamRole } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 import { AddClientButton } from "@/components/clients/add-client-wizard";
-import { ClientStatusSelect } from "@/components/clients/client-status-select";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { getClientsData } from "@/lib/data/queries";
-import { SERVICE_BLUEPRINTS } from "@/lib/workflow/service-blueprints";
-import { teamRoleLabels } from "@/lib/permissions";
-import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
+import { ClientsDashboard } from "@/components/clients/clients-dashboard";
+import { loadAuthContext } from "@/lib/authz";
+import { getClientsDashboard } from "@/lib/data/clients-dashboard-query";
+import { canAny, teamRoleLabels } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
-import { formatDate } from "@/lib/utils";
+import { SERVICE_BLUEPRINTS } from "@/lib/workflow/service-blueprints";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export default async function ClientsPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export const metadata = {
+  title: "Clients Dashboard",
+};
+
+/**
+ * The Clients dashboard.
+ *
+ * One read feeds every number on the page, so the summary cards, the attention
+ * list, the chips and the directory are four views of the same rows rather than
+ * four counts that can disagree.
+ *
+ * The delivery pipeline is deliberately not pictured here. Journey owns that,
+ * and this page shows each account's current stage as a column instead.
+ */
+export default async function ClientsPage() {
   const user = await requireUser();
-  const params = await searchParams;
+  const actor = await loadAuthContext(user.id);
 
-  const search = typeof params.search === "string" ? params.search : undefined;
-  const status =
-    typeof params.status === "string" ? (params.status as ClientStatus | "ALL") : "ALL";
-  const assigneeId = typeof params.assignee === "string" ? params.assignee : "ALL";
+  if (!actor) {
+    redirect("/login");
+  }
 
-  const data = await getClientsData(user, {
-    search,
-    status,
-    assigneeId,
-  });
+  if (!canAny(actor, ["clients.view.all", "clients.view.assigned"])) {
+    redirect("/dashboard");
+  }
+
+  const data = await getClientsDashboard(actor);
 
   // Built here rather than in the component so the wizard shows exactly which
   // seats each service brings in - the same blueprint the workstreams use.
@@ -60,135 +55,25 @@ export default async function ClientsPage({
   }));
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-start justify-between gap-4">
-          <div>
-            <CardTitle>Clients</CardTitle>
-            <CardDescription>
-              Who owns each account, where it is in the journey, and what it is waiting on.
-            </CardDescription>
-          </div>
-          {canManageClients(user.role) ? (
-            <AddClientButton
-              services={serviceOptions}
-              team={data.users.map((member) => ({
-                id: member.id,
-                name: member.name,
-                teamRole: member.teamRole,
-              }))}
-            />
-          ) : null}
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4 md:grid-cols-[1.4fr_0.9fr_0.9fr_auto]">
-            <Input
-              name="search"
-              defaultValue={search}
-              placeholder="Search clients, brands, or contact email"
-            />
-            <Select name="status" defaultValue={status}>
-              <option value="ALL">All statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="AT_RISK">At Risk</option>
-              <option value="ON_HOLD">On Hold</option>
-              <option value="COMPLETED">Completed</option>
-            </Select>
-            <Select name="assignee" defaultValue={assigneeId}>
-              <option value="ALL">All assignees</option>
-              {data.users.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </Select>
-            <Button type="submit" className="w-full md:w-auto">
-              Apply filters
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Account Directory</CardTitle>
-          <CardDescription>
-            {user.role === "TEAM_MEMBER"
-              ? "Only the clients assigned to you are shown here."
-              : "Managers and admins can review the full book of business here."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>Assigned</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Open work</TableHead>
-                <TableHead>Date added</TableHead>
-                <TableHead className="text-right">
-                  {canManageClients(user.role) ? "Manage" : "View"}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.clients.length ? (
-                data.clients.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-semibold text-slate-950">{client.companyName}</p>
-                        <p className="mt-1 text-sm text-slate-500">{client.clientName}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{client.assignedUser?.name ?? "Unassigned"}</TableCell>
-                    <TableCell>
-                      <Badge tone="violet">{client.currentStage.name}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <ClientStatusSelect
-                        clientId={client.id}
-                        value={client.status}
-                        disabled={
-                          !canManageClients(user.role) &&
-                          !canAccessAssignedRecord(user.role, user.id, client.assignedUserId)
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>{client.serviceType.replaceAll("_", " ")}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-slate-900">{client.openTaskCount}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                          {client.overdueTaskCount} overdue
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDate(client.dateAdded)}</TableCell>
-                    <TableCell className="text-right">
-                      <Link
-                        href={`/clients/${client.id}`}
-                        className="text-sm font-semibold text-sky-600 hover:text-sky-700"
-                      >
-                        {canManageClients(user.role) ? "Open and manage" : "Open profile"}
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
-                    No client accounts match the current filters.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+    <ClientsDashboard
+      clients={data.clients}
+      stages={data.stages}
+      owners={data.owners}
+      services={data.services}
+      canManage={data.canManage}
+      serverNow={new Date().toISOString()}
+      addClientAction={
+        data.canCreate ? (
+          <AddClientButton
+            services={serviceOptions}
+            team={data.owners.map((member) => ({
+              id: member.id,
+              name: member.name,
+              teamRole: member.teamRole as TeamRole,
+            }))}
+          />
+        ) : null
+      }
+    />
   );
 }

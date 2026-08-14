@@ -38,14 +38,14 @@ function failure(code: QualityFailureCode, message: string): QualityFailure {
 }
 
 /** Statuses that mean a defect is no longer outstanding. */
-const CLOSED_STATUSES: DefectStatus[] = [
+export const CLOSED_DEFECT_STATUSES: DefectStatus[] = [
   DefectStatus.CLOSED,
   DefectStatus.PASSED,
   DefectStatus.WONT_FIX,
 ];
 
 export function isDefectOpen(status: DefectStatus) {
-  return !CLOSED_STATUSES.includes(status);
+  return !CLOSED_DEFECT_STATUSES.includes(status);
 }
 
 async function nextDefectReference(transaction: Prisma.TransactionClient) {
@@ -208,7 +208,7 @@ export async function updateDefect(input: {
 
   // Closing is a separate, stricter operation. Routing it through here would
   // sidestep the self-verification rule.
-  if (data.status && CLOSED_STATUSES.includes(data.status)) {
+  if (data.status && CLOSED_DEFECT_STATUSES.includes(data.status)) {
     return failure(
       "INVALID",
       `Use the close action to resolve ${existing.reference}, so verification is recorded.`,
@@ -270,7 +270,7 @@ export async function closeDefect(input: {
 }) {
   const { actor, defectId, resolution, retestResult, overrideReason } = input;
 
-  if (!CLOSED_STATUSES.includes(resolution)) {
+  if (!CLOSED_DEFECT_STATUSES.includes(resolution)) {
     return failure("INVALID", "A closing resolution is required.");
   }
 
