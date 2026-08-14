@@ -5,6 +5,7 @@ import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { statusForStageKey } from "@/lib/sales/pipeline-board";
 import { SALES_PIPELINE_ID } from "@/lib/workspace-defaults";
 
 import { leadVisibilityWhere } from "./lead-service";
@@ -214,7 +215,11 @@ export async function setStrategyCall(input: {
     data: {
       strategyCallAt: input.at === undefined ? undefined : at,
       strategyCallStatus: input.status ?? undefined,
-      ...(stage ? { stageId: stage.id } : {}),
+      // Status travels with the stage, or booking a call would leave the deal
+      // reading "New" in a Strategy Call column.
+      ...(stage && stageKey
+        ? { stageId: stage.id, status: statusForStageKey(stageKey) as never }
+        : {}),
       // Turning up is contact, whatever else was logged.
       ...(input.status === "SHOWED" ? { lastContactAt: new Date() } : {}),
     },
@@ -261,7 +266,7 @@ export async function recordProposalSent(input: {
       proposalSentAt: sentAt,
       proposalValue: input.value ?? undefined,
       lastContactAt: sentAt,
-      ...(stage ? { stageId: stage.id } : {}),
+      ...(stage ? { stageId: stage.id, status: statusForStageKey("proposal_sent") as never } : {}),
     },
     select: { id: true, proposalSentAt: true, proposalValue: true, stageId: true },
   });
@@ -943,20 +948,12 @@ export async function moveLeadStage(input: {
   }
 
   /*
-   * Status follows the stage, because the two are read together everywhere
-   * else. Leaving a lead in "NEW" while its stage says Negotiation is how the
-   * metric strip and the board come to disagree.
+   * Status follows the stage, from the one mapping every write path shares.
+   * Leaving a lead in "NEW" while its stage says Negotiation is how the board
+   * and the status label come to disagree, and the fix has to be in one place
+   * or the next action to move a stage will forget to apply it.
    */
-  const status =
-    input.stageKey === "attempting_contact"
-      ? "ATTEMPTING_CONTACT"
-      : ["contacted", "strategy_call_booked", "strategy_call_showed"].includes(input.stageKey)
-        ? "CONTACTED"
-        : ["qualified", "proposal_sent", "negotiation"].includes(input.stageKey)
-          ? "QUALIFIED"
-          : input.stageKey === "long_term_nurture"
-            ? "NURTURE"
-            : "NEW";
+  const status = statusForStageKey(input.stageKey);
 
   const updated = await prisma.lead.update({
     where: { id: lead.id },

@@ -111,6 +111,110 @@ export function stageTag(lead: SalesLead): string | null {
   return `stage_${lead.stageKey}`;
 }
 
+/**
+ * The sales status, derived from the stage.
+ *
+ * Not stored, for the same reason the tag is not: a column and a status field
+ * that are written separately will eventually disagree, and a card sitting in
+ * Contacted that still reads "New Lead" is the exact failure this replaces.
+ * Stage moves; label, tag and progress icons all follow from it by definition.
+ *
+ * The Lead.status enum is still written - see statusForStageKey - but that is
+ * the coarse lifecycle the rest of the application reads, and it has no value
+ * for "negotiation". This is what sales actually shows.
+ */
+export function stageStatusLabel(lead: SalesLead): string {
+  const column = columnFor(lead);
+
+  if (column) {
+    return BOARD_COLUMNS.find((candidate) => candidate.key === column)!.label;
+  }
+
+  // Off the board but still real: lost, nurture, abandoned.
+  if (lead.stageName) return lead.stageName;
+
+  return lead.status
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * The stored lifecycle enum for a stage.
+ *
+ * One mapping, used by every write path, so the column, the label and the
+ * stored status cannot drift apart depending on which action moved the deal.
+ * LeadStatus is coarser than the board on purpose - it is what the dashboard,
+ * the client handoff and the reports read, and widening it would mean a
+ * migration touching all of them to say something the stage already says.
+ */
+export function statusForStageKey(stageKey: string): string {
+  if (stageKey === "attempting_contact") return "ATTEMPTING_CONTACT";
+  if (["contacted", "strategy_call_booked", "strategy_call_showed"].includes(stageKey)) {
+    return "CONTACTED";
+  }
+  if (["qualified", "proposal_sent", "negotiation"].includes(stageKey)) return "QUALIFIED";
+  if (stageKey === "long_term_nurture") return "NURTURE";
+  if (stageKey === "won") return "CONVERTED";
+  if (stageKey === "lost") return "LOST";
+  if (stageKey === "abandoned") return "ABANDONED";
+
+  return "NEW";
+}
+
+/** Which icon a column shows on the card's progress strip. */
+export type StageIconKey =
+  | "new-lead"
+  | "contacted"
+  | "strategy-call"
+  | "qualified"
+  | "proposal"
+  | "negotiation"
+  | "won";
+
+export type ProgressState = "completed" | "active" | "upcoming";
+
+export interface ProgressStep {
+  key: ColumnKey;
+  label: string;
+  state: ProgressState;
+  /** The stage a click on this icon would write. */
+  stageKey: string;
+}
+
+const COLUMN_ORDER = new Map(BOARD_COLUMNS.map((column, index) => [column.key, index]));
+
+/**
+ * How far along this deal is, one step per board column.
+ *
+ * Everything before the current column reads as completed, the current one as
+ * active, everything after as still to come - so the strip is a picture of the
+ * stage rather than a second opinion about it.
+ *
+ * A deal that is off the board has no active step. Lost and nurture are real
+ * outcomes but they are not points on this line, and lighting one of these
+ * icons for them would say something untrue about where the deal is.
+ */
+export function stageProgress(lead: SalesLead): ProgressStep[] {
+  const current = columnFor(lead);
+  const currentIndex = current ? COLUMN_ORDER.get(current)! : -1;
+
+  return BOARD_COLUMNS.map((column, index) => ({
+    key: column.key,
+    label: column.label,
+    stageKey: column.dropStageKey,
+    state:
+      currentIndex === -1
+        ? "upcoming"
+        : index < currentIndex
+          ? "completed"
+          : index === currentIndex
+            ? "active"
+            : "upcoming",
+  }));
+}
+
 export interface BoardCell {
   column: BoardColumn;
   leads: SalesLead[];

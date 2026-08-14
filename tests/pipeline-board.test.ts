@@ -10,7 +10,10 @@ import {
   initialsOf,
   isRealMove,
   opportunityValue,
+  stageProgress,
+  stageStatusLabel,
   stageTag,
+  statusForStageKey,
 } from "@/lib/sales/pipeline-board";
 import type { SalesLead } from "@/lib/sales/sales-view";
 
@@ -190,5 +193,113 @@ describe("assignee initials", () => {
     assert.equal(initialsOf("Mark Angelo Yakit"), "MA");
     assert.equal(initialsOf("Josri"), "J");
     assert.equal(initialsOf(null), "??");
+  });
+});
+
+describe("stage, status and tag stay one fact", () => {
+  const COLUMNS = [
+    ["new_website_lead", "New Lead", "stage_new_lead", "NEW"],
+    ["application_submitted", "New Lead", "stage_new_lead", "NEW"],
+    ["attempting_contact", "Contacted", "stage_contacted", "ATTEMPTING_CONTACT"],
+    ["contacted", "Contacted", "stage_contacted", "CONTACTED"],
+    ["strategy_call_booked", "Strategy Call", "stage_strategy_call", "CONTACTED"],
+    ["strategy_call_showed", "Strategy Call", "stage_strategy_call", "CONTACTED"],
+    ["qualified", "Qualified", "stage_qualified", "QUALIFIED"],
+    ["proposal_sent", "Proposal", "stage_proposal", "QUALIFIED"],
+    ["negotiation", "Negotiation", "stage_negotiation", "QUALIFIED"],
+    ["won", "Won", "stage_won", "CONVERTED"],
+  ] as const;
+
+  it("shows the column's own name as the status, whatever the stored enum says", () => {
+    for (const [stageKey, label] of COLUMNS) {
+      /*
+       * The stored status is deliberately wrong here. This is the exact failure
+       * being guarded against: a card sitting in Contacted that still reads
+       * "New Lead" because two fields were written separately.
+       */
+      const row = lead({ stageKey, status: "NEW", stageName: "Something else" });
+
+      assert.equal(stageStatusLabel(row), label, stageKey);
+    }
+  });
+
+  it("derives the tag from the same column as the label", () => {
+    for (const [stageKey, , tag] of COLUMNS) {
+      assert.equal(stageTag(lead({ stageKey })), tag, stageKey);
+    }
+  });
+
+  it("maps every stage onto a stored lifecycle value", () => {
+    for (const [stageKey, , , status] of COLUMNS) {
+      assert.equal(statusForStageKey(stageKey), status, stageKey);
+    }
+  });
+
+  it("keeps the three in step for every stage on the board", () => {
+    for (const [stageKey, label, tag] of COLUMNS) {
+      const row = lead({ stageKey, status: statusForStageKey(stageKey) });
+      const active = stageProgress(row).filter((step) => step.state === "active");
+
+      assert.equal(stageStatusLabel(row), label, stageKey);
+      assert.equal(stageTag(row), tag, stageKey);
+      // Exactly one icon is lit, and it is the one the label names.
+      assert.equal(active.length, 1, stageKey);
+      assert.equal(active[0]!.label, label, stageKey);
+    }
+  });
+});
+
+describe("the card's progress strip", () => {
+  it("marks everything before the current stage as done and nothing after", () => {
+    const steps = stageProgress(lead({ stageKey: "proposal_sent" }));
+
+    assert.deepEqual(
+      steps.map((step) => `${step.label}:${step.state}`),
+      [
+        "New Lead:completed",
+        "Contacted:completed",
+        "Strategy Call:completed",
+        "Qualified:completed",
+        "Proposal:active",
+        "Negotiation:upcoming",
+        "Won:upcoming",
+      ],
+    );
+  });
+
+  it("lights only the first icon on a brand new lead", () => {
+    const steps = stageProgress(lead({ stageKey: "new_website_lead" }));
+
+    assert.equal(steps[0]!.state, "active");
+    assert.ok(steps.slice(1).every((step) => step.state === "upcoming"));
+  });
+
+  it("shows every step complete once the deal is won", () => {
+    const steps = stageProgress(lead({ stageKey: "won" }));
+
+    assert.ok(steps.slice(0, 6).every((step) => step.state === "completed"));
+    assert.equal(steps[6]!.state, "active");
+  });
+
+  it("lights nothing for a deal that is off the board", () => {
+    // Lost and nurture are real outcomes but they are not points on this line,
+    // and lighting one of these icons would say something untrue.
+    for (const stageKey of OFF_BOARD_STAGE_KEYS) {
+      const steps = stageProgress(lead({ stageKey }));
+
+      assert.ok(
+        steps.every((step) => step.state === "upcoming"),
+        stageKey,
+      );
+    }
+  });
+
+  it("offers the earliest stage of the column it would move to", () => {
+    // Clicking Strategy Call books the call; it does not credit somebody with
+    // having attended one.
+    const steps = stageProgress(lead({ stageKey: "new_website_lead" }));
+    const call = steps.find((step) => step.label === "Strategy Call");
+
+    assert.equal(call?.stageKey, "strategy_call_booked");
   });
 });

@@ -24,12 +24,15 @@ import {
   StageTag,
   money,
 } from "@/components/sales/opportunity-bits";
+import { StageProgress } from "@/components/sales/stage-progress";
+import { RowMenu, type RowMenuItem } from "@/components/work/row-menu";
 import {
   BOARD_COLUMNS,
   buildBoard,
   dropTargetStageKey,
   isRealMove,
   opportunityValue,
+  stageStatusLabel,
   stageTag,
   type ColumnKey,
 } from "@/lib/sales/pipeline-board";
@@ -51,12 +54,21 @@ function Card({
   lead,
   now,
   dragging,
+  canMove,
   onOpen,
+  onStagePick,
+  menuItems,
+  handle,
 }: {
   lead: SalesLead;
   now: Date;
   dragging?: boolean;
+  canMove?: boolean;
   onOpen?: (id: string, section?: string) => void;
+  onStagePick?: (lead: SalesLead, column: ColumnKey, stageKey: string, label: string) => void;
+  menuItems?: RowMenuItem[];
+  /** The drag grip, rendered inline rather than floated over the menu. */
+  handle?: React.ReactNode;
 }) {
   const due = followUpLabel(lead.nextFollowUpAt, now);
   const tag = stageTag(lead);
@@ -68,7 +80,9 @@ function Card({
         dragging ? "border-sky-400 shadow-lg" : "border-slate-200 hover:border-slate-300"
       }`}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-1.5">
+        {handle}
+
         <button
           type="button"
           onClick={() => onOpen?.(lead.id)}
@@ -81,10 +95,24 @@ function Card({
           <span className="block truncate text-[11px] text-slate-400">{lead.contactName}</span>
         </button>
 
-        <OwnerAvatar name={lead.ownerName} />
+        <div className="flex shrink-0 items-center gap-1">
+          <OwnerAvatar name={lead.ownerName} />
+          {menuItems?.length ? (
+            <span onClick={(event) => event.stopPropagation()}>
+              <RowMenu label={`Actions for ${opportunityLabel(lead)}`} items={menuItems} />
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1">
+        {/*
+          Status and tag are both read off the stage, so a card in Contacted
+          cannot show "New Lead" beside a stage_contacted tag.
+        */}
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+          {stageStatusLabel(lead)}
+        </span>
         <StageTag tag={tag} />
         {lead.tags.slice(0, 2).map((custom) => (
           <CustomTag key={custom} tag={custom} />
@@ -129,7 +157,22 @@ function Card({
         )}
       </div>
 
-      <div className="mt-2.5 border-t border-slate-100 pt-2">
+      <div className="mt-2.5 space-y-1.5 border-t border-slate-100 pt-2">
+        {/*
+          Two rows, two meanings. The top one is where the deal has got to; the
+          bottom one is what has been done to it. One row would make a lit phone
+          ambiguous between "reached Contacted" and "somebody logged a call".
+        */}
+        <StageProgress
+          lead={lead}
+          canMove={Boolean(canMove)}
+          onPick={
+            onStagePick
+              ? (column, stageKey, label) => onStagePick(lead, column, stageKey, label)
+              : undefined
+          }
+        />
+
         <ActivityIndicators
           activity={lead.activity}
           onOpenSection={
@@ -158,11 +201,15 @@ function DraggableCard({
   now,
   canMove,
   onOpen,
+  onStagePick,
+  menuItems,
 }: {
   lead: SalesLead;
   now: Date;
   canMove: boolean;
   onOpen: (id: string, section?: string) => void;
+  onStagePick?: (lead: SalesLead, column: ColumnKey, stageKey: string, label: string) => void;
+  menuItems?: RowMenuItem[];
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -171,20 +218,27 @@ function DraggableCard({
 
   return (
     <div ref={setNodeRef} className={isDragging ? "opacity-40" : undefined}>
-      <div className="relative">
-        {canMove ? (
-          <button
-            type="button"
-            {...listeners}
-            {...attributes}
-            aria-label={`Move ${opportunityLabel(lead)}`}
-            className="absolute right-1 top-1 z-10 cursor-grab rounded p-0.5 text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
-        <Card lead={lead} now={now} onOpen={onOpen} />
-      </div>
+      <Card
+        lead={lead}
+        now={now}
+        canMove={canMove}
+        onOpen={onOpen}
+        onStagePick={onStagePick}
+        menuItems={menuItems}
+        handle={
+          canMove ? (
+            <button
+              type="button"
+              {...listeners}
+              {...attributes}
+              aria-label={`Move ${opportunityLabel(lead)}`}
+              className="mt-0.5 shrink-0 cursor-grab rounded p-0.5 text-slate-300 transition hover:text-slate-500 active:cursor-grabbing"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+          ) : null
+        }
+      />
     </div>
   );
 }
@@ -207,11 +261,11 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-[19rem] shrink-0 flex-col rounded-xl border transition ${
+      className={`flex w-[19rem] shrink-0 flex-col self-stretch rounded-xl border transition ${
         isOver ? "border-sky-400 bg-sky-50/50" : "border-slate-200 bg-slate-50/60"
       }`}
     >
-      <div className="border-b border-slate-200/70 p-3">
+      <div className="sticky top-0 z-10 rounded-t-xl border-b border-slate-200/70 bg-slate-50/95 p-3 backdrop-blur-sm">
         <p className="flex items-center gap-1.5 truncate text-xs font-semibold text-slate-900">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${COLUMN_DOTS[columnKey]}`} />
           {label}
@@ -257,11 +311,16 @@ export function PipelineBoard({
   now,
   canMove,
   onOpenLead,
+  onStagePick,
+  menuItemsFor,
 }: {
   leads: SalesLead[];
   now: Date;
   canMove: boolean;
   onOpenLead: (id: string, section?: string) => void;
+  /** A click on a progress icon. The workspace confirms before anything moves. */
+  onStagePick?: (lead: SalesLead, column: ColumnKey, stageKey: string, label: string) => void;
+  menuItemsFor?: (lead: SalesLead) => RowMenuItem[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -367,8 +426,8 @@ export function PipelineBoard({
           columns narrow enough to avoid the scrollbar cannot hold a readable
           card. The overflow is on this element, so the page never moves.
         */}
-        <div className="overflow-x-auto px-4 pb-3">
-          <div className="flex min-w-max gap-3">
+        <div className="max-h-[calc(100vh-16rem)] overflow-auto px-4 pb-3">
+          <div className="flex min-w-max items-start gap-3">
             {board.map((cell) => (
               <Column
                 key={cell.column.key}
@@ -384,6 +443,8 @@ export function PipelineBoard({
                     now={now}
                     canMove={canMove}
                     onOpen={onOpenLead}
+                    onStagePick={onStagePick}
+                    menuItems={menuItemsFor?.(lead)}
                   />
                 ))}
               </Column>
@@ -403,7 +464,7 @@ export function PipelineBoard({
 
       <p className="px-4 pb-3 text-[11px] text-slate-400">
         {canMove
-          ? "Drag a card by its handle to move it between stages. Click a card for the full opportunity."
+          ? "Drag a card by its handle, or click a stage icon on it, to move it. Click a card for the full opportunity."
           : "You can open an opportunity, but moving one is for its owner."}
       </p>
     </div>

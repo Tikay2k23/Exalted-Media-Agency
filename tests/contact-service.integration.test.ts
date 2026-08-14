@@ -13,13 +13,19 @@ import {
   findContactMatches,
   updateContactIdentity,
 } from "@/lib/sales/contact-service";
-import { setTags } from "@/lib/sales/sales-actions";
+import {
+  stageStatusLabel,
+  stageTag,
+  statusForStageKey,
+} from "@/lib/sales/pipeline-board";
+import { moveLeadStage, setTags } from "@/lib/sales/sales-actions";
 
 const TEST_PREFIX = "zz-contact-test";
 const hasDatabase = Boolean(process.env.DATABASE_URL ?? process.env.DIRECT_URL);
 
 let managerId = "";
 let repId = "";
+let walkLeadId = "";
 
 async function cleanup() {
   const contacts = await prisma.contact.findMany({
@@ -324,5 +330,95 @@ describe("contacts and opportunities (integration)", { skip: !hasDatabase }, () 
      * rather than saved twice.
      */
     assert.deepEqual(result.tags, ["Enterprise", "Referral Partner"]);
+  });
+
+  /*
+   * The whole progression, one stage at a time, checking after every move that
+   * the stage, the stored status, the derived label and the tag all agree. A
+   * mismatch anywhere is the failure the pipeline was rebuilt to remove.
+   *
+   * Inside this suite rather than its own, because a second describe runs after
+   * this one's after() hook has already deleted the users it needs.
+   */
+  it("keeps stage, status, label and tag in step at every step", async () => {
+    const actor = await actorFor(managerId);
+
+    const created = await createLeadWithOpportunity({
+      actor,
+      contact: {
+        contactName: "Pipeline Walker",
+        businessName: `${TEST_PREFIX} Pipeline Walk`,
+        email: `${TEST_PREFIX}-walk@example.test`,
+      },
+      opportunity: opportunity({ source: LeadSource.WEBSITE_FORM }),
+    });
+
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+
+    walkLeadId = created.leadId;
+
+    const walk = [
+      ["contacted", "Contacted", "stage_contacted"],
+      ["strategy_call_booked", "Strategy Call", "stage_strategy_call"],
+      ["qualified", "Qualified", "stage_qualified"],
+      ["proposal_sent", "Proposal", "stage_proposal"],
+      ["negotiation", "Negotiation", "stage_negotiation"],
+    ] as const;
+
+    for (const [stageKey, label, tag] of walk) {
+      const moved = await moveLeadStage({ actor, leadId: walkLeadId, stageKey });
+
+      assert.equal(moved.ok, true, stageKey);
+
+      const row = await prisma.lead.findUniqueOrThrow({
+        where: { id: walkLeadId },
+        select: {
+          status: true,
+          tags: true,
+          stage: { select: { stageKey: true, name: true } },
+        },
+      });
+
+      const view = {
+        stageKey: row.stage?.stageKey ?? null,
+        stageName: row.stage?.name ?? null,
+        status: row.status,
+      } as unknown as Parameters<typeof stageStatusLabel>[0];
+
+      assert.equal(row.stage?.stageKey, stageKey);
+      assert.equal(row.status, statusForStageKey(stageKey), stageKey);
+      assert.equal(stageStatusLabel(view), label, stageKey);
+      assert.equal(stageTag(view), tag, stageKey);
+      // The tag is derived, so it never lands in the custom tag column.
+      assert.deepEqual(row.tags, [], stageKey);
+    }
+  });
+
+  it("records who moved it, from where, and to where", async () => {
+    const entry = await prisma.activityLog.findFirst({
+      where: { entityType: "LEAD", entityId: walkLeadId, fieldName: "stageId" },
+      orderBy: { createdAt: "desc" },
+      select: { previousValue: true, newValue: true, actorId: true },
+    });
+
+    assert.equal(entry?.newValue, "negotiation");
+    assert.equal(entry?.previousValue, "proposal_sent");
+    assert.equal(entry?.actorId, managerId);
+  });
+
+  it("leaves custom tags alone when the stage changes", async () => {
+    const actor = await actorFor(managerId);
+
+    await setTags({ actor, leadId: walkLeadId, tags: ["Enterprise", "Spring Campaign"] });
+    await moveLeadStage({ actor, leadId: walkLeadId, stageKey: "qualified" });
+
+    const row = await prisma.lead.findUniqueOrThrow({
+      where: { id: walkLeadId },
+      select: { tags: true },
+    });
+
+    // A stage move cannot disturb these, because the stage tag is not in here.
+    assert.deepEqual(row.tags, ["Enterprise", "Spring Campaign"]);
   });
 });

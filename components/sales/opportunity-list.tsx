@@ -9,6 +9,7 @@ import {
   money,
 } from "@/components/sales/opportunity-bits";
 import { RowMenu, type RowMenuItem } from "@/components/work/row-menu";
+import { stageStatusLabel } from "@/lib/sales/pipeline-board";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -183,8 +184,12 @@ export function OpportunityList({
                   </td>
 
                   <td className="px-3 py-3">
+                    {/*
+                      The board column's own label, so a row and a card for the
+                      same deal never name its stage differently.
+                    */}
                     <Badge tone="slate" className="whitespace-nowrap">
-                      {lead.stageName ?? formatEnumLabel(lead.status)}
+                      {stageStatusLabel(lead)}
                     </Badge>
                     {age !== null && age >= agingDays ? (
                       <p className="mt-1 whitespace-nowrap text-[11px] text-rose-600">
@@ -250,7 +255,7 @@ export function OpportunityList({
             </button>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <Badge tone="slate">{lead.stageName ?? formatEnumLabel(lead.status)}</Badge>
+              <Badge tone="slate">{stageStatusLabel(lead)}</Badge>
               <FollowUpText value={lead.nextFollowUpAt} now={now} className="text-[11px]" />
               <OwnerChip name={lead.ownerName} />
             </div>

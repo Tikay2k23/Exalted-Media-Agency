@@ -3,16 +3,14 @@
 import {
   ArrowUpDown,
   Columns3,
-  Download,
   Filter,
   LayoutList,
   Plus,
   Search,
   SlidersHorizontal,
-  Upload,
   X,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -31,12 +29,12 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { RowMenuItem } from "@/components/work/row-menu";
 import type { SalesStage } from "@/lib/data/sales-workspace-query";
+import type { ColumnKey } from "@/lib/sales/pipeline-board";
 import {
   EMPTY_SALES_FILTERS,
   FOLLOW_UP_STATUSES,
   SALES_SORTS,
   advancedFilterCount,
-  applySalesFilters,
   dealValue,
   hasActiveFilters,
   isOpen,
@@ -52,6 +50,40 @@ import { formatEnumLabel } from "@/lib/utils";
 type ViewMode = "board" | "list";
 
 /**
+ * The chosen view, remembered between visits.
+ *
+ * Read through useSyncExternalStore rather than an effect that copies
+ * localStorage into state: the server has no localStorage, and the store hook
+ * is the one API that can answer "board" while rendering on the server and the
+ * remembered value on the client without a hydration mismatch or a flash.
+ */
+const VIEW_KEY = "exalted.sales.view";
+const viewListeners = new Set<() => void>();
+
+function subscribeToView(listener: () => void) {
+  viewListeners.add(listener);
+  window.addEventListener("storage", listener);
+
+  return () => {
+    viewListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function readView(): ViewMode {
+  return window.localStorage.getItem(VIEW_KEY) === "list" ? "list" : "board";
+}
+
+function serverView(): ViewMode {
+  return "board";
+}
+
+function rememberView(view: ViewMode) {
+  window.localStorage.setItem(VIEW_KEY, view);
+  for (const listener of viewListeners) listener();
+}
+
+/**
  * The opportunity workspace: one toolbar, two views, one drawer.
  *
  * Board and list read the same filtered array, so switching between them cannot
@@ -64,6 +96,7 @@ type ViewMode = "board" | "list";
  */
 export function OpportunityWorkspace({
   leads,
+  filtered,
   stages,
   owners,
   sources,
@@ -79,8 +112,14 @@ export function OpportunityWorkspace({
   onFilters,
   openLeadId,
   onOpenLead,
+  addOpen,
+  onAddOpen,
+  importOpen,
+  onImportOpen,
 }: {
   leads: SalesLead[];
+  /** Already filtered upstream, so export and the two views cannot diverge. */
+  filtered: SalesLead[];
   stages: SalesStage[];
   owners: { id: string; name: string }[];
   sources: string[];
@@ -96,10 +135,15 @@ export function OpportunityWorkspace({
   onFilters: (filters: SalesFilters) => void;
   openLeadId: string | null;
   onOpenLead: (id: string | null) => void;
+  addOpen: boolean;
+  onAddOpen: (open: boolean) => void;
+  importOpen: boolean;
+  onImportOpen: (open: boolean) => void;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [view, setView] = useState<ViewMode>("board");
+  const view = useSyncExternalStore(subscribeToView, readView, serverView);
+  const [showFilters, setShowFilters] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -107,26 +151,49 @@ export function OpportunityWorkspace({
   const [section, setSection] = useState<DrawerSection>("details");
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [editLeadId, setEditLeadId] = useState<string | null>(null);
   const [newOpportunityFor, setNewOpportunityFor] = useState<SalesLead | null>(null);
-  const [action, setAction] = useState<{ kind: ActionKind; leadId: string } | null>(null);
+  const [action, setAction] = useState<{
+    kind: ActionKind;
+    leadId: string;
+    targetStage?: { stageKey: string; label: string };
+  } | null>(null);
 
   const chips = useMemo(() => quickFilterChips(leads, now), [leads, now]);
-  const filtered = useMemo(
-    () => applySalesFilters(leads, filters, now, agingDays),
-    [leads, filters, now, agingDays],
-  );
 
   const openLead = leads.find((lead) => lead.id === openLeadId) ?? null;
   const editLead = leads.find((lead) => lead.id === editLeadId) ?? null;
   const actionLead = action ? leads.find((lead) => lead.id === action.leadId) ?? null : null;
   const advanced = advancedFilterCount(filters);
 
+  /** How many of the four core filters are set, for the Filters badge. */
+  const coreFilterCount = [
+    filters.stageId,
+    filters.ownerId,
+    filters.source,
+    filters.followUp,
+  ].filter(Boolean).length;
+
   function update<K extends keyof SalesFilters>(key: K, value: SalesFilters[K]) {
     onFilters({ ...filters, [key]: value });
     setPage(1);
+  }
+
+  /**
+   * A click on a progress icon.
+   *
+   * Nothing moves on the click itself. Every stage change goes through the same
+   * confirmation and the same endpoint a dragged card does, and Won is routed
+   * to its own dialog rather than treated as an ordinary step - closing a deal
+   * by mis-clicking an icon is not a mistake anybody should be able to make.
+   */
+  function onStagePick(lead: SalesLead, column: ColumnKey, stageKey: string, label: string) {
+    if (column === "won") {
+      setAction({ kind: "won", leadId: lead.id });
+      return;
+    }
+
+    setAction({ kind: "stage", leadId: lead.id, targetStage: { stageKey, label } });
   }
 
   function openDrawer(id: string, drawerSection?: string) {
@@ -349,67 +416,110 @@ export function OpportunityWorkspace({
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white">
-      {/* Toolbar */}
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-950">Sales Pipeline</h2>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-              The Exalted Media – Sales
+      {/*
+        One row on desktop: what pipeline, which view, and the three controls
+        that narrow it. Import, Export and Add Lead sit in the page header, so
+        there is one answer to "where do I add a lead" rather than two.
+      */}
+      <header className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
+        <h2 className="shrink-0 text-sm font-semibold text-slate-950">Sales Pipeline</h2>
+
+        <Select
+          className="h-9 w-52 shrink-0 text-xs"
+          value="exalted-sales"
+          aria-label="Pipeline"
+          onChange={() => undefined}
+        >
+          {/* One pipeline today. The selector is here so adding a second is a
+              data change rather than a layout change. */}
+          <option value="exalted-sales">The Exalted Media – Sales</option>
+        </Select>
+
+        <div className="inline-flex shrink-0 rounded-lg border border-slate-200 p-0.5">
+          <button
+            type="button"
+            onClick={() => rememberView("board")}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+              view === "board" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Columns3 className="h-3.5 w-3.5" />
+            Board
+          </button>
+          <button
+            type="button"
+            onClick={() => rememberView("list")}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+              view === "list" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <LayoutList className="h-3.5 w-3.5" />
+            List
+          </button>
+        </div>
+
+        <div className="relative min-w-[12rem] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="h-9 pl-9 text-sm"
+            placeholder="Search opportunities…"
+            value={filters.search}
+            onChange={(event) => update("search", event.target.value)}
+            aria-label="Search opportunities"
+          />
+        </div>
+
+        <Button
+          size="sm"
+          variant={showFilters || coreFilterCount ? "secondary" : "ghost"}
+          onClick={() => setShowFilters((open) => !open)}
+        >
+          <Filter className="mr-1.5 h-3.5 w-3.5" />
+          Filters
+          {coreFilterCount ? (
+            <span className="ml-1.5 rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold text-white">
+              {coreFilterCount}
             </span>
-          </div>
-          <p className="text-xs text-slate-500">
-            {filtered.length} of {leads.length} opportunities
-            {view === "board"
-              ? ". Drag a card to move it between stages."
-              : ". Click a row to open it."}
-          </p>
+          ) : null}
+        </Button>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+          <Select
+            className="h-9 min-w-[10rem] text-xs"
+            value={filters.sort}
+            onChange={(event) => update("sort", event.target.value as SalesSort)}
+            aria-label="Sort by"
+          >
+            {SALES_SORTS.map((option) => (
+              <option key={option.value} value={option.value}>
+                Sort: {option.label}
+              </option>
+            ))}
+          </Select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("board")}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
-                view === "board" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <Columns3 className="h-3.5 w-3.5" />
-              Board
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("list")}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
-                view === "list" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <LayoutList className="h-3.5 w-3.5" />
-              List
-            </button>
-          </div>
-
-          {canCreate ? (
-            <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              Import
-            </Button>
+        <Button
+          size="sm"
+          variant={showMore || advanced ? "secondary" : "ghost"}
+          onClick={() => setShowMore((open) => !open)}
+        >
+          <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+          More Filters
+          {advanced ? (
+            <span className="ml-1.5 rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold text-white">
+              {advanced}
+            </span>
           ) : null}
-
-          <Button size="sm" variant="secondary" onClick={() => exportCsv(filtered, "filtered")}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export CSV
-          </Button>
-
-          {canCreate ? (
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add Lead
-            </Button>
-          ) : null}
-        </div>
+        </Button>
       </header>
+
+      <p className="border-b border-slate-100 px-4 py-1.5 text-[11px] text-slate-500">
+        {filtered.length} of {leads.length} opportunities
+        {view === "board"
+          ? " · drag a card, or click a stage icon on it, to move it"
+          : " · click a row to open it"}
+      </p>
 
       {/* Quick filters */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-4 py-2.5">
@@ -454,104 +564,65 @@ export function OpportunityWorkspace({
 
       {/* Filters */}
       <div className="space-y-2 border-b border-slate-100 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[12rem] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              className="h-9 pl-9 text-sm"
-              placeholder="Search name, company, email, phone, owner, tag…"
-              value={filters.search}
-              onChange={(event) => update("search", event.target.value)}
-              aria-label="Search opportunities"
-            />
-          </div>
-
-          <Select
-            className="h-9 min-w-[8.5rem] text-xs"
-            value={filters.stageId}
-            onChange={(event) => update("stageId", event.target.value)}
-            aria-label="Stage"
-          >
-            <option value="">All Stages</option>
-            {stages.map((stage) => (
-              <option key={stage.id} value={stage.id}>
-                {stage.name}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            className="h-9 min-w-[8.5rem] text-xs"
-            value={filters.ownerId}
-            onChange={(event) => update("ownerId", event.target.value)}
-            aria-label="Owner"
-          >
-            <option value="">All Owners</option>
-            <option value="unassigned">Unassigned</option>
-            {owners.map((owner) => (
-              <option key={owner.id} value={owner.id}>
-                {owner.name}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            className="h-9 min-w-[8.5rem] text-xs"
-            value={filters.source}
-            onChange={(event) => update("source", event.target.value)}
-            aria-label="Source"
-          >
-            <option value="">All Sources</option>
-            {sources.map((source) => (
-              <option key={source} value={source}>
-                {formatEnumLabel(source)}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            className="h-9 min-w-[9.5rem] text-xs"
-            value={filters.followUp}
-            onChange={(event) => update("followUp", event.target.value as FollowUpStatus | "")}
-            aria-label="Follow up status"
-          >
-            {FOLLOW_UP_STATUSES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-
-          <Button
-            size="sm"
-            variant={showMore || advanced ? "secondary" : "ghost"}
-            onClick={() => setShowMore((open) => !open)}
-          >
-            <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-            More Filters
-            {advanced ? (
-              <span className="ml-1.5 rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold text-white">
-                {advanced}
-              </span>
-            ) : null}
-          </Button>
-
-          <div className="flex items-center gap-1.5">
-            <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+        {showFilters ? (
+          <div className="flex flex-wrap items-center gap-2">
             <Select
-              className="h-9 min-w-[10rem] text-xs"
-              value={filters.sort}
-              onChange={(event) => update("sort", event.target.value as SalesSort)}
-              aria-label="Sort by"
+              className="h-9 min-w-[8.5rem] flex-1 text-xs"
+              value={filters.stageId}
+              onChange={(event) => update("stageId", event.target.value)}
+              aria-label="Stage"
             >
-              {SALES_SORTS.map((option) => (
+              <option value="">All Stages</option>
+              {stages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.name}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              className="h-9 min-w-[8.5rem] flex-1 text-xs"
+              value={filters.ownerId}
+              onChange={(event) => update("ownerId", event.target.value)}
+              aria-label="Owner"
+            >
+              <option value="">All Owners</option>
+              <option value="unassigned">Unassigned</option>
+              {owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              className="h-9 min-w-[8.5rem] flex-1 text-xs"
+              value={filters.source}
+              onChange={(event) => update("source", event.target.value)}
+              aria-label="Source"
+            >
+              <option value="">All Sources</option>
+              {sources.map((source) => (
+                <option key={source} value={source}>
+                  {formatEnumLabel(source)}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              className="h-9 min-w-[9.5rem] flex-1 text-xs"
+              value={filters.followUp}
+              onChange={(event) => update("followUp", event.target.value as FollowUpStatus | "")}
+              aria-label="Follow up status"
+            >
+              {FOLLOW_UP_STATUSES.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </Select>
           </div>
-        </div>
+        ) : null}
 
         {showMore ? (
           <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -798,7 +869,7 @@ export function OpportunityWorkspace({
                 Add your first lead, or import the list you already have.
               </p>
               {canCreate ? (
-                <Button size="sm" className="mt-3" onClick={() => setAddOpen(true)}>
+                <Button size="sm" className="mt-3" onClick={() => onAddOpen(true)}>
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
                   Add Lead
                 </Button>
@@ -825,7 +896,14 @@ export function OpportunityWorkspace({
           )}
         </div>
       ) : view === "board" ? (
-        <PipelineBoard leads={filtered} now={now} canMove={canEdit} onOpenLead={openDrawer} />
+        <PipelineBoard
+          leads={filtered}
+          now={now}
+          canMove={canEdit}
+          onOpenLead={openDrawer}
+          onStagePick={onStagePick}
+          menuItemsFor={menuItemsFor}
+        />
       ) : (
         <OpportunityList
           leads={filtered}
@@ -873,7 +951,13 @@ export function OpportunityWorkspace({
           canAssign={canAssign}
           onSection={setSection}
           onClose={() => onOpenLead(null)}
-          onAction={(kind, lead) => setAction({ kind: kind as ActionKind, leadId: lead.id })}
+          onAction={(drawerAction, lead) =>
+            setAction({
+              kind: drawerAction.kind as ActionKind,
+              leadId: lead.id,
+              targetStage: drawerAction.targetStage,
+            })
+          }
         />
       ) : null}
 
@@ -882,6 +966,7 @@ export function OpportunityWorkspace({
           kind={action.kind}
           lead={actionLead}
           stages={stages}
+          targetStage={action.targetStage ?? null}
           onClose={() => setAction(null)}
         />
       ) : null}
@@ -890,9 +975,9 @@ export function OpportunityWorkspace({
         <AddLeadDialog
           owners={owners}
           canAssign={canAssign}
-          onClose={() => setAddOpen(false)}
+          onClose={() => onAddOpen(false)}
           onCreated={(leadId, message) => {
-            setAddOpen(false);
+            onAddOpen(false);
             setNotice(message);
             // Straight into the new opportunity, so the next thing they add
             // lands on the record they just made rather than on a search.
@@ -933,7 +1018,7 @@ export function OpportunityWorkspace({
       ) : null}
 
       {importOpen ? (
-        <LeadImportDialog owners={owners} onClose={() => setImportOpen(false)} />
+        <LeadImportDialog owners={owners} onClose={() => onImportOpen(false)} />
       ) : null}
     </section>
   );

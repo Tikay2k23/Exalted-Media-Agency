@@ -82,6 +82,16 @@ const CALL_STATUSES = [
   ["RESCHEDULED", "Rescheduled"],
 ] as const;
 
+/** A recorded fact, shown rather than asked for. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-0.5 text-xs font-medium text-slate-800">{children}</p>
+    </div>
+  );
+}
+
 function Labelled({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
@@ -103,11 +113,18 @@ export function OpportunityActionDialog({
   kind,
   lead,
   stages,
+  targetStage,
   onClose,
 }: {
   kind: ActionKind;
   lead: SalesLead;
   stages: SalesStage[];
+  /**
+   * Set when the stage was already chosen - clicking a progress icon, rather
+   * than opening Move Stage. The dialog then confirms that one move instead of
+   * asking again, which is the difference between a safety check and a chore.
+   */
+  targetStage?: { stageKey: string; label: string } | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -123,7 +140,12 @@ export function OpportunityActionDialog({
   const [reason, setReason] = useState("NO_RESPONSE");
   const [note, setNote] = useState("");
   const [until, setUntil] = useState("");
-  const [stageId, setStageId] = useState(lead.stageId ?? "");
+  const [stageId, setStageId] = useState(
+    () =>
+      (targetStage
+        ? stages.find((stage) => stage.stageKey === targetStage.stageKey)?.id
+        : lead.stageId) ?? "",
+  );
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -163,6 +185,8 @@ export function OpportunityActionDialog({
         if (!until) return { error: "Pick the date it should come back." };
         return { action: "nurture", until, reason: note.trim() || null };
       case "stage": {
+        if (targetStage) return { action: "move-stage", stageKey: targetStage.stageKey };
+
         const stage = stages.find((candidate) => candidate.id === stageId);
 
         if (!stage?.stageKey) return { error: "Pick a stage." };
@@ -346,7 +370,14 @@ export function OpportunityActionDialog({
             </>
           ) : null}
 
-          {kind === "stage" ? (
+          {kind === "stage" && targetStage ? (
+            <p className="text-sm text-slate-800">
+              Move <span className="font-semibold">{opportunityLabel(lead)}</span> to{" "}
+              <span className="font-semibold">{targetStage.label}</span>?
+            </p>
+          ) : null}
+
+          {kind === "stage" && !targetStage ? (
             <Labelled label="Stage">
               <Select
                 className="h-9 text-sm"
@@ -364,10 +395,28 @@ export function OpportunityActionDialog({
           ) : null}
 
           {kind === "won" ? (
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-              The sales history stays on this opportunity after the handover, so it can still
-              answer who closed it, when, and for how much.
-            </p>
+            <>
+              {/*
+                Won date and closer are recorded by the server as now and the
+                signed-in user, so they are shown rather than asked for - a form
+                field somebody could backdate would make the sales report a
+                record of what people typed instead of what happened.
+              */}
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-3">
+                <Field label="Won date">{new Date().toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}</Field>
+                <Field label="Sales owner">{lead.ownerName ?? "Unassigned"}</Field>
+              </div>
+
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                The sales history stays on this opportunity after the handover, so it can still
+                answer who closed it, when, and for how much. An existing client account is
+                linked rather than duplicated.
+              </p>
+            </>
           ) : null}
         </div>
 

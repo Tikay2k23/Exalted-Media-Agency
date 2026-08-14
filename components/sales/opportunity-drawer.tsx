@@ -30,12 +30,13 @@ import {
   StageTag,
   money,
 } from "@/components/sales/opportunity-bits";
+import { StageProgress } from "@/components/sales/stage-progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { stageTag } from "@/lib/sales/pipeline-board";
+import { stageStatusLabel, stageTag } from "@/lib/sales/pipeline-board";
 import {
   dealValue,
   lastContactLabel,
@@ -43,6 +44,18 @@ import {
   type SalesLead,
 } from "@/lib/sales/sales-view";
 import { formatEnumLabel } from "@/lib/utils";
+
+/**
+ * Something the drawer wants the workspace to open a dialog for.
+ *
+ * A shape rather than an encoded string, because a stage pick carries which
+ * stage - and "stage:strategy_call_booked:Strategy Call" parsed back out at the
+ * other end is a bug waiting for the first label with a colon in it.
+ */
+export interface DrawerAction {
+  kind: string;
+  targetStage?: { stageKey: string; label: string };
+}
 
 export type DrawerSection =
   | "details"
@@ -198,7 +211,7 @@ export function OpportunityDrawer({
   canAssign: boolean;
   onSection: (section: DrawerSection) => void;
   onClose: () => void;
-  onAction: (action: string, lead: SalesLead) => void;
+  onAction: (action: DrawerAction, lead: SalesLead) => void;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -382,7 +395,7 @@ export function OpportunityDrawer({
                 {opportunityLabel(lead)}
               </h2>
               <StageTag tag={tag} />
-              <Badge tone="slate">{lead.stageName ?? formatEnumLabel(lead.status)}</Badge>
+              <Badge tone="slate">{stageStatusLabel(lead)}</Badge>
             </div>
             <p className="truncate text-xs text-slate-500">
               {lead.businessName} · {lead.contactName}
@@ -743,6 +756,29 @@ export function OpportunityDrawer({
                     ) : null}
                   </Section>
 
+                  <Section
+                    title="Sales progress"
+                    hint={
+                      canEdit
+                        ? "Click a stage to move this opportunity. Status and tag follow it."
+                        : "Where this opportunity has got to."
+                    }
+                  >
+                    <StageProgress
+                      lead={lead}
+                      canMove={canEdit}
+                      size="md"
+                      onPick={(column, stageKey, label) =>
+                        onAction(
+                          column === "won"
+                            ? { kind: "won" }
+                            : { kind: "stage", targetStage: { stageKey, label } },
+                          lead,
+                        )
+                      }
+                    />
+                  </Section>
+
                   <Section title="What has happened">
                     <ActivityIndicators activity={lead.activity} onOpenSection={undefined} />
                   </Section>
@@ -820,13 +856,13 @@ export function OpportunityDrawer({
 
                   {canEdit && !lead.wonAt && !lead.lostAt ? (
                     <div className="flex flex-wrap gap-2 pt-1">
-                      <Button size="sm" variant="secondary" onClick={() => onAction("proposal", lead)}>
+                      <Button size="sm" variant="secondary" onClick={() => onAction({ kind: "proposal" }, lead)}>
                         Record proposal sent
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => onAction("won", lead)}>
+                      <Button size="sm" variant="secondary" onClick={() => onAction({ kind: "won" }, lead)}>
                         Mark won
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => onAction("lost", lead)}>
+                      <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "lost" }, lead)}>
                         Mark lost
                       </Button>
                     </div>
@@ -890,7 +926,7 @@ export function OpportunityDrawer({
                   </div>
 
                   {canEdit ? (
-                    <Button size="sm" variant="secondary" onClick={() => onAction("call", lead)}>
+                    <Button size="sm" variant="secondary" onClick={() => onAction({ kind: "call" }, lead)}>
                       {lead.strategyCallAt ? "Update the call" : "Book a strategy call"}
                     </Button>
                   ) : null}
