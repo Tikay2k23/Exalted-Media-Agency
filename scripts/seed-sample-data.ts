@@ -1,5 +1,7 @@
 import "dotenv/config";
 
+import type { TeamRole } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { FULFILLMENT_PIPELINE_ID, SALES_PIPELINE_ID } from "@/lib/workspace-defaults";
 
@@ -142,25 +144,44 @@ interface Team {
 async function loadTeam(): Promise<Team> {
   const users = await prisma.user.findMany({
     where: { isActive: true, deletedAt: null },
-    select: { id: true, email: true },
+    select: { id: true, email: true, teamRole: true },
   });
 
   const byEmail = new Map(users.map((user) => [user.email, user.id]));
-  const need = (email: string) => {
-    const id = byEmail.get(email);
-    if (!id) throw new Error(`Expected an active user ${email}. Run the team seed first.`);
-    return id;
+
+  /**
+   * Who fills a seat.
+   *
+   * The named address first, then whoever actually holds that seat. A real
+   * workspace has people in the seats rather than generic placeholders - this
+   * one has Aileen as owner and Angelo as project manager, and no owner@ or
+   * pm@ at all - so insisting on the placeholder addresses would mean the
+   * sample data could only ever be loaded into a workspace nobody uses.
+   */
+  const need = (email: string, seat: TeamRole) => {
+    const exact = byEmail.get(email);
+
+    if (exact) return exact;
+
+    const holder = users.find((user) => user.teamRole === seat);
+
+    if (holder) return holder.id;
+
+    throw new Error(
+      `No active user for ${email} and nobody holds ${seat}. `
+        + "Fill the seat first, or run scripts/seed-missing-seats.mjs.",
+    );
   };
 
   return {
-    owner: need("owner@theexaltedmedia.com"),
-    aileen: need("aileen@theexaltedmedia.com"),
-    pm: need("pm@theexaltedmedia.com"),
-    angelo: need("angelo@theexaltedmedia.com"),
-    sales: need("sales@theexaltedmedia.com"),
-    automation: need("automation@theexaltedmedia.com"),
-    creative: need("creative@theexaltedmedia.com"),
-    ads: need("ads@theexaltedmedia.com"),
+    owner: need("owner@theexaltedmedia.com", "AGENCY_OWNER"),
+    aileen: need("aileen@theexaltedmedia.com", "AGENCY_OWNER"),
+    pm: need("pm@theexaltedmedia.com", "PROJECT_MANAGER"),
+    angelo: need("angelo@theexaltedmedia.com", "PROJECT_MANAGER"),
+    sales: need("sales@theexaltedmedia.com", "SALES_REP"),
+    automation: need("automation@theexaltedmedia.com", "AUTOMATION_SPECIALIST"),
+    creative: need("creative@theexaltedmedia.com", "CREATIVE_SPECIALIST"),
+    ads: need("ads@theexaltedmedia.com", "ADS_SPECIALIST"),
   };
 }
 
