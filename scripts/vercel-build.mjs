@@ -91,8 +91,23 @@ if ((!process.env.DATABASE_URL || isInvalidDatabaseUrl(process.env.DATABASE_URL)
 run("node", ["scripts/prisma-generate.mjs"]);
 
 if (isVercelDeployment && process.env.DATABASE_URL && !isInvalidDatabaseUrl(process.env.DATABASE_URL)) {
-  console.log("[vercel-build] Syncing schema to the hosted database.");
-  runNpx(["prisma", "db", "push", "--skip-generate"]);
+  /*
+   * `migrate deploy`, not `db push`.
+   *
+   * db push diffs the schema and applies the result directly, which is fine on
+   * an empty database and wrong on one with rows in it. The difference is not
+   * theoretical here: the schema wants PipelineStage.pipelineId NOT NULL, and
+   * db push emits that as a single ALTER against a populated table, which
+   * either fails the build or takes the data with it. The migration that
+   * introduces that column adds it nullable, backfills every existing stage,
+   * and only then applies the constraint - which is exactly the care db push
+   * throws away.
+   *
+   * This also means the migration history is the record of what production
+   * has, rather than something nobody can reconstruct after the fact.
+   */
+  console.log("[vercel-build] Applying pending migrations to the hosted database.");
+  runNpx(["prisma", "migrate", "deploy"]);
 
   console.log("[vercel-build] Synchronizing required workspace records.");
   run("node", ["scripts/bootstrap-seed.mjs"]);
