@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AccountDetailsForm } from "@/components/clients/account-details-form";
@@ -213,6 +212,8 @@ export default async function ClientDetailPage({
         }}
         canManage={canManageClient}
         canViewFinance={canViewFinance}
+        canAssignWork={can(actor, "workItems.assign")}
+        assignees={options.users.map((member) => ({ id: member.id, name: member.name }))}
         statusControl={
           <ClientStatusSelect
             clientId={client.id}
@@ -244,7 +245,7 @@ export default async function ClientDetailPage({
                 email: contact.email,
                 phone: contact.phone,
                 isPrimary: contact.isPrimary,
-                isBilling: contact.isDecisionMaker,
+                isDecisionMaker: contact.isDecisionMaker,
                 isApprover: contact.isApprover,
               }))}
               activity={activity.map((entry) => ({
@@ -267,14 +268,6 @@ export default async function ClientDetailPage({
               }
               canSeeFinance={canViewFinance}
               serverNow={new Date().toISOString()}
-              onMoveStage={
-                <Link
-                  href="?tab=journey"
-                  className="inline-flex items-center rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Move stage
-                </Link>
-              }
             />
           ) : null,
 

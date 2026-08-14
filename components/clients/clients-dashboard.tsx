@@ -46,13 +46,13 @@ import {
   nextMilestone,
   quickFilterChips,
   relativeTime,
+  SUMMARY_FILTER,
   serviceLabel,
   summaryCards,
   type ClientFilters,
   type ClientHealth,
   type ClientRow,
   type ClientSort,
-  type QuickFilterKey,
   type SummaryKey,
 } from "@/lib/clients/client-workspace";
 import type { ClientStageOption } from "@/lib/data/clients-dashboard-query";
@@ -72,15 +72,6 @@ const SUMMARY_TONES: Record<SummaryKey, string> = {
   "waiting-on-client": "bg-sky-50 text-sky-600",
   "renewals-soon": "bg-emerald-50 text-emerald-600",
   "open-work": "bg-indigo-50 text-indigo-600",
-};
-
-/** Clicking a summary card applies the quick filter that means the same thing. */
-const SUMMARY_TO_QUICK: Record<SummaryKey, QuickFilterKey> = {
-  active: "all",
-  "needs-attention": "needs-attention",
-  "waiting-on-client": "waiting-on-client",
-  "renewals-soon": "renewals-soon",
-  "open-work": "all",
 };
 
 const PAGE_SIZES = [10, 25, 50];
@@ -339,12 +330,10 @@ export function ClientsDashboard({
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map((card) => {
           const Icon = SUMMARY_ICONS[card.key];
-          const quick = SUMMARY_TO_QUICK[card.key];
-          /*
-           * "Active" and "Open Work" both mean the whole list, so neither gets
-           * to claim the highlight when no filter is on.
-           */
-          const isOn = quick !== "all" && filters.quick === quick;
+          // The filter a card applies is the predicate that produced its count,
+          // so clicking one always lands on exactly the rows it counted.
+          const quick = SUMMARY_FILTER[card.key];
+          const isOn = filters.quick === quick;
 
           return (
             <button

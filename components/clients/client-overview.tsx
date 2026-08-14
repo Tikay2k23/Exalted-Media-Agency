@@ -10,7 +10,6 @@ import {
   TriangleAlert,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { useMemo } from "react";
 
 import {
@@ -21,6 +20,7 @@ import {
   WaitingBadge,
   money,
 } from "@/components/clients/client-bits";
+import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   HEALTH_LABELS,
@@ -50,7 +50,7 @@ export interface OverviewContact {
   email: string | null;
   phone: string | null;
   isPrimary: boolean;
-  isBilling: boolean;
+  isDecisionMaker: boolean;
   isApprover: boolean;
 }
 
@@ -122,7 +122,6 @@ export function ClientOverview({
   healthNote,
   canSeeFinance,
   serverNow,
-  onMoveStage,
 }: {
   client: ClientRow;
   nextStageName: string | null;
@@ -133,7 +132,6 @@ export function ClientOverview({
   healthNote: { assessedAt: string; assessedBy: string | null; summary: string | null } | null;
   canSeeFinance: boolean;
   serverNow: string;
-  onMoveStage?: React.ReactNode;
 }) {
   const now = useMemo(() => new Date(serverNow), [serverNow]);
   const reasons = useMemo(() => attentionReasons(client, now), [client, now]);
@@ -196,13 +194,10 @@ export function ClientOverview({
               Linked to the account's work rather than creating a task record to
               represent the next action - the two would drift immediately.
             */}
-            <Link
-              href="?tab=tasks"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-slate-800"
-            >
+            <TabLink tab="tasks" className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-slate-800">
               Open work
               <ArrowRight className="h-3 w-3" />
-            </Link>
+            </TabLink>
           </div>
 
           <div className="space-y-3">
@@ -299,12 +294,9 @@ export function ClientOverview({
                     {reason.detail}
                   </span>
                 </span>
-                <Link
-                  href={`?tab=${reason.tab}`}
-                  className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
+                <TabLink tab={reason.tab} className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
                   {reason.key === "renewal-approaching" ? "Review" : "Open"}
-                </Link>
+                </TabLink>
               </li>
             ))}
           </ul>
@@ -324,10 +316,7 @@ export function ClientOverview({
 
               return (
                 <li key={`${milestone.source}-${milestone.id}`}>
-                  <Link
-                    href={`?tab=${milestone.tab}`}
-                    className="flex items-start gap-3 p-3 transition hover:bg-slate-50"
-                  >
+                  <TabLink tab={milestone.tab} className="flex items-start gap-3 p-3 transition hover:bg-slate-50">
                     <span className="w-14 shrink-0 text-[11px] font-semibold uppercase text-slate-500">
                       {milestoneDayLabel(milestone.dueAt, now)}
                     </span>
@@ -347,7 +336,7 @@ export function ClientOverview({
                         ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
                         : "All day"}
                     </span>
-                  </Link>
+                  </TabLink>
                 </li>
               );
             })}
@@ -359,13 +348,10 @@ export function ClientOverview({
       <Panel
         title="Recent Activity"
         action={
-          <Link
-            href="?tab=activity"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700"
-          >
+          <TabLink tab="activity" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700">
             View all activity
             <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          </TabLink>
         }
       >
         {activity.length === 0 ? (
@@ -394,13 +380,10 @@ export function ClientOverview({
       <Panel
         title="Active Services"
         action={
-          <Link
-            href="?tab=services"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700"
-          >
+          <TabLink tab="services" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700">
             Manage services
             <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          </TabLink>
         }
       >
         {services.length === 0 ? (
@@ -450,13 +433,10 @@ export function ClientOverview({
       <Panel
         title="Key Contacts"
         action={
-          <Link
-            href="?tab=contacts"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700"
-          >
+          <TabLink tab="contacts" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700">
             Manage contacts
             <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          </TabLink>
         }
       >
         {contacts.length === 0 ? (
@@ -477,7 +457,7 @@ export function ClientOverview({
                       {contact.name}
                     </p>
                     {contact.isPrimary ? <Badge tone="sky">Primary</Badge> : null}
-                    {contact.isBilling ? <Badge tone="violet">Billing</Badge> : null}
+                    {contact.isDecisionMaker ? <Badge tone="violet">Decision Maker</Badge> : null}
                     {contact.isApprover ? <Badge tone="emerald">Approver</Badge> : null}
                   </div>
                   <p className="truncate text-[11px] text-slate-500">
@@ -536,14 +516,16 @@ export function ClientOverview({
           )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Link
-              href="?tab=reports"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
+            <TabLink tab="reports" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
               <Users className="h-3 w-3" />
               Reports &amp; health
-            </Link>
-            {onMoveStage}
+            </TabLink>
+            <TabLink
+              tab="journey"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Move stage
+            </TabLink>
           </div>
         </div>
       </Panel>

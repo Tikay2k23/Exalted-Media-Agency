@@ -4,7 +4,9 @@ import { ChevronDown, Mail, Phone, Plus, StickyNote, Workflow } from "lucide-rea
 import Link from "next/link";
 import { useState } from "react";
 
+import { AddTaskDialog } from "@/components/clients/add-task-dialog";
 import { HealthBadge, Monogram, money } from "@/components/clients/client-bits";
+import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
 import type { ClientRow } from "@/lib/clients/client-workspace";
 import { formatEnumLabel } from "@/lib/utils";
@@ -37,14 +39,20 @@ export function ClientHeader({
   client,
   canManage,
   canViewFinance,
+  canAssignWork,
+  assignees,
   statusControl,
 }: {
   client: HeaderClient;
   canManage: boolean;
   canViewFinance: boolean;
+  /** Whether this seat may put work on somebody. */
+  canAssignWork: boolean;
+  assignees: { id: string; name: string }[];
   statusControl: React.ReactNode;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
 
   // HealthBadge reads a full row; this is the part of one it actually uses.
   const healthShape = {
@@ -54,6 +62,15 @@ export function ClientHeader({
 
   return (
     <header className="rounded-2xl border border-slate-200 bg-white p-4">
+      {taskOpen ? (
+        <AddTaskDialog
+          clientId={client.id}
+          companyName={client.companyName}
+          assignees={assignees}
+          onClose={() => setTaskOpen(false)}
+        />
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <Link
           href="/clients"
@@ -63,27 +80,30 @@ export function ClientHeader({
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="?tab=journey"
+          <TabLink
+            tab="journey"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
           >
             <Workflow className="h-3.5 w-3.5" />
             Move Stage
-          </Link>
-          <Link
-            href="?tab=tasks"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Task
-          </Link>
-          <Link
-            href="?tab=contacts"
+          </TabLink>
+          {canAssignWork ? (
+            <button
+              type="button"
+              onClick={() => setTaskOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Task
+            </button>
+          ) : null}
+          <TabLink
+            tab="contacts"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
           >
             <StickyNote className="h-3.5 w-3.5" />
             Add Note
-          </Link>
+          </TabLink>
 
           <div className="relative">
             <button
@@ -113,28 +133,27 @@ export function ClientHeader({
                   {[
                     ...(canManage
                       ? [
-                          { label: "Edit account", href: "?tab=contacts" },
-                          { label: "Add contact", href: "?tab=contacts" },
-                          { label: "Change owner", href: "?tab=contacts" },
-                          { label: "Add service", href: "?tab=services" },
+                          { label: "Edit account", tab: "contacts" as const },
+                          { label: "Add contact", tab: "contacts" as const },
+                          { label: "Change owner", tab: "contacts" as const },
+                          { label: "Add service", tab: "services" as const },
                         ]
                       : []),
-                    { label: "Files and access", href: "?tab=files" },
-                    { label: "QA and approvals", href: "?tab=quality" },
-                    { label: "Reports and health", href: "?tab=reports" },
+                    { label: "Files and access", tab: "files" as const },
+                    { label: "QA and approvals", tab: "quality" as const },
+                    { label: "Reports and health", tab: "reports" as const },
                     ...(canManage
-                      ? [{ label: "Start offboarding", href: "?tab=reports" }]
+                      ? [{ label: "Start offboarding", tab: "reports" as const }]
                       : []),
-                    { label: "Integrations", href: "?tab=integrations" },
+                    { label: "Integrations", tab: "integrations" as const },
                   ].map((item) => (
-                    <Link
+                    <TabLink
                       key={item.label}
-                      href={item.href}
-                      onClick={() => setMoreOpen(false)}
+                      tab={item.tab}
                       className="block rounded-lg px-2.5 py-2 text-xs text-slate-700 transition hover:bg-slate-50"
                     >
                       {item.label}
-                    </Link>
+                    </TabLink>
                   ))}
                 </div>
               </>

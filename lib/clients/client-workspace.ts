@@ -412,18 +412,7 @@ export interface SummaryCard {
  * card reading six can never open a list of five.
  */
 export function matchesSummary(client: ClientRow, key: SummaryKey, now: Date): boolean {
-  switch (key) {
-    case "active":
-      return isActive(client);
-    case "needs-attention":
-      return needsAttention(client, now);
-    case "waiting-on-client":
-      return isWaitingOnClient(client);
-    case "renewals-soon":
-      return isRenewalDueSoon(client, now);
-    case "open-work":
-      return client.openTaskCount > 0;
-  }
+  return matchesQuickFilter(client, SUMMARY_FILTER[key], now);
 }
 
 export function summaryCards(clients: ClientRow[], now: Date): SummaryCard[] {
@@ -453,20 +442,30 @@ export function summaryCards(clients: ClientRow[], now: Date): SummaryCard[] {
     {
       key: "open-work",
       label: "Open Work",
-      // The number of tasks, not of clients - "18 open work" is a workload.
+      // Tasks, not accounts - "18 open work" is a workload. The hint says how
+      // many accounts that is, because clicking the card filters to those.
       value: clients.reduce((sum, client) => sum + client.openTaskCount, 0),
-      hint: "Across every account",
+      hint: `${count("open-work")} account${count("open-work") === 1 ? "" : "s"}`,
     },
   ];
 }
 
+/**
+ * Every filter the directory understands.
+ *
+ * "active" and "open-work" are not chips - they exist so the summary cards can
+ * filter through the same predicate that produced their count, rather than
+ * mapping onto "all" and appearing to do nothing when clicked.
+ */
 export type QuickFilterKey =
   | "all"
+  | "active"
   | "needs-attention"
   | "waiting-on-client"
   | "at-risk"
   | "renewals-soon"
-  | "overdue-work";
+  | "overdue-work"
+  | "open-work";
 
 export function matchesQuickFilter(
   client: ClientRow,
@@ -476,6 +475,10 @@ export function matchesQuickFilter(
   switch (key) {
     case "all":
       return true;
+    case "active":
+      return isActive(client);
+    case "open-work":
+      return client.openTaskCount > 0;
     case "needs-attention":
       return needsAttention(client, now);
     case "waiting-on-client":
@@ -499,20 +502,41 @@ export interface QuickFilterChip {
 
 const QUICK_FILTER_LABELS: Record<QuickFilterKey, string> = {
   all: "All Clients",
+  active: "Active",
   "needs-attention": "Needs Attention",
   "waiting-on-client": "Waiting on Client",
   "at-risk": "At Risk",
   "renewals-soon": "Renewals Soon",
   "overdue-work": "Overdue Work",
+  "open-work": "Open Work",
 };
 
+/** The six that appear as chips. The other two are summary-card filters. */
+export const CHIP_KEYS: QuickFilterKey[] = [
+  "all",
+  "needs-attention",
+  "waiting-on-client",
+  "at-risk",
+  "renewals-soon",
+  "overdue-work",
+];
+
 export function quickFilterChips(clients: ClientRow[], now: Date): QuickFilterChip[] {
-  return (Object.keys(QUICK_FILTER_LABELS) as QuickFilterKey[]).map((key) => ({
+  return CHIP_KEYS.map((key) => ({
     key,
     label: QUICK_FILTER_LABELS[key],
     count: clients.filter((client) => matchesQuickFilter(client, key, now)).length,
   }));
 }
+
+/** The filter a summary card applies. Same predicate that produced its count. */
+export const SUMMARY_FILTER: Record<SummaryKey, QuickFilterKey> = {
+  active: "active",
+  "needs-attention": "needs-attention",
+  "waiting-on-client": "waiting-on-client",
+  "renewals-soon": "renewals-soon",
+  "open-work": "open-work",
+};
 
 export type ClientSort =
   | "most-urgent"

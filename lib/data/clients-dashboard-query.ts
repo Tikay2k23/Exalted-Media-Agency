@@ -213,7 +213,14 @@ export async function getClientsDashboard(
     ? await prisma.activityLog.findMany({
         where: { entityType: "CLIENT", entityId: { in: clients.map((client) => client.id) } },
         orderBy: { createdAt: "desc" },
-        take: 400,
+        /*
+         * One row per client, chosen by the database. Taking the newest few
+         * hundred and picking the first per client looks equivalent and is not:
+         * a quiet account whose last activity falls outside that window gets no
+         * row at all and silently falls back to updatedAt, which then reads as
+         * recent activity that never happened.
+         */
+        distinct: ["entityId"],
         select: { entityId: true, action: true, createdAt: true },
       })
     : [];
@@ -396,7 +403,7 @@ export async function getClientsDashboard(
       openDefectCount: client.defects.length,
       awaitingReviewCount: client.reviewCycles.length,
       overdueReportCount: overdueReports,
-      lastActivityAt: seen ? seen.createdAt.toISOString() : iso(client.updatedAt),
+      lastActivityAt: seen ? seen.createdAt.toISOString() : null,
       lastActivityLabel: seen?.action ?? null,
       milestones,
     };
