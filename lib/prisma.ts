@@ -92,7 +92,24 @@ function getPrismaClient() {
     process.env.DATABASE_URL = connectionString;
   }
 
-  const adapter = globalForPrisma.adapter ?? new PrismaPg({ connectionString });
+  /*
+   * One connection per container, and the pool kept on globalThis.
+   *
+   * PrismaPg wraps a pg Pool, which defaults to ten connections. A serverless
+   * function that builds its own pool per invocation therefore reserves ten
+   * every time, and a handful of people clicking around at once is enough to
+   * exhaust the database's limit - which is exactly how production started
+   * answering "too many connections for role prisma_migration" and showing the
+   * error page.
+   *
+   * A warm container serves requests one at a time, so a single connection is
+   * all it can use; anything above one is reserved and idle. Caching on
+   * globalThis is what lets the next invocation in that container reuse it
+   * rather than open another.
+   */
+  const adapter =
+    globalForPrisma.adapter ?? new PrismaPg({ connectionString, max: 1 });
+
   const prismaClient = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
@@ -100,12 +117,14 @@ function getPrismaClient() {
 
   cachedClient = prismaClient;
 
-  // The globalThis cache additionally survives dev-server hot reloads, which
-  // discard module state and would otherwise leak a client per reload.
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.adapter = adapter;
-    globalForPrisma.prisma = prismaClient;
-  }
+  /*
+   * Cached in every environment, production included. It was previously kept
+   * only outside production, to survive dev-server hot reloads - but module
+   * state is discarded between serverless invocations too, so the environment
+   * that most needed the reuse was the one environment not getting it.
+   */
+  globalForPrisma.adapter = adapter;
+  globalForPrisma.prisma = prismaClient;
 
   return prismaClient;
 }
