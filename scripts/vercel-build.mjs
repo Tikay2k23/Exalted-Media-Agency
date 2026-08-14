@@ -80,6 +80,65 @@ function runNpx(args) {
   run("npx", args);
 }
 
+/** Blocks the thread. spawnSync is synchronous, so setTimeout would not help. */
+function sleepSync(seconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+}
+
+/** Out of connections, or unable to reach the database at all - not a bad migration. */
+function isTransientDatabaseFailure(output) {
+  return /too many connections|can't reach database|connection refused|ETIMEDOUT|ECONNRESET/i
+    .test(output);
+}
+
+/*
+ * Retries only when the database was unreachable, and only then.
+ *
+ * A build that cannot open a connection fails, which is correct - but when the
+ * reason is connection exhaustion, the deploy being blocked is usually the
+ * deploy that fixes the exhaustion. That happened here: the release capping the
+ * runtime pool could not ship, because the pools it was capping had taken every
+ * connection. One attempt is not enough to get out of that.
+ *
+ * A migration that is genuinely broken still fails on the first attempt. The
+ * output has to name a connection problem for a retry to happen at all, so a
+ * constraint violation or a bad SQL statement is not quietly attempted four
+ * times.
+ */
+function runMigrateDeploy() {
+  const command = process.platform === "win32" ? "cmd.exe" : "npx";
+  const args = process.platform === "win32"
+    ? ["/c", "npx", "prisma", "migrate", "deploy"]
+    : ["prisma", "migrate", "deploy"];
+
+  const waits = [10, 30, 60];
+
+  for (let attempt = 0; ; attempt += 1) {
+    const result = spawnSync(command, args, { encoding: "utf8", env: process.env });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    process.stdout.write(output);
+
+    if (result.status === 0) {
+      return;
+    }
+
+    if (attempt >= waits.length || !isTransientDatabaseFailure(output)) {
+      process.exit(result.status ?? 1);
+    }
+
+    console.log(
+      `[vercel-build] Database unreachable. Retrying in ${waits[attempt]}s `
+        + `(attempt ${attempt + 2} of ${waits.length + 1}).`,
+    );
+    sleepSync(waits[attempt]);
+  }
+}
+
 const resolvedUrl = fallbackKeys
   .map((key) => process.env[key])
   .find((value) => typeof value === "string" && value.length > 0 && !isInvalidDatabaseUrl(value));
@@ -107,7 +166,7 @@ if (isVercelDeployment && process.env.DATABASE_URL && !isInvalidDatabaseUrl(proc
    * has, rather than something nobody can reconstruct after the fact.
    */
   console.log("[vercel-build] Applying pending migrations to the hosted database.");
-  runNpx(["prisma", "migrate", "deploy"]);
+  runMigrateDeploy();
 
   /*
    * The seed does NOT run here, and must not.
