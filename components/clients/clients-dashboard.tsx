@@ -98,6 +98,25 @@ const OPTIONAL_COLUMNS = [
 
 type ColumnKey = (typeof OPTIONAL_COLUMNS)[number]["key"];
 
+/**
+ * How wide each column is.
+ *
+ * Percentages rather than content-driven widths, because a table that resizes
+ * its columns around whichever client happens to have the longest stage name
+ * looks different on every page of results.
+ */
+const COLUMN_WIDTHS: Record<ColumnKey | "client" | "action", string> = {
+  client: "w-[17%]",
+  service: "w-[11%]",
+  owner: "w-[12%]",
+  stage: "w-[14%]",
+  health: "w-[10%]",
+  milestone: "w-[16%]",
+  work: "w-[8%]",
+  activity: "w-[12%]",
+  action: "w-[10rem]",
+};
+
 function Panel({
   title,
   subtitle,
@@ -332,21 +351,28 @@ export function ClientsDashboard({
               key={card.key}
               type="button"
               onClick={() => update("quick", filters.quick === quick ? "all" : quick)}
-              className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition ${
+              className={`flex min-h-[5.5rem] items-start gap-2.5 rounded-xl border p-3.5 text-left transition ${
                 isOn ? "border-slate-950 bg-slate-50" : "border-slate-200 bg-white hover:bg-slate-50/70"
               }`}
             >
-              <span className={`shrink-0 rounded-lg p-2 ${SUMMARY_TONES[card.key]}`}>
+              <span className={`shrink-0 rounded-xl p-2.5 ${SUMMARY_TONES[card.key]}`}>
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[11px] font-medium text-slate-500">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium text-slate-600">
                   {card.label}
                 </span>
-                <span className="block text-xl font-semibold leading-7 text-slate-950">
+                <span className="mt-0.5 block text-2xl font-semibold leading-8 text-slate-950">
                   {card.value}
                 </span>
-                <span className="block truncate text-[10px] text-slate-400">{card.hint}</span>
+                <span
+                  className={`mt-0.5 flex items-center gap-1 text-[11px] font-medium ${
+                    quick === "all" ? "text-slate-400" : "text-sky-600"
+                  }`}
+                >
+                  {quick === "all" ? card.hint : "View list"}
+                  {quick === "all" ? null : <ArrowRight className="h-3 w-3" />}
+                </span>
               </span>
             </button>
           );
@@ -381,10 +407,19 @@ export function ClientsDashboard({
                 const next = nextMilestone(client, now);
 
                 return (
-                  <li key={client.id} className="flex flex-wrap items-start gap-3 p-3">
+                  /*
+                   * A grid rather than flex-wrap. Every row has the same four
+                   * columns at the same widths, so the milestone and the
+                   * buttons line up down the panel instead of each row finding
+                   * its own position based on how much text is above it.
+                   */
+                  <li
+                    key={client.id}
+                    className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 p-3 sm:grid-cols-[auto_minmax(0,1fr)_11rem_auto]"
+                  >
                     <Monogram name={client.companyName} size="md" square />
 
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Link
                           href={`/clients/${client.id}`}
@@ -398,29 +433,35 @@ export function ClientsDashboard({
 
                       <p className="truncate text-[11px] text-slate-500">{client.clientName}</p>
 
-                      <ul className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                        {reasons.slice(0, 3).map((reason) => (
-                          <li key={reason.key}>
+                      {/*
+                        One line, separated by dots. Wrapping these onto their
+                        own rows made every entry a different height, which is
+                        what stopped the panel scanning cleanly.
+                      */}
+                      <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-slate-600">
+                        {reasons.slice(0, 3).map((reason, index) => (
+                          <span key={reason.key} className="flex shrink-0 items-center gap-1.5">
+                            {index > 0 ? <span className="text-slate-300">·</span> : null}
                             <Link
                               href={`/clients/${client.id}?tab=${reason.tab}`}
-                              className="text-[11px] text-slate-600 underline-offset-2 hover:text-sky-700 hover:underline"
+                              className="underline-offset-2 hover:text-sky-700 hover:underline"
                             >
                               {reason.label}
                             </Link>
-                          </li>
+                          </span>
                         ))}
-                      </ul>
+                      </p>
                     </div>
 
-                    <div className="hidden min-w-[9rem] text-[11px] sm:block">
+                    <div className="col-start-2 text-[11px] sm:col-start-3">
                       <p className="text-slate-400">Next milestone</p>
                       <MilestoneText milestone={next} now={now} />
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="col-start-2 flex items-center gap-1.5 justify-self-start sm:col-start-4 sm:justify-self-end">
                       <Link
                         href={`/clients/${client.id}`}
-                        className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
                       >
                         Open Client
                       </Link>
@@ -452,8 +493,15 @@ export function ClientsDashboard({
                       href={`/clients/${milestone.clientId}?tab=${milestone.tab}`}
                       className="flex items-start gap-3 p-3 transition hover:bg-slate-50"
                     >
-                      <span className="w-16 shrink-0 text-[11px] font-semibold text-slate-500">
-                        {milestoneDayLabel(milestone.dueAt, now)}
+                      <span className="w-[4.5rem] shrink-0">
+                        <span className="block text-[11px] font-semibold text-slate-700">
+                          {milestoneDayLabel(milestone.dueAt, now)}
+                        </span>
+                        <span className="block text-[10px] uppercase tracking-wide text-slate-400">
+                          {at.toLocaleDateString(undefined, {
+                            weekday: "short",
+                          })}
+                        </span>
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-xs font-semibold text-slate-900">
@@ -463,7 +511,7 @@ export function ClientsDashboard({
                           {milestone.name}
                         </span>
                       </span>
-                      <span className="shrink-0 text-[11px] text-slate-400">
+                      <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-400">
                         {milestone.hasTime
                           ? at.toLocaleTimeString(undefined, {
                               hour: "numeric",
@@ -735,6 +783,21 @@ export function ClientsDashboard({
           <>
             <div className="hidden md:block">
               <table className="w-full table-fixed text-left text-xs">
+                {/*
+                  table-fixed without a colgroup gives every column an equal
+                  share, which is what left a long stage name truncating
+                  mid-word while Health sat in a column twice the width it
+                  needed. The widths are declared here and rebuilt from
+                  whichever columns are switched on, so hiding one redistributes
+                  the space rather than breaking the alignment.
+                */}
+                <colgroup>
+                  <col className={COLUMN_WIDTHS.client} />
+                  {OPTIONAL_COLUMNS.filter((column) => shows(column.key)).map((column) => (
+                    <col key={column.key} className={COLUMN_WIDTHS[column.key]} />
+                  ))}
+                  <col className={COLUMN_WIDTHS.action} />
+                </colgroup>
                 <thead className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">Client</th>
@@ -757,9 +820,7 @@ export function ClientsDashboard({
                       <th className="px-3 py-2.5 font-semibold">Open Work</th>
                     ) : null}
                     {shows("activity") ? (
-                      <th className="hidden px-3 py-2.5 font-semibold 2xl:table-cell">
-                        Last Activity
-                      </th>
+                      <th className="px-3 py-2.5 font-semibold">Last Activity</th>
                     ) : null}
                     <th className="px-3 py-2.5 text-right font-semibold">Action</th>
                   </tr>
@@ -833,7 +894,7 @@ export function ClientsDashboard({
                       ) : null}
 
                       {shows("activity") ? (
-                        <td className="hidden px-3 py-3 2xl:table-cell">
+                        <td className="px-3 py-3">
                           <span className="block whitespace-nowrap text-slate-600">
                             {relativeTime(client.lastActivityAt, now)}
                           </span>

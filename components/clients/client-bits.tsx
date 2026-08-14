@@ -123,9 +123,16 @@ export function WaitingBadge() {
   );
 }
 
+/**
+ * The delivery stage.
+ *
+ * Truncates inside its column rather than running on. Stage names here are
+ * sentences - "Waiting for Client Information" - and nowrap on a fixed column
+ * pushed them straight through Health into the next cell.
+ */
 export function StageBadge({ name }: { name: string }) {
   return (
-    <Badge tone="violet" className="whitespace-nowrap">
+    <Badge tone="violet" className="block max-w-full truncate" title={name}>
       {name}
     </Badge>
   );
