@@ -422,10 +422,12 @@ export function OpportunityWorkspace({
         there is one answer to "where do I add a lead" rather than two.
       */}
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
-        <h2 className="shrink-0 text-sm font-semibold text-slate-950">Sales Pipeline</h2>
+        <h2 className="w-full shrink-0 text-sm font-semibold text-slate-950 sm:w-auto">
+          Sales Pipeline
+        </h2>
 
         <Select
-          className="h-9 w-52 shrink-0 text-xs"
+          className="h-9 w-full shrink-0 text-xs sm:w-52"
           value="exalted-sales"
           aria-label="Pipeline"
           onChange={() => undefined}
@@ -458,7 +460,7 @@ export function OpportunityWorkspace({
           </button>
         </div>
 
-        <div className="relative min-w-[12rem] flex-1">
+        <div className="relative w-full flex-1 sm:min-w-[12rem]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             className="h-9 pl-9 text-sm"

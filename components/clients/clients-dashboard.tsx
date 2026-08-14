@@ -307,22 +307,28 @@ export function ClientsDashboard({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[14rem]">
+        {/*
+          Search takes its own row on a phone. Sharing one with two buttons at
+          343px left it about 120px wide, which is not a search field.
+        */}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative w-full sm:w-auto sm:min-w-[14rem]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
-              className="h-9 pl-9 text-sm"
+              className="h-9 w-full pl-9 text-sm"
               placeholder="Search clients…"
               value={filters.search}
               onChange={(event) => update("search", event.target.value)}
               aria-label="Search clients"
             />
           </div>
-          <Button size="sm" variant="secondary" onClick={exportCsv}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export CSV
-          </Button>
-          {addClientAction}
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={exportCsv}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export CSV
+            </Button>
+            {addClientAction}
+          </div>
         </div>
       </div>
 
@@ -544,7 +550,7 @@ export function ClientsDashboard({
             </button>
           ))}
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
             <Button
               size="sm"
               variant={showFilters || advanced ? "secondary" : "ghost"}

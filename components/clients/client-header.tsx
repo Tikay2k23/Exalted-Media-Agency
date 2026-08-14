@@ -85,7 +85,7 @@ export function ClientHeader({
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
           >
             <Workflow className="h-3.5 w-3.5" />
-            Move Stage
+            <span className="hidden sm:inline">Move Stage</span>
           </TabLink>
           {canAssignWork ? (
             <button
@@ -94,7 +94,7 @@ export function ClientHeader({
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add Task
+              <span className="hidden sm:inline">Add Task</span>
             </button>
           ) : null}
           <TabLink
@@ -102,7 +102,7 @@ export function ClientHeader({
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
           >
             <StickyNote className="h-3.5 w-3.5" />
-            Add Note
+            <span className="hidden sm:inline">Add Note</span>
           </TabLink>
 
           <div className="relative">
@@ -164,10 +164,10 @@ export function ClientHeader({
 
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Monogram name={client.companyName} size="lg" square />
+          <Monogram name={client.companyName} size="md" square />
 
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-950">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">
               {client.companyName}
             </h1>
 
@@ -201,8 +201,14 @@ export function ClientHeader({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-start gap-6">
-          <div>
+        {/*
+          A divider drawn with border-l only reads as a divider while the items
+          are on one line. Once they wrap - which they do on any phone - each
+          becomes a stray vertical rule floating beside a block. The separator
+          is horizontal below sm and vertical from sm up, where the row holds.
+        */}
+        <div className="flex w-full flex-col gap-3 divide-y divide-slate-200 sm:w-auto sm:flex-row sm:flex-wrap sm:items-start sm:gap-6 sm:divide-y-0">
+          <div className="pt-3 first:pt-0 sm:pt-0">
             <p className="text-[11px] uppercase tracking-wide text-slate-400">Account owner</p>
             <p className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-900">
               <Monogram name={client.ownerName} size="md" />
@@ -211,16 +217,16 @@ export function ClientHeader({
           </div>
 
           {canViewFinance ? (
-            <div className="border-l border-slate-200 pl-6">
+            <div className="pt-3 first:pt-0 sm:border-l sm:border-slate-200 sm:pl-6 sm:pt-0">
               <p className="text-[11px] uppercase tracking-wide text-slate-400">Monthly value</p>
-              <p className="mt-1 text-2xl font-semibold text-slate-950">
+              <p className="mt-1 text-xl font-semibold text-slate-950 sm:text-2xl">
                 {client.monthlyValue === null ? "—" : money(client.monthlyValue)}
               </p>
               <p className="text-[11px] text-slate-400">Recurring</p>
             </div>
           ) : null}
 
-          <div className="border-l border-slate-200 pl-6">
+          <div className="pt-3 first:pt-0 sm:border-l sm:border-slate-200 sm:pl-6 sm:pt-0">
             <p className="text-[11px] uppercase tracking-wide text-slate-400">Account status</p>
             <div className="mt-1">{statusControl}</div>
           </div>
