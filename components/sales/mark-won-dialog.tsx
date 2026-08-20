@@ -10,6 +10,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
@@ -556,19 +557,19 @@ function Outcome({ result, businessName }: { result: WonResult; businessName: st
 
       {result.clientId ? (
         <div className="flex flex-wrap gap-2">
-          <a href={`/clients/${result.clientId}`}>
+          <Link href={`/clients/${result.clientId}`}>
             <Button variant="secondary" className="gap-2">
               Open Client
               <ArrowRight className="h-4 w-4" />
             </Button>
-          </a>
+          </Link>
           {!awaiting ? (
-            <a href="/journey">
+            <Link href="/journey">
               <Button variant="secondary" className="gap-2">
                 Open Journey
                 <ArrowRight className="h-4 w-4" />
               </Button>
-            </a>
+            </Link>
           ) : null}
         </div>
       ) : null}
