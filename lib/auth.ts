@@ -86,7 +86,7 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          if (!user || !user.isActive) {
+          if (!user) {
             recordFailure();
             return null;
           }
@@ -97,6 +97,27 @@ export const authOptions: NextAuthOptions = {
           );
 
           if (!passwordMatches) {
+            recordFailure();
+            return null;
+          }
+
+          /*
+           * Checked after the password, not before it.
+           *
+           * Not to report it differently - NextAuth v4 collapses every
+           * authorize failure into "CredentialsSignin", so the browser cannot
+           * tell a deactivated account from a wrong password however this
+           * function fails. Verified against the running server rather than
+           * assumed.
+           *
+           * The order still matters. When this sat above the comparison, a
+           * deactivated address returned in a millisecond while a live one
+           * spent the cost of a bcrypt compare, and that difference is
+           * measurable - it told an attacker which addresses had live accounts
+           * without them ever guessing a password. Everyone now pays the same
+           * cost whatever the outcome.
+           */
+          if (!user.isActive) {
             recordFailure();
             return null;
           }
