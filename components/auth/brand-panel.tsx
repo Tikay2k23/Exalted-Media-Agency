@@ -31,7 +31,7 @@ import { ExaltedLockup } from "@/components/brand/exalted-mark";
 /** White lettering on transparency. For the dark panel only. */
 export const LOGO_LIGHT_SRC = "/exalted-logo-light.png";
 /*
- * Black lettering on a white matte. For the light phone and tablet layout.
+ * Black lettering on transparency. For the light phone and tablet layout.
  *
  * Its own file rather than a new crop written over exalted-wordmark.png, and
  * suffixed when the crop was tightened. The URL is the cache key, and
@@ -40,18 +40,18 @@ export const LOGO_LIGHT_SRC = "/exalted-logo-light.png";
  * long after the file on disk had changed, through a server restart and a
  * cleared image cache. A new path is the only reliable invalidation.
  */
-export const LOGO_DARK_SRC = "/exalted-logo-dark-v2.png";
+export const LOGO_DARK_SRC = "/exalted-logo-dark-v3.png";
 export const BACKGROUND_SRC = "/login-mountains.webp";
 
 /*
  * Each file's own pixel dimensions, so next/image never distorts either one.
  *
  * They are not the same shape - the transparent artwork is 2.93:1 and the
- * wordmark is 3.88:1 - so one shared pair of numbers would squash whichever
+ * wordmark is 4.05:1 - so one shared pair of numbers would squash whichever
  * logo it did not describe.
  */
 const LOGO_LIGHT_INTRINSIC = { width: 2048, height: 699 };
-const LOGO_DARK_INTRINSIC = { width: 1203, height: 310 };
+const LOGO_DARK_INTRINSIC = { width: 1776, height: 439 };
 
 const VALUES = [
   {
@@ -263,12 +263,13 @@ export function BrandHeaderCompact({ hasDarkLogo }: { hasDarkLogo: boolean }) {
     <div className="lg:hidden">
       {hasDarkLogo ? (
         /*
-         * The wordmark carries a solid white background rather than
-         * transparency, which would show as a pale block against the slate the
-         * page uses below lg. mix-blend-multiply solves that exactly: white
-         * multiplied by the page leaves the page, so the matte disappears,
-         * while the black lettering stays black and the gradient X shifts by
-         * the three percent between white and slate-50 - which is nothing.
+         * Composited normally, because this artwork actually has an alpha
+         * channel - 58% of it is transparent and there is not one opaque white
+         * pixel in it. The earlier file was black lettering on a solid white
+         * matte and needed mix-blend-multiply to hide that matte against the
+         * page. Real transparency does it properly: the anti-aliased edges
+         * composite against whatever is behind them rather than being
+         * approximated by a blend mode.
          */
         <Image
           src={LOGO_DARK_SRC}
@@ -277,7 +278,7 @@ export function BrandHeaderCompact({ hasDarkLogo }: { hasDarkLogo: boolean }) {
           height={LOGO_DARK_INTRINSIC.height}
           priority
           sizes="220px"
-          className="h-auto w-[clamp(8rem,19.5vh,13.75rem)] mix-blend-multiply"
+          className="h-auto w-[clamp(8rem,19.5vh,13.75rem)]"
         />
       ) : (
         <ExaltedLockup tone="dark" idSuffix="login-compact" />
