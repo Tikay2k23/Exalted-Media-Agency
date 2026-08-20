@@ -55,6 +55,14 @@ export interface SalesLead {
   proposalValue: number | null;
   finalValue: number | null;
   convertedClientId: string | null;
+  /**
+   * Where the sales-to-delivery handoff got to, or null when this opportunity
+   * has never been closed as won. Distinct from convertedClientId: a deal that
+   * is won and awaiting payment has a handoff and no client yet.
+   */
+  handoffState: string | null;
+  /** The account the handoff produced or linked, once there is one. */
+  handoffClientId: string | null;
   serviceInterest: string | null;
   campaign: string | null;
 

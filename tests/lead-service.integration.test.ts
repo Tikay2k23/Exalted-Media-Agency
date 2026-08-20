@@ -392,9 +392,22 @@ describe("lead service (integration)", { skip: !hasDatabase }, () => {
 
   it("lets a sales representative convert their own lead", async () => {
     const manager = await actorFor(fixtures!.managerId);
+    /*
+     * Its own contact details, unlike the shared ones in leadPayload.
+     *
+     * An earlier test in this suite converts a lead carrying jamie@example.test
+     * into a client, and conversion now refuses a second account for an email
+     * that already belongs to one. Reusing the shared payload here would fail
+     * on that guard rather than on the permission this test is about.
+     */
     const created = await createLead({
       actor: manager,
-      data: { ...leadPayload("RepConvert"), assignedToId: fixtures!.repId },
+      data: {
+        ...leadPayload("RepConvert"),
+        email: `${TEST_PREFIX}-repconvert@example.test`,
+        phone: "+1 555 0177",
+        assignedToId: fixtures!.repId,
+      },
     });
     assert.equal(created.ok, true);
     if (!created.ok) return;

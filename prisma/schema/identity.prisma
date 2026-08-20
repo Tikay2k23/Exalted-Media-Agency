@@ -214,6 +214,10 @@ model User {
   handoffsFrom        ClientHandoff[]    @relation("HandoffFrom")
   handoffsTo          ClientHandoff[]    @relation("HandoffTo")
   handoffsMade        ClientHandoff[]    @relation("HandoffActor")
+  salesHandoffsManaged     LeadHandoff[]  @relation("HandoffProjectManager")
+  salesHandoffPaymentsConfirmed LeadHandoff[] @relation("HandoffPaymentConfirmer")
+  journeyFlagsRaised       ClientJourneyFlag[] @relation("JourneyFlagRaiser")
+  journeyFlagsResolved     ClientJourneyFlag[] @relation("JourneyFlagResolver")
   intakeFormsSent     IntakeForm[]       @relation("IntakeSender")
   intakeFormsReviewed IntakeForm[]       @relation("IntakeReviewer")
 

@@ -40,13 +40,27 @@ export interface SalesWorkspace {
   canCreate: boolean;
   canEdit: boolean;
   canConvert: boolean;
+  /** Declaring that money arrived, which is what opens the delivery gates. */
+  canConfirmPayment: boolean;
+  /** Re-running a handoff that stopped part way. */
+  canRetryHandoff: boolean;
   canDelete: boolean;
   canAssign: boolean;
   canSeeTeam: boolean;
   hasAccess: boolean;
 }
 
-const EMPTY: Omit<SalesWorkspace, "canCreate" | "canEdit" | "canConvert" | "canDelete" | "canAssign" | "canSeeTeam"> = {
+const EMPTY: Omit<
+  SalesWorkspace,
+  | "canCreate"
+  | "canEdit"
+  | "canConvert"
+  | "canDelete"
+  | "canAssign"
+  | "canSeeTeam"
+  | "canConfirmPayment"
+  | "canRetryHandoff"
+> = {
   stages: [],
   leads: [],
   owners: [],
@@ -62,6 +76,8 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
     canCreate: can(actor, "leads.create"),
     canEdit: can(actor, "leads.edit"),
     canConvert: can(actor, "leads.convert"),
+    canConfirmPayment: can(actor, "finance.edit"),
+    canRetryHandoff: can(actor, "clients.create") || can(actor, "finance.edit"),
     canDelete: can(actor, "leads.delete"),
     canAssign: can(actor, "leads.view.all"),
     // Team performance is somebody else's numbers. Only the seats that manage
@@ -120,6 +136,7 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
         proposalValue: true,
         finalValue: true,
         convertedClientId: true,
+        handoff: { select: { state: true, clientId: true } },
         serviceInterest: true,
         campaign: true,
         timeline: true,
@@ -208,6 +225,8 @@ export async function getSalesWorkspace(actor: AuthContext): Promise<SalesWorksp
     proposalValue: lead.proposalValue === null ? null : Number(lead.proposalValue),
     finalValue: lead.finalValue === null ? null : Number(lead.finalValue),
     convertedClientId: lead.convertedClientId,
+    handoffState: lead.handoff?.state ?? null,
+    handoffClientId: lead.handoff?.clientId ?? null,
     serviceInterest: lead.serviceInterest,
     campaign: lead.campaign,
     timeline: lead.timeline,

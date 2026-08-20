@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { CalendarClock, GripVertical, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 
 import {
   ActivityIndicators,
@@ -312,6 +312,7 @@ export function PipelineBoard({
   canMove,
   onOpenLead,
   onStagePick,
+  onWonDrop,
   menuItemsFor,
 }: {
   leads: SalesLead[];
@@ -320,6 +321,11 @@ export function PipelineBoard({
   onOpenLead: (id: string, section?: string) => void;
   /** A click on a progress icon. The workspace confirms before anything moves. */
   onStagePick?: (lead: SalesLead, column: ColumnKey, stageKey: string, label: string) => void;
+  /**
+   * A card dropped on the Won column. The workspace opens the confirmation;
+   * this board deliberately does not save the move itself.
+   */
+  onWonDrop?: (lead: SalesLead) => void;
   menuItemsFor?: (lead: SalesLead) => RowMenuItem[];
 }) {
   const router = useRouter();
@@ -333,6 +339,18 @@ export function PipelineBoard({
   const [moved, setMoved] = useState<Record<string, ColumnKey>>({});
   const [dragging, setDragging] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * A stable id for the drag context.
+   *
+   * Without one, dnd-kit numbers its accessibility description elements from a
+   * module counter that starts fresh on the server and continues from wherever
+   * the client bundle left off - so the server renders
+   * aria-describedby="DndDescribedBy-0" and the browser expects "-5", and React
+   * reports a hydration mismatch. useId is stable across both renders, which is
+   * exactly what the counter is not.
+   */
+  const dndId = useId();
 
   // A small distance before a drag starts, or clicking a card to open it would
   // register as a drag and nothing would ever open.
@@ -371,6 +389,20 @@ export function PipelineBoard({
     const shownLead = shown.find((candidate) => candidate.id === leadId) ?? lead;
 
     if (!isRealMove(shownLead, target)) return;
+
+    /*
+     * Dropping on Won opens the confirmation rather than saving.
+     *
+     * Every other column is a stage change and nothing else, so an optimistic
+     * drop is honest. Won is not: it creates an account, opens a journey,
+     * raises an invoice and assigns work, and it needs answers this board does
+     * not have. Moving the card here would show a deal as closed before
+     * anybody had confirmed what was sold or whether it was paid for.
+     */
+    if (target === "won") {
+      onWonDrop?.(shownLead);
+      return;
+    }
 
     setError(null);
     setMoved((current) => ({ ...current, [leadId]: target }));
@@ -415,6 +447,7 @@ export function PipelineBoard({
       ) : null}
 
       <DndContext
+        id={dndId}
         sensors={sensors}
         onDragStart={(event: DragStartEvent) => setDragging(event.active.id as string)}
         onDragEnd={onDragEnd}

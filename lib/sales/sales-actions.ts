@@ -24,7 +24,8 @@ export type SalesFailureCode =
   | "NOT_FOUND"
   | "INVALID"
   | "REASON_REQUIRED"
-  | "ALREADY_CLOSED";
+  | "ALREADY_CLOSED"
+  | "NEEDS_CONFIRMATION";
 
 export interface SalesFailure {
   ok: false;
@@ -37,6 +38,7 @@ function failure(code: SalesFailureCode, message: string): SalesFailure {
 }
 
 export const SALES_FAILURE_STATUS: Record<SalesFailureCode, number> = {
+  NEEDS_CONFIRMATION: 409,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   INVALID: 400,
@@ -347,126 +349,6 @@ export async function markLost(input: {
   });
 
   return { ok: true as const, lead: updated };
-}
-
-/**
- * A client that looks like this lead, if one already exists.
- *
- * Matched on email first, then phone, then company name - in that order of
- * confidence. Creating a second client record for an account the agency
- * already has is the single worst thing a conversion can do: the delivery team
- * would work one record while the money lands against the other.
- */
-export async function findMatchingClient(lead: {
-  email: string | null;
-  phone: string | null;
-  businessName: string;
-}) {
-  const candidates = [
-    lead.email ? { contactEmail: { equals: lead.email, mode: "insensitive" as const } } : null,
-    lead.phone ? { contactPhone: lead.phone } : null,
-    { companyName: { equals: lead.businessName, mode: "insensitive" as const } },
-  ].filter(Boolean) as Record<string, unknown>[];
-
-  for (const where of candidates) {
-    const match = await prisma.client.findFirst({
-      where: { ...where, deletedAt: null },
-      select: { id: true, companyName: true, contactEmail: true },
-    });
-
-    if (match) return match;
-  }
-
-  return null;
-}
-
-/**
- * Winning it.
- *
- * Records who closed it, when, and for how much, then links the existing client
- * when the agency already has one. Conversion into a brand new client account
- * stays where it was, in convertLeadToClient - this is the lighter path for a
- * win against an account that already exists, and for recording the outcome
- * before the handoff paperwork is done.
- */
-export async function markWon(input: {
-  actor: AuthContext;
-  leadId: string;
-  finalValue?: number | null;
-  clientId?: string | null;
-}) {
-  const lead = await loadLead(input.actor, input.leadId);
-
-  if (!lead) return failure("NOT_FOUND", "That lead could not be found.");
-
-  if (!can(input.actor, "leads.convert") && !mayEdit(input.actor, lead)) {
-    return failure("FORBIDDEN", "That lead is not yours to close.");
-  }
-
-  if (lead.convertedClientId) {
-    return failure("ALREADY_CLOSED", "This lead has already been closed as won.");
-  }
-
-  // An explicit client wins over a guess; otherwise look for one that already
-  // exists rather than leaving the link empty for somebody to create twice.
-  let clientId = input.clientId ?? null;
-
-  if (clientId) {
-    const exists = await prisma.client.findFirst({
-      where: { id: clientId, deletedAt: null },
-      select: { id: true },
-    });
-
-    if (!exists) return failure("NOT_FOUND", "That client could not be found.");
-  } else {
-    const match = await findMatchingClient(lead);
-    clientId = match?.id ?? null;
-  }
-
-  const stage = await prisma.pipelineStage.findFirst({
-    where: { pipelineId: SALES_PIPELINE_ID, stageKey: "won" },
-    select: { id: true },
-  });
-
-  const updated = await prisma.lead.update({
-    where: { id: lead.id },
-    data: {
-      status: "CONVERTED",
-      wonAt: new Date(),
-      wonById: input.actor.id,
-      finalValue: input.finalValue ?? lead.proposalValue ?? lead.budgetAmount ?? undefined,
-      nextFollowUpAt: null,
-      nextAction: null,
-      ...(clientId ? { convertedClientId: clientId } : {}),
-      ...(stage ? { stageId: stage.id } : {}),
-    },
-    select: {
-      id: true,
-      status: true,
-      wonAt: true,
-      finalValue: true,
-      convertedClientId: true,
-    },
-  });
-
-  await logActivity({
-    actorId: input.actor.id,
-    action: `Won ${lead.businessName}`,
-    entityType: "LEAD",
-    entityId: lead.id,
-    metadataJson: {
-      finalValue: input.finalValue ?? null,
-      linkedExistingClient: Boolean(clientId && !input.clientId),
-      clientId,
-    },
-  });
-
-  return {
-    ok: true as const,
-    lead: updated,
-    // True when an account already existed and was linked rather than duplicated.
-    linkedExisting: Boolean(clientId && !input.clientId),
-  };
 }
 
 /** Parking a lead for later without pretending it is dead. */
@@ -898,10 +780,8 @@ export async function addOpportunityTask(input: {
  * Moving a card between board columns.
  *
  * The one entry point the board uses, so every drop is subject to the same
- * rules a menu action would be. Dropping onto Won hands straight over to
- * markWon rather than setting the stage directly - that is where the existing
- * client is found and linked, and a stage write that skipped it would leave a
- * won deal with no account against it.
+ * rules a menu action would be. Won is the exception and is refused here - see
+ * the note on that branch below.
  *
  * The stage change is recorded on the activity trail with who moved it, what it
  * moved from, what it moved to, and when. That is the whole audit requirement:
@@ -920,9 +800,25 @@ export async function moveLeadStage(input: {
     return failure("FORBIDDEN", "That lead is not yours to move.");
   }
 
-  // Winning is its own path, with the client lookup on it.
+  /*
+   * Winning is not a stage change, and cannot be reached by making one.
+   *
+   * A move into Won starts a chain that creates an account, opens a journey,
+   * raises an invoice and assigns work to people. None of that should follow
+   * from a card being dropped in a column, and none of it can happen without
+   * the answers the confirmation collects: what was sold, for how much, and
+   * whether the money actually arrived.
+   *
+   * This refusal is the backstop, not the interface. The board opens the
+   * confirmation instead of calling this - but a bulk action, an old tab or a
+   * direct request would otherwise reach here and half-convert the lead:
+   * marked won, with no client, no delivery, and nothing recording why.
+   */
   if (input.stageKey === "won") {
-    return markWon({ actor: input.actor, leadId: input.leadId });
+    return failure(
+      "NEEDS_CONFIRMATION",
+      "Closing an opportunity as Won needs the Won confirmation. Open the opportunity and use Mark won.",
+    );
   }
 
   if (lead.convertedClientId) {

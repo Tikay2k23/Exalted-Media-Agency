@@ -315,6 +315,7 @@ model Lead {
   followers       LeadFollower[]
   tasks           EmployeeTask[]
   referral        Referral?      @relation("ReferralLead")
+  handoff         LeadHandoff?
 
   @@index([status])
   @@index([assignedToId])
@@ -473,6 +474,8 @@ model Client {
   intakeForm             IntakeForm?
   handoffs               ClientHandoff[]
   audits                 Audit[]
+  salesHandoffs          LeadHandoff[]
+  journeyFlags           ClientJourneyFlag[]
 
   @@index([assignedUserId])
   @@index([status])
@@ -569,4 +572,156 @@ enum SocialTaskStatus {
   WAITING_ON_CLIENT
   REVIEW
   COMPLETED
+}
+
+/// Whether the money for a won deal has actually arrived.
+///
+/// Deliberately two values. Won and paid are different facts, and the whole
+/// point of this handoff is that the delivery team does not start on the first
+/// one - a signature is not a payment, and a client placed at "Payment
+/// Received" before the payment was received is a record that lies.
+enum HandoffPaymentStatus {
+  PENDING
+  PAID
+}
+
+/// Where a won deal has got to on its way into delivery.
+enum HandoffState {
+  /// Won, but the money has not landed. No client, no journey, no tasks.
+  AWAITING_PAYMENT
+  /// Paid and being processed right now.
+  RUNNING
+  /// Client, journey, onboarding and tasks all exist.
+  COMPLETED
+  /// A step failed. The record says which, and an authorised user may retry.
+  FAILED
+}
+
+/// The state machine between a won opportunity and a client in delivery.
+///
+/// This exists because "Won" and "in delivery" are separated by real events -
+/// a payment, a duplicate check, a project manager being assigned - and
+/// something has to hold that state in between. Before it, the two halves were
+/// disconnected: markWon recorded the outcome without starting delivery, and
+/// convertLeadToClient started delivery without checking whether the agency
+/// already had the account.
+///
+/// One row per lead, enforced by the unique key on leadId. That single
+/// constraint is what makes the handoff idempotent: a double-clicked Confirm,
+/// a refresh mid-flight, or a retry after a failure all find the existing row
+/// rather than starting a second conversion.
+///
+/// The per-step timestamps below are not audit decoration. They are what lets a
+/// retry resume from the step that failed instead of repeating the ones that
+/// succeeded, which is the difference between a safe retry and a duplicate set
+/// of onboarding tasks.
+model LeadHandoff {
+  id       String  @id @default(cuid())
+  /// One handoff per opportunity. This is the idempotency key.
+  leadId   String  @unique
+  /// Set once an account is created or linked. Null while awaiting payment.
+  clientId String?
+
+  state HandoffState @default(AWAITING_PAYMENT)
+
+  /// What was agreed, captured at the point of winning rather than
+  /// reconstructed later from the proposal.
+  serviceType       ServiceType
+  finalValue        Decimal?             @db.Decimal(12, 2)
+  /// Reuses AgreementStatus rather than inventing a parallel vocabulary for
+  /// the same thing the contract register already tracks.
+  contractStatus    AgreementStatus      @default(NOT_SENT)
+  paymentStatus     HandoffPaymentStatus @default(PENDING)
+  expectedStartDate DateTime?
+  /// What sales wants delivery to know. Kept apart from the lead's own notes
+  /// so the handbook note does not disappear into the sales history.
+  handoffNote       String?
+
+  /// Who delivery should go to. Chosen at confirmation, or resolved from the
+  /// least-loaded project manager when nobody picks.
+  projectManagerId String?
+
+  paymentConfirmedAt   DateTime?
+  paymentConfirmedById String?
+  completedAt          DateTime?
+
+  /// Per-step progress, so a retry resumes rather than repeats.
+  clientLinkedAt      DateTime?
+  billingRecordedAt   DateTime?
+  onboardingCreatedAt DateTime?
+  tasksCreatedAt      DateTime?
+  notifiedAt          DateTime?
+
+  /// Set when a step throws. Cleared on the next successful run.
+  failedStep     String?
+  failureMessage String?
+  attemptCount   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead               Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client             Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  projectManager     User?   @relation("HandoffProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+  paymentConfirmedBy User?   @relation("HandoffPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
+
+  @@index([state])
+  @@index([clientId])
+  @@index([paymentStatus])
+}
+
+/// A temporary condition sitting on top of the journey stage.
+///
+/// Deliberately not a stage and not a health value. An account waiting on a
+/// login is still in Build; pausing for a client's holiday does not undo the
+/// work done so far. Before this existed the only way to record any of it was
+/// Client.currentBlocker - one free-text field that could hold one thing, with
+/// no owner, no date, and no way to say what would clear it.
+enum JourneyFlagKind {
+  WAITING_ON_CLIENT
+  BLOCKED
+  REVISIONS_REQUIRED
+  PAUSED
+}
+
+/// One raised condition, from the moment it is raised until it is cleared.
+///
+/// Append-only in spirit: resolving sets resolvedAt rather than deleting, so
+/// "we lost a week waiting on their agency" is still answerable next quarter.
+/// Several may be open at once, because an account genuinely can be both
+/// waiting on the client and blocked on something else.
+model ClientJourneyFlag {
+  id       String          @id @default(cuid())
+  clientId String
+  kind     JourneyFlagKind
+
+  /// Why it was raised, in the words of whoever raised it.
+  reason String
+  /// What is actually needed to clear it, or the revision request itself.
+  detail String?
+  /// Who has to act. Free text rather than a relation: it is often the client,
+  /// sometimes their web host, and only sometimes somebody with a login here.
+  responsibleParty String?
+  /// Follow-up date, expected resolution, or expected resume date.
+  dueAt DateTime?
+  /// Which round of revisions this is, when that is what was raised.
+  round Int?
+
+  raisedById String?
+  raisedAt   DateTime @default(now())
+
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  raisedBy   User?  @relation("JourneyFlagRaiser", fields: [raisedById], references: [id], onDelete: SetNull)
+  resolvedBy User?  @relation("JourneyFlagResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, resolvedAt])
+  @@index([kind])
+  @@index([dueAt])
 }

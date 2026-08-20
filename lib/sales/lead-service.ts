@@ -16,6 +16,7 @@ import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { findClientMatches, suggestedMatch } from "@/lib/sales/client-matching";
 import {
   createLeadWithOpportunity,
   updateContactIdentity,
@@ -93,6 +94,7 @@ async function loadVisibleLead(actor: AuthContext, leadId: string) {
     include: {
       stage: { select: { id: true, name: true, stageKey: true } },
       assignedTo: { select: { id: true, name: true } },
+      handoff: { select: { id: true, state: true } },
     },
   });
 }
@@ -512,6 +514,32 @@ export async function convertLeadToClient(input: ConvertLeadInput) {
     return failure(
       "ALREADY_CONVERTED",
       "This lead has already been converted into a client account.",
+    );
+  }
+
+  if (lead.handoff) {
+    return failure(
+      "ALREADY_CONVERTED",
+      "This opportunity has already been closed as Won. Open it in Sales to see the handoff.",
+    );
+  }
+
+  /*
+   * The same duplicate guard the Won handoff applies.
+   *
+   * This endpoint predates that flow and is no longer reachable from the
+   * interface, but it still creates client accounts, and an unguarded second
+   * route into the same table is how the duplicate this check exists to
+   * prevent eventually gets created anyway. Both paths now stop on a strong
+   * match; only the Won dialog can carry a deliberate override.
+   */
+  const duplicates = await findClientMatches(lead);
+  const strongDuplicate = suggestedMatch(duplicates);
+
+  if (strongDuplicate) {
+    return failure(
+      "ALREADY_CONVERTED",
+      `${strongDuplicate.companyName} already exists as a client (${strongDuplicate.reason.toLowerCase()}). Close this opportunity as Won instead, which can link to it.`,
     );
   }
 

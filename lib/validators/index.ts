@@ -1,5 +1,7 @@
 import {
   AccessMethod,
+  AgreementStatus,
+  HandoffPaymentStatus,
   AccessPlatform,
   AccessStatus,
   ApprovalType,
@@ -784,6 +786,31 @@ export const leadCallLogSchema = z.object({
   durationMinutes: z.coerce.number().int().min(0).max(600).optional().nullable(),
   occurredAt: z.string().optional().or(z.literal("")),
   nextFollowUpAt: z.string().optional().or(z.literal("")),
+});
+
+/**
+ * The Won confirmation.
+ *
+ * Service and payment status are required because they are the two answers
+ * that change what happens next: the service decides which specialist seats
+ * open, and the payment status decides whether delivery starts at all.
+ * Everything else is optional, because a deal can genuinely be won before the
+ * start date is agreed or the contract comes back signed.
+ */
+export const markWonSchema = z.object({
+  serviceType: z.nativeEnum(ServiceType),
+  finalValue: z.coerce.number().min(0).max(10_000_000).optional().nullable(),
+  contractStatus: z.nativeEnum(AgreementStatus).default("NOT_SENT"),
+  paymentStatus: z.nativeEnum(HandoffPaymentStatus),
+  expectedStartDate: z.string().optional().nullable(),
+  handoffNote: optionalText(3000),
+  projectManagerId: z.string().optional().or(z.literal("")),
+  linkClientId: z.string().optional().or(z.literal("")),
+  overrideDuplicate: z.coerce.boolean().default(false),
+});
+
+export const handoffActionSchema = z.object({
+  action: z.enum(["confirm-payment", "retry"]),
 });
 
 export const leadConversionSchema = z.object({

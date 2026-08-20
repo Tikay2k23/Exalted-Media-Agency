@@ -73,8 +73,14 @@ export function deriveInvoiceStatus(input: {
  *
  * Runs inside the caller's transaction so two invoices raised at the same
  * moment cannot collide on the number.
+ *
+ * Exported because the sales handoff raises an invoice too. Every writer has
+ * to come through here: the sequence is derived by sorting the existing
+ * numbers as text and parsing the highest, so a single invoice numbered in any
+ * other shape sorts above the real ones, parses as NaN, and resets the whole
+ * sequence to 1 - colliding with a number already issued.
  */
-async function nextInvoiceNumber(transaction: Prisma.TransactionClient) {
+export async function nextInvoiceNumber(transaction: Prisma.TransactionClient) {
   const latest = await transaction.invoice.findFirst({
     where: { invoiceNumber: { startsWith: "INV-" } },
     orderBy: { invoiceNumber: "desc" },

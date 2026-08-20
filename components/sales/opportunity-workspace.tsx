@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { AddLeadDialog } from "@/components/sales/add-lead-dialog";
 import { LeadFormDialog } from "@/components/sales/lead-dialogs";
 import { LeadImportDialog } from "@/components/sales/lead-import-dialog";
+import { MarkWonDialog } from "@/components/sales/mark-won-dialog";
 import {
   OpportunityActionDialog,
   type ActionKind,
@@ -108,6 +109,8 @@ export function OpportunityWorkspace({
   canEdit,
   canAssign,
   canConvert,
+  canConfirmPayment,
+  canRetryHandoff,
   filters,
   onFilters,
   openLeadId,
@@ -131,6 +134,8 @@ export function OpportunityWorkspace({
   canEdit: boolean;
   canAssign: boolean;
   canConvert: boolean;
+  canConfirmPayment: boolean;
+  canRetryHandoff: boolean;
   filters: SalesFilters;
   onFilters: (filters: SalesFilters) => void;
   openLeadId: string | null;
@@ -803,11 +808,20 @@ export function OpportunityWorkspace({
                 aria-label="Move the selected opportunities"
               >
                 <option value="">Move stage…</option>
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </option>
-                ))}
+                {/*
+                  * Won is not offered in bulk. It is confirmed one opportunity
+                  * at a time, because each one needs its own answers - what was
+                  * sold, for how much, whether it was paid, and which existing
+                  * account it might already be. The server refuses it here too;
+                  * leaving it in the list would only offer people an error.
+                  */}
+                {stages
+                  .filter((stage) => stage.stageKey !== "won")
+                  .map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </option>
+                  ))}
               </Select>
 
               <label className="flex items-center gap-1.5 text-xs text-slate-600">
@@ -904,6 +918,7 @@ export function OpportunityWorkspace({
           canMove={canEdit}
           onOpenLead={openDrawer}
           onStagePick={onStagePick}
+          onWonDrop={(lead) => setAction({ kind: "won", leadId: lead.id })}
           menuItemsFor={menuItemsFor}
         />
       ) : (
@@ -951,6 +966,8 @@ export function OpportunityWorkspace({
           owners={owners}
           canEdit={canEdit}
           canAssign={canAssign}
+          canConfirmPayment={canConfirmPayment}
+          canRetryHandoff={canRetryHandoff}
           onSection={setSection}
           onClose={() => onOpenLead(null)}
           onAction={(drawerAction, lead) =>
@@ -963,7 +980,23 @@ export function OpportunityWorkspace({
         />
       ) : null}
 
-      {actionLead && action ? (
+      {/*
+        * Winning is the one action that is not a field change.
+        *
+        * Every other quick action posts a couple of fields; this one creates an
+        * account, opens a journey, raises an invoice and assigns work. It gets
+        * its own confirmation rather than the shared dialog, and it is caught
+        * here so the board column and the drawer button both reach it.
+        */}
+      {actionLead && action?.kind === "won" ? (
+        <MarkWonDialog
+          leadId={actionLead.id}
+          businessName={actionLead.businessName}
+          onClose={() => setAction(null)}
+        />
+      ) : null}
+
+      {actionLead && action && action.kind !== "won" ? (
         <OpportunityActionDialog
           kind={action.kind}
           lead={actionLead}

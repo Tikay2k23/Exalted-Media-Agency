@@ -18,6 +18,8 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+
+import { HandoffPanel } from "@/components/sales/handoff-panel";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -199,6 +201,8 @@ export function OpportunityDrawer({
   owners,
   canEdit,
   canAssign,
+  canConfirmPayment,
+  canRetryHandoff,
   onSection,
   onClose,
   onAction,
@@ -209,6 +213,8 @@ export function OpportunityDrawer({
   owners: { id: string; name: string }[];
   canEdit: boolean;
   canAssign: boolean;
+  canConfirmPayment: boolean;
+  canRetryHandoff: boolean;
   onSection: (section: DrawerSection) => void;
   onClose: () => void;
   onAction: (action: DrawerAction, lead: SalesLead) => void;
@@ -488,6 +494,19 @@ export function OpportunityDrawer({
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               {section === "details" ? (
                 <div className="space-y-6">
+                  {/*
+                    * First in the drawer once a deal is won: what happened to
+                    * it matters more than the contact details somebody already
+                    * knows by then.
+                    */}
+                  <HandoffPanel
+                    leadId={lead.id}
+                    handoffState={lead.handoffState}
+                    clientId={lead.handoffClientId ?? lead.convertedClientId}
+                    canConfirmPayment={canConfirmPayment}
+                    canRetry={canRetryHandoff}
+                  />
+
                   <Section title="Contact">
                     <div className="grid gap-4 sm:grid-cols-3">
                       <Field label="Primary contact">{lead.contactName}</Field>

@@ -51,6 +51,8 @@ function lead(overrides: Partial<SalesLead> = {}): SalesLead {
     proposalValue: null,
     finalValue: null,
     convertedClientId: null,
+    handoffState: null,
+    handoffClientId: null,
     serviceInterest: null,
     campaign: null,
     timeline: null,

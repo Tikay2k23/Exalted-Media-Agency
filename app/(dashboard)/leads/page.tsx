@@ -49,6 +49,8 @@ export default async function LeadsPage() {
       canCreate={data.canCreate}
       canEdit={data.canEdit}
       canConvert={data.canConvert}
+      canConfirmPayment={data.canConfirmPayment}
+      canRetryHandoff={data.canRetryHandoff}
       canAssign={data.canAssign}
       serverNow={new Date().toISOString()}
     />

@@ -147,6 +147,8 @@ export function SalesBoard({
   canCreate,
   canEdit,
   canConvert,
+  canConfirmPayment,
+  canRetryHandoff,
   canAssign,
   serverNow,
 }: {
@@ -161,6 +163,8 @@ export function SalesBoard({
   canCreate: boolean;
   canEdit: boolean;
   canConvert: boolean;
+  canConfirmPayment: boolean;
+  canRetryHandoff: boolean;
   canAssign: boolean;
   serverNow: string;
 }) {
@@ -399,6 +403,8 @@ export function SalesBoard({
         canEdit={canEdit}
         canAssign={canAssign}
         canConvert={canConvert}
+        canConfirmPayment={canConfirmPayment}
+        canRetryHandoff={canRetryHandoff}
         filters={filters}
         onFilters={setFilters}
         openLeadId={openLeadId}

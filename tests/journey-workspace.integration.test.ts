@@ -7,6 +7,11 @@ import { Role, TeamRole } from "@prisma/client";
 
 import { loadAuthContext } from "@/lib/authz";
 import { getJourneyWorkspaceData } from "@/lib/data/journey-queries";
+import {
+  exitReadiness,
+  groupByPhase,
+  stageAging,
+} from "@/lib/journey/journey-board";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -171,10 +176,15 @@ describe("journey workspace data (integration)", { skip: !hasDatabase }, () => {
     const account = data.accounts.find((row) => row.id === fixtures!.ownedClientId);
 
     assert.ok(account);
-    assert.equal(account.daysInStage, 10);
+
+    const aging = stageAging(account, new Date());
+
+    assert.equal(aging.days, 10);
     // Payment Received carries a one day target, so ten days is over it.
-    assert.equal(account.slaDays, 1);
-    assert.equal(account.isOverSla, true);
+    assert.equal(aging.targetDays, 1);
+    assert.equal(aging.isOverTarget, true);
+    assert.equal(aging.overBy, 9);
+    assert.equal(aging.label, "9 days over target");
   });
 
   it("returns only current journey stages, never retired ones", async () => {
@@ -208,16 +218,50 @@ describe("journey workspace data (integration)", { skip: !hasDatabase }, () => {
     assert.equal(production.requirementCount, 9);
   });
 
-  it("counts accounts per stage for the journey summary", async () => {
+  it("groups accounts onto the four phases of the board", async () => {
     const actor = await loadAuthContext(fixtures!.managerId);
     assert.ok(actor);
 
     const data = await getJourneyWorkspaceData(actor);
-    const paymentStage = data.stageCounts.find(
-      (entry) => entry.stageName === "Payment Received",
+    const columns = groupByPhase(data.accounts);
+
+    assert.deepEqual(
+      columns.map((column) => column.phase),
+      ["STARTUP", "PRODUCTION", "LAUNCH", "RETENTION"],
     );
 
-    assert.ok(paymentStage);
-    assert.ok(paymentStage.count >= 2, "both test accounts sit in Payment Received");
+    const startup = columns.find((column) => column.phase === "STARTUP");
+
+    assert.ok(startup);
+    assert.ok(
+      startup.accounts.some((account) => account.id === fixtures!.ownedClientId),
+      "an account in Payment Received belongs to the Startup phase",
+    );
+
+    // Every account lands in exactly one column, so none can be lost.
+    assert.equal(
+      columns.reduce((total, column) => total + column.accounts.length, 0),
+      data.accounts.length,
+    );
+  });
+
+  it("evaluates the next stage gate as exit criteria, from the same rows", async () => {
+    const actor = await loadAuthContext(fixtures!.managerId);
+    assert.ok(actor);
+
+    const data = await getJourneyWorkspaceData(actor);
+    const account = data.accounts.find((row) => row.id === fixtures!.ownedClientId);
+
+    assert.ok(account);
+    // Payment Received is position 1, so the next live stage follows it.
+    assert.equal(account.nextStageName, "Onboarding Form Sent");
+
+    const readiness = exitReadiness(account);
+
+    assert.equal(readiness.total, account.exitCriteria.length);
+    assert.equal(
+      readiness.canAdvance,
+      account.exitCriteria.every((rule) => rule.satisfied || !rule.isBlocking),
+    );
   });
 });

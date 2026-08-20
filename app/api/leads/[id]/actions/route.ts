@@ -8,7 +8,6 @@ import {
   addOpportunityTask,
   logContact,
   markLost,
-  markWon,
   moveLeadStage,
   moveToNurture,
   recordProposalSent,
@@ -169,13 +168,21 @@ export async function POST(
         });
       case "mark-lost":
         return markLost({ actor, leadId: id, reason: body.reason, note: body.note ?? null });
+      /*
+       * Winning is deliberately not an action on this endpoint.
+       *
+       * It needs what was sold, for how much, whether the money arrived, and a
+       * duplicate check against the existing accounts - none of which this
+       * endpoint collects. POST /api/leads/[id]/won is the one way in, so
+       * there is a single path that can create a client from a deal.
+       */
       case "mark-won":
-        return markWon({
-          actor,
-          leadId: id,
-          finalValue: body.finalValue ?? null,
-          clientId: body.clientId ?? null,
-        });
+        return {
+          ok: false as const,
+          code: "NEEDS_CONFIRMATION" as const,
+          message:
+            "Closing an opportunity as Won needs the Won confirmation at /api/leads/[id]/won.",
+        };
       case "move-stage":
         return moveLeadStage({ actor, leadId: id, stageKey: body.stageKey });
       case "nurture":
