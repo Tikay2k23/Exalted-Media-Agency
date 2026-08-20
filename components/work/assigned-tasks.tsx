@@ -789,8 +789,15 @@ export function AssignedTasks({
                 {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} tasks
               </p>
 
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
+              {/*
+                * Wraps on a narrow screen.
+                * The page buttons and the page-size select sat on one
+                * non-wrapping row, which came to 405px inside a 341px card
+                * whose parent clips - so the last 63px, including part of the
+                * page-size control, could not be reached at all on a phone.
+                */}
+              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+                <div className="flex flex-wrap items-center gap-1">
                   <Button
                     size="sm"
                     variant="secondary"

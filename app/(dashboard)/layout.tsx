@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/topbar";
 import { loadAuthContext } from "@/lib/authz";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { resolvePermissions, teamRoleLabels } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,27 @@ export default async function DashboardLayout({
   }
 
   const permissions = [...resolvePermissions(context)];
-  const unreadCount = await getUnreadNotificationCount(context.id);
+
+  /*
+   * The avatar comes from the database, not the session.
+   *
+   * getCookieSafeImageUrl strips data URLs out of the session token, and it is
+   * right to: the profile form stores uploads inline, and a hundred-kilobyte
+   * string in a JWT cookie would blow past the four-kilobyte browser limit and
+   * take the whole session with it. The consequence was that anybody who
+   * uploaded a photo kept seeing their initials.
+   *
+   * One column, on its own, rather than adding it to loadAuthContext - that
+   * runs on every privileged action across the app, and none of the others
+   * want to carry an image.
+   */
+  const [profile, unreadCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: context.id },
+      select: { avatarUrl: true },
+    }),
+    getUnreadNotificationCount(context.id),
+  ]);
 
   // The seat is what the person actually is here. Job title and access tier are
   // both secondary to it.
@@ -61,7 +82,7 @@ export default async function DashboardLayout({
             name={context.name}
             email={context.email}
             roleLabel={identityLabel}
-            avatarUrl={user.image}
+            avatarUrl={profile?.avatarUrl ?? user.image}
             unreadCount={unreadCount}
           />
           <main className="space-y-6">{children}</main>

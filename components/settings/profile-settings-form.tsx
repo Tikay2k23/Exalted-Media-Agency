@@ -20,6 +20,68 @@ interface ProfileSettingsFormProps {
 
 const maxUploadSizeBytes = 2 * 1024 * 1024;
 
+/**
+ * The longest edge an avatar is stored at.
+ *
+ * The picture is shown at 40px in the top bar and 56px on the account page, so
+ * 256 is already generous - it covers a retina screen twice over. What it
+ * mainly prevents is the previous behaviour: the file was stored exactly as
+ * uploaded, base64 encoded, which inflates it by a third and then arrives
+ * inline in the HTML of every page. One two-megabyte photo made every
+ * navigation a five-megabyte download.
+ */
+const MAX_AVATAR_EDGE = 256;
+
+/** Good enough for a circle this size, and a fraction of the bytes. */
+const AVATAR_QUALITY = 0.85;
+
+/**
+ * Shrinks the picture in the browser before it is ever sent.
+ *
+ * Done here rather than on the server because the point is to avoid moving the
+ * large version at all. Falls back to the original data URL if anything about
+ * the canvas path fails, so a browser that will not decode the format still
+ * gets the photo saved rather than an error.
+ */
+async function downscaleImage(dataUrl: string): Promise<string> {
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("decode failed"));
+      element.src = dataUrl;
+    });
+
+    const longest = Math.max(image.width, image.height);
+    const scale = longest > MAX_AVATAR_EDGE ? MAX_AVATAR_EDGE / longest : 1;
+
+    const canvas = document.createElement("canvas");
+
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+
+    const context = canvas.getContext("2d");
+
+    if (!context) return dataUrl;
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const encoded = canvas.toDataURL("image/webp", AVATAR_QUALITY);
+
+    // Safari used to hand back a PNG when asked for WebP, which can be larger
+    // than the original for a photograph. Keep whichever is actually smaller.
+    const jpeg = canvas.toDataURL("image/jpeg", AVATAR_QUALITY);
+    const best = [encoded, jpeg, dataUrl]
+      .filter((candidate) => candidate.startsWith("data:image/"))
+      .sort((a, b) => a.length - b.length)[0];
+
+    return best ?? dataUrl;
+  } catch {
+    return dataUrl;
+  }
+}
+
 export function ProfileSettingsForm({ user }: ProfileSettingsFormProps) {
   const router = useRouter();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user.avatarUrl);
@@ -54,9 +116,11 @@ export function ProfileSettingsForm({ user }: ProfileSettingsFormProps) {
         return;
       }
 
-      setError(null);
-      setAvatarPreview(result);
-      setAvatarPayload(result);
+      void downscaleImage(result).then((stored) => {
+        setError(null);
+        setAvatarPreview(stored);
+        setAvatarPayload(stored);
+      });
     };
     reader.readAsDataURL(file);
   }

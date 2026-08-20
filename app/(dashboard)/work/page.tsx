@@ -186,8 +186,14 @@ export default async function WorkPage({
             </CardHeader>
           </Card>
 
-          <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <Card>
+          {/*
+            * min-w-0 on both children is what actually stops the sideways
+            * scroll. A grid item defaults to min-width:auto and refuses to
+            * shrink below its content, so one wide table stretched the column
+            * and took the panel beside it with it.
+            */}
+          <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+            <Card className="min-w-0">
               <CardHeader>
                 <CardTitle>Team Workload</CardTitle>
                 <CardDescription>
@@ -199,7 +205,9 @@ export default async function WorkPage({
               </CardContent>
             </Card>
 
-            <ActivityFeed activities={data.recentActivity} />
+            <div className="min-w-0">
+              <ActivityFeed activities={data.recentActivity} />
+            </div>
           </section>
 
           <Card>

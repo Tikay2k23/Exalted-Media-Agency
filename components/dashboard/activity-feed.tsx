@@ -27,15 +27,22 @@ export function ActivityFeed({
               key={activity.id}
               className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <p className="min-w-0 truncate text-sm font-medium text-slate-800">
                   {activity.actor?.name ?? "System"}
                 </p>
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
+                {/*
+                  * The wide letter-spacing is dropped below sm. A full date and
+                  * time at 0.24em is wider than a phone, and it was pushing the
+                  * timestamp onto its own overflowing line.
+                  */}
+                <p className="shrink-0 text-xs uppercase text-slate-400 sm:tracking-[0.24em]">
                   {formatDateTime(activity.createdAt)}
                 </p>
               </div>
-              <p className="mt-2 text-sm text-slate-600">{activity.action}</p>
+              {/* Log lines carry client names and URLs, which do not wrap on
+                  their own. */}
+              <p className="mt-2 break-words text-sm text-slate-600">{activity.action}</p>
             </div>
           ))
         ) : (
