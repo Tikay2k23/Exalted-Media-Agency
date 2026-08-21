@@ -128,7 +128,7 @@ export function ClientContacts({
         )}
 
         {isAdding ? (
-          <form action={submit} className="grid gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2">
+          <form action={submit} className="grid grid-cols-[minmax(0,1fr)] gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-600">Name</span>
               <Input name="name" required />

@@ -215,7 +215,7 @@ export function AddTaskDialog({
             />
           </Field>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
             <Field label="Assign to" required>
               <Select
                 className="h-9 text-sm"

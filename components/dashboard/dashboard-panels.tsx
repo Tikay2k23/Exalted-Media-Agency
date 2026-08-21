@@ -510,7 +510,7 @@ export function RecentActivity({
       {events.length === 0 ? (
         <Empty>No recent activity yet.</Empty>
       ) : (
-        <ul className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 p-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
           {events.map((event) => {
             const look = activityLook(event.action);
 

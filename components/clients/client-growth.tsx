@@ -360,7 +360,7 @@ export function ClientGrowth({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Stage</span>
                 <Select name="stage" defaultValue={renewal.stage}>
@@ -484,7 +484,7 @@ export function ClientGrowth({
               <span className="text-sm font-medium text-slate-600">What is the opportunity?</span>
               <Input name="title" required placeholder="Add Google Ads alongside Meta" />
             </label>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Type</span>
                 <Select name="type" defaultValue={expansionTypes[0]?.value}>
@@ -570,7 +570,7 @@ export function ClientGrowth({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Format</span>
                 <Select name="format" defaultValue={editingTestimonial?.format ?? "WRITTEN"}>
@@ -672,7 +672,7 @@ export function ClientGrowth({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Who were we referred to?</span>
                 <Input name="contactName" required />

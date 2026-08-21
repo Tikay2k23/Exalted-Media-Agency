@@ -183,7 +183,7 @@ export function WhatHappensNext({
       </div>
 
       {shown.length > 0 ? (
-        <ul className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+        <ul className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-2 sm:grid-cols-2">
           {shown.map((requirement) => (
             <li key={requirement.key} className="flex items-start gap-2">
               <Tick done={requirement.satisfied} />
@@ -441,7 +441,7 @@ export function StageRequirementsCard({
         </Quiet>
       ) : (
         <>
-          <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-4 sm:grid-cols-2">
             <RequirementList
               heading="Required"
               items={groups.required.slice(0, limit)}

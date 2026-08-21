@@ -337,7 +337,7 @@ export function ClientHealth({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Status</span>
                 <Select name="status" defaultValue={currentStatus === "NOT_ASSESSED" ? "GREEN" : currentStatus}>
@@ -397,7 +397,7 @@ export function ClientHealth({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">What is the complaint?</span>
                 <Input name="title" required minLength={3} />
@@ -476,7 +476,7 @@ export function ClientHealth({
                 defaultValue={editingPlan?.actions ?? ""}
               />
             </label>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Status</span>
                 <Select name="status" defaultValue={editingPlan?.status ?? "ACTIVE"}>

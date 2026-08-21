@@ -99,7 +99,7 @@ export function AccountDetailsForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={submit} className="grid gap-4 sm:grid-cols-2">
+        <form action={submit} className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
           <Field label="Account owner" hint="Who at the agency owns this relationship.">
             <select
               name="assignedUserId"

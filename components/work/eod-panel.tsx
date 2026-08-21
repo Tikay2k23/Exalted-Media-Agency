@@ -169,7 +169,7 @@ export function EodPanel({
               />
             </Field>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
               <Field label="Current progress">
                 <Select
                   className="h-9 text-xs"

@@ -111,7 +111,7 @@ export default async function SettingsPage() {
         </Card>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <section className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <ProfileSettingsForm
           user={{
             name: user.name,

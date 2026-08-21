@@ -218,7 +218,7 @@ export function LeadFormDialog({
         </>
       }
     >
-      <form id="lead-form" action={submit} className="grid gap-4 sm:grid-cols-2">
+      <form id="lead-form" action={submit} className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
         <Field label="Contact name">
           <Input name="contactName" defaultValue={lead?.contactName ?? ""} required />
         </Field>

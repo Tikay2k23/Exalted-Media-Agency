@@ -273,7 +273,7 @@ export default async function ClientDetailPage({
 
           contacts: (
             <div className="space-y-6">
-              <section className="grid items-start gap-6 xl:grid-cols-2">
+              <section className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 xl:grid-cols-2">
                 <AccountDetailsForm
                   clientId={client.id}
                   canEdit={canManageClient}
@@ -297,7 +297,7 @@ export default async function ClientDetailPage({
                 />
               </section>
               {canManageClient ? (
-                <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <section className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                   <ClientForm
                     users={options.users}
                     stages={options.stages}

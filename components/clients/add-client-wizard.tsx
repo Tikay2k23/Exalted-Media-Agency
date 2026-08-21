@@ -237,7 +237,7 @@ export function AddClientWizard({
           ) : null}
 
           {step === 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Field label="Business name">
                   <Input
@@ -308,7 +308,7 @@ export function AddClientWizard({
                 </div>
               ) : null}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                 <Field label="Monthly fee">
                   <Input
                     type="number"
@@ -365,7 +365,7 @@ export function AddClientWizard({
                   onChange={(event) => set("mainProblem", event.target.value)}
                 />
               </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                 <Field label="Who are their customers?">
                   <Input
                     value={values.targetAudience}

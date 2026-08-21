@@ -242,7 +242,7 @@ export function ClientAccess({
         )}
 
         {adding ? (
-          <form action={submit} className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2">
+          <form action={submit} className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2">
             <Field label="Platform">
               <select name="platform" defaultValue="GOHIGHLEVEL" className={fieldClass}>
                 {PLATFORMS.map((platform) => (

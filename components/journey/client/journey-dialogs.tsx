@@ -480,7 +480,7 @@ export function JourneyFlagDialog({
           <textarea name="detail" rows={2} className={areaClass} />
         </Field>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
           <Field label={fields.party}>
             <input name="party" className={fieldClass} />
           </Field>

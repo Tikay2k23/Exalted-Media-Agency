@@ -246,7 +246,7 @@ export function LeadImportDialog({
                 all work.
               </p>
 
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
                 <label className="block space-y-1">
                   <span className="text-xs font-medium text-slate-700">
                     If a lead already exists

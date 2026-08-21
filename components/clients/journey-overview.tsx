@@ -58,7 +58,7 @@ export function JourneyOverview({
     <Card>
       <CardContent className="space-y-5 p-6">
         {/* Where it is, and who has it. */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-4">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Stage</p>
             <p className="mt-1.5 text-lg font-semibold text-slate-950">{stageName}</p>

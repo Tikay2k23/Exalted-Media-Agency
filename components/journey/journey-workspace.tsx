@@ -224,7 +224,7 @@ export function JourneyWorkspace({
         })}
       </div>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* Left column */}
         <div className="min-w-0 space-y-4">
           {/* Needs Attention */}
@@ -246,7 +246,7 @@ export function JourneyWorkspace({
                 ) : null}
               </header>
 
-              <div className="grid gap-2.5 p-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 p-4 sm:grid-cols-2 xl:grid-cols-4">
                 {shownAttention.map((item) => (
                   <div
                     key={`${item.clientId}-${item.key}`}
@@ -353,7 +353,7 @@ export function JourneyWorkspace({
             </div>
 
             {showFilters ? (
-              <div className="grid gap-2 border-y border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-2 border-y border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-2 xl:grid-cols-5">
                 <select
                   value={filters.stageId}
                   onChange={(event) => patch({ stageId: event.target.value })}

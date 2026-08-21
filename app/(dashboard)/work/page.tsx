@@ -192,7 +192,7 @@ export default async function WorkPage({
             * shrink below its content, so one wide table stretched the column
             * and took the panel beside it with it.
             */}
-          <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <section className="grid grid-cols-[minmax(0,1fr)] min-w-0 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
             <Card className="min-w-0">
               <CardHeader>
                 <CardTitle>Team Workload</CardTitle>

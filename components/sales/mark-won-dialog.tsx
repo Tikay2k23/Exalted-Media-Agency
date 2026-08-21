@@ -270,7 +270,7 @@ export function MarkWonDialog({
                 </p>
               ) : null}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                 <Field label="Final deal value">
                   <input
                     name="finalValue"
@@ -325,7 +325,7 @@ export function MarkWonDialog({
                 <legend className="text-sm font-medium text-slate-600">
                   Payment status
                 </legend>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
                   {(
                     [
                       {
@@ -444,7 +444,7 @@ export function MarkWonDialog({
                 </fieldset>
               ) : null}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                 <Field
                   label="Project manager"
                   hint={

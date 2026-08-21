@@ -289,7 +289,7 @@ export function FulfillmentTable({
               </summary>
 
               <div className="space-y-5 border-t border-slate-100 px-5 py-5">
-                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                   <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
                       Task Brief
@@ -390,7 +390,7 @@ export function FulfillmentTable({
                   </div>
                 </div>
 
-                <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[0.95fr_1.05fr]">
                   <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>

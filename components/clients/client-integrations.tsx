@@ -57,7 +57,7 @@ export function ClientIntegrations({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             What the sync will store
           </p>
-          <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+          <dl className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
             {fields.map(([label, description]) => (
               <div key={label} className="rounded-xl border border-slate-200 p-3">
                 <dt className="text-xs font-medium text-slate-800">{label}</dt>

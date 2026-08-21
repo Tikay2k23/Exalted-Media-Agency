@@ -197,10 +197,10 @@ export function AssignTaskForm({
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
       <form action={submit} className="space-y-4">
         {/* Row 1 — what, who, when */}
-        <div className="grid gap-4 md:grid-cols-[2fr_1.5fr_1fr]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[2fr_1.5fr_1fr]">
           <Field label="Task title" required>
             <Input name="title" placeholder="Build monthly paid social insights deck" required />
           </Field>
@@ -226,7 +226,7 @@ export function AssignTaskForm({
         </div>
 
         {/* Row 2 — how urgent, what kind, how long, where it starts */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-4">
           <Field label="Priority">
             <Select name="priority" defaultValue="MEDIUM">
               {PRIORITIES.map((option) => (
@@ -265,7 +265,7 @@ export function AssignTaskForm({
         </div>
 
         {/* Row 3 — who it is for, and where */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-4">
           <Field label="Client / account">
             <Select
               name="clientId"
@@ -309,7 +309,7 @@ export function AssignTaskForm({
         </div>
 
         {/* Row 4 — what done looks like, who checks it, when it starts */}
-        <div className="grid gap-4 md:grid-cols-[2fr_1.2fr_1fr]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[2fr_1.2fr_1fr]">
           <Field
             label="Deliverable / expected outcome"
             hint="What exactly should exist when this is finished?"
@@ -337,7 +337,7 @@ export function AssignTaskForm({
         </div>
 
         {/* Row 5 — the brief and what they need to do it */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
           <Field label="Agency brief / instructions">
             <Textarea
               name="note"
@@ -358,7 +358,7 @@ export function AssignTaskForm({
         </div>
 
         {/* Row 6 — how success is judged, what is in the way, how often */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-3">
           <Field label="KPI / success metric">
             <Input name="kpi" placeholder="CPL below 30 and increase leads by 20%" />
           </Field>

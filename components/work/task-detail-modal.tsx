@@ -297,7 +297,7 @@ export function TaskDetailModal({
                 </div>
               ) : null}
 
-              <dl className="grid gap-x-8 sm:grid-cols-2">
+              <dl className="grid grid-cols-[minmax(0,1fr)] gap-x-8 sm:grid-cols-2">
                 <div className="divide-y divide-slate-100">
                   <Pair label="Client">
                     {task.client ? (

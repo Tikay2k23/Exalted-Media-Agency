@@ -175,7 +175,7 @@ export function ClientLaunches({
               ) : null}
 
               {/* The two things that make a bad launch survivable. */}
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5">
                   <input
                     type="checkbox"
@@ -217,7 +217,7 @@ export function ClientLaunches({
                 <p className="text-sm font-medium text-slate-700">
                   Checklist — {launch.completedRequired} of {launch.totalRequired} done
                 </p>
-                <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1.5 sm:grid-cols-2">
                   {launch.checklistItems.map((item) => (
                     <li key={item.id} className="flex items-start gap-2.5">
                       <button
@@ -350,7 +350,7 @@ export function ClientLaunches({
                 () => setCreating(false),
               )
             }
-            className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
+            className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
           >
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-600">Launch name</span>

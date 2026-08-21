@@ -547,7 +547,7 @@ export function WeeklyWorkBoard({
                     Nobody is set up to report this week.
                   </p>
                 ) : (
-                  <div className="grid gap-3 p-4 sm:grid-cols-2 2xl:grid-cols-4">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3 p-4 sm:grid-cols-2 2xl:grid-cols-4">
                     {memberSummaries.map((member) => (
                       <button
                         key={member.userId}
@@ -846,7 +846,7 @@ export function WeeklyWorkBoard({
                     No entries have been written yet.
                   </p>
                 ) : (
-                  <ul className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-4">
+                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 p-4 md:grid-cols-2 2xl:grid-cols-4">
                     {recentActivity.map((item) => (
                       <li
                         key={item.id}

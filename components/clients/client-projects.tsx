@@ -258,7 +258,7 @@ export function ClientProjects({
                           () => setAddingMilestoneTo(null),
                         )
                       }
-                      className="mt-3 grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_auto_auto_auto]"
+                      className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_auto_auto_auto]"
                     >
                       <Input name="name" placeholder="Milestone name" required />
                       <Input name="dueDate" type="date" />
@@ -303,7 +303,7 @@ export function ClientProjects({
                 () => setCreating(false),
               )
             }
-            className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
+            className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
           >
             <Field label="Project name">
               <Input name="name" placeholder="e.g. Website and funnel build" required />

@@ -80,7 +80,7 @@ export default async function LoginPage() {
   const assets = brandAssets();
 
   return (
-    <main className="grid h-[100svh] overflow-hidden lg:grid-cols-[1fr_minmax(30rem,0.8fr)] xl:grid-cols-[1fr_minmax(36rem,0.85fr)]">
+    <main className="grid grid-cols-[minmax(0,1fr)] h-[100svh] overflow-hidden lg:grid-cols-[1fr_minmax(30rem,0.8fr)] xl:grid-cols-[1fr_minmax(36rem,0.85fr)]">
       <BrandPanel
         hasLightLogo={assets.hasLightLogo}
         hasBackground={assets.hasBackground}

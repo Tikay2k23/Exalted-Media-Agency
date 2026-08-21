@@ -281,7 +281,7 @@ export function ClientQuality({
                             () => setClosingId(null),
                           )
                         }
-                        className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2"
+                        className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2"
                       >
                         <Field label="Resolution">
                           <select name="resolution" defaultValue="CLOSED" className={fieldClass}>
@@ -358,7 +358,7 @@ export function ClientQuality({
                 () => setRaising(false),
               )
             }
-            className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
+            className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
           >
             <Field label="What is wrong?">
               <Input name="title" placeholder="Contact form does not send" required />
@@ -547,7 +547,7 @@ export function ClientQuality({
                   () => setAddingPlan(false),
                 )
               }
-              className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
+              className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
             >
               <Field label="Plan name">
                 <Input name="name" placeholder="e.g. Website pre-launch QA" required />

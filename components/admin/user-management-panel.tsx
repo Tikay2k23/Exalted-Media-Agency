@@ -155,7 +155,7 @@ export function UserManagementPanel({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={handleCreate} className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <form action={handleCreate} className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-6">
             <Input name="name" placeholder="Full name" required />
             <Input
               name="email"

@@ -632,7 +632,7 @@ export function OpportunityWorkspace({
         ) : null}
 
         {showMore ? (
-          <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="block">
               <span className="mb-1 block text-[11px] font-medium text-slate-600">Tag</span>
               <Select

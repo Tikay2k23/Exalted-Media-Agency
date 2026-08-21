@@ -508,7 +508,7 @@ export function OpportunityDrawer({
                   />
 
                   <Section title="Contact">
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-3">
                       <Field label="Primary contact">{lead.contactName}</Field>
                       <Field label="Business">{lead.businessName}</Field>
                       <Field label="Email">{lead.email ?? "—"}</Field>
@@ -533,7 +533,7 @@ export function OpportunityDrawer({
                       on blur, so nothing needs a Save button beside it.
                     */}
                     {canEdit ? (
-                      <div className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-3">
                         <label className="block">
                           <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-400">
                             Opportunity name
@@ -587,7 +587,7 @@ export function OpportunityDrawer({
                       </div>
                     ) : null}
 
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-3">
                       <Field label="Name">{opportunityLabel(lead)}</Field>
                       <Field label="Pipeline">The Exalted Media – Sales</Field>
                       <Field label="Stage">{lead.stageName ?? "—"}</Field>
@@ -809,7 +809,7 @@ export function OpportunityDrawer({
                   title="Lead Qualification"
                   hint="Captured when the lead came in, and editable from Edit on the opportunity menu."
                 >
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                     <Field label="Main problem">{lead.mainProblem ?? "Not captured"}</Field>
                     <Field label="Goal">{lead.goal ?? "Not captured"}</Field>
                     <Field label="Current solution">
@@ -855,7 +855,7 @@ export function OpportunityDrawer({
                   title="Proposal and Sales"
                   hint="The proposal clock runs from the date it went out."
                 >
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-3">
                     <Field label="Proposal sent">{day(lead.proposalSentAt)}</Field>
                     <Field label="Proposal value">
                       {lead.proposalValue ? money(lead.proposalValue) : "—"}
@@ -898,7 +898,7 @@ export function OpportunityDrawer({
                     <Empty>Loading…</Empty>
                   ) : data?.client ? (
                     <div className="space-y-3">
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                         <Field label="Client">{data.client.companyName}</Field>
                         <Field label="Account status">
                           {formatEnumLabel(data.client.status)}
@@ -935,7 +935,7 @@ export function OpportunityDrawer({
                   title="Book / Update Appointment"
                   hint="The strategy call is the appointment this pipeline books."
                 >
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                     <Field label="Strategy call">{when(lead.strategyCallAt)}</Field>
                     <Field label="Outcome">
                       {lead.strategyCallStatus

@@ -478,7 +478,7 @@ export function AddLeadDialog({
 
               {!forExistingContact ? (
                 <Group title="Basic information">
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                     <Labelled label="Contact name" required>
                       <Input
                         className="h-9 text-sm"
@@ -554,7 +554,7 @@ export function AddLeadDialog({
               ) : null}
 
               <Group title="Sales information">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                   <Labelled label="Opportunity name">
                     <Input
                       className="h-9 text-sm"
@@ -656,7 +656,7 @@ export function AddLeadDialog({
               </Group>
 
               <Group title="Ownership and next step">
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
                   <Labelled label="Assigned to">
                     <Select
                       className="h-9 text-sm"
@@ -705,7 +705,7 @@ export function AddLeadDialog({
                 title="Qualification details"
                 hint="Optional. Fill these in now or from the opportunity later."
               >
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                   <Labelled label="Main problem">
                     <Textarea
                       rows={2}
@@ -745,7 +745,7 @@ export function AddLeadDialog({
                 title="Advanced tracking"
                 hint="Campaign and UTM detail. Never required for a lead typed in by hand."
               >
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                   <Labelled label="Campaign">
                     <Input
                       className="h-9 text-sm"

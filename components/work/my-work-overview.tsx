@@ -365,7 +365,7 @@ export function MyWorkOverview({
             {clients.length === 0 ? (
               <Empty>No client work is currently assigned to you.</Empty>
             ) : (
-              <div className="grid gap-3 p-4 sm:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 p-4 sm:grid-cols-2 2xl:grid-cols-3">
                 {clients.map((client) => (
                   <div
                     key={client.id ?? "internal"}
@@ -542,7 +542,7 @@ export function MyWorkOverview({
         {activity.length === 0 ? (
           <Empty>No recent activity yet.</Empty>
         ) : (
-          <ul className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
             {activity.map((event) => {
               const look = activityLook(event.action);
 

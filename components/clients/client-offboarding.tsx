@@ -218,7 +218,7 @@ export function ClientOffboarding({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Why are they leaving?</span>
                 <Select name="reason" defaultValue={offboarding.reason}>

@@ -151,14 +151,14 @@ export function ClientOverview({
   });
 
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
       {/* Account summary */}
       <section className="rounded-2xl border border-slate-200 bg-white xl:row-span-1">
         <header className="border-b border-slate-100 p-4">
           <h2 className="text-sm font-semibold text-slate-950">Account Summary</h2>
         </header>
 
-        <div className="grid gap-5 p-4 sm:grid-cols-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 p-4 sm:grid-cols-3">
           <div className="space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
               Progress

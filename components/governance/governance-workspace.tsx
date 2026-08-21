@@ -332,7 +332,7 @@ export function GovernanceWorkspace({
               }
               className="space-y-3 rounded-2xl border border-slate-200 p-4"
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-600">Type</span>
                   <Select name="type" defaultValue={auditTypes[0]?.value}>
@@ -544,7 +544,7 @@ export function GovernanceWorkspace({
                 <span className="text-sm font-medium text-slate-600">What is being corrected</span>
                 <Input name="title" required />
               </label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-600">Owner</span>
                   <Select name="ownerId" defaultValue="">
@@ -698,7 +698,7 @@ export function GovernanceWorkspace({
                 </span>
                 <textarea name="problem" rows={2} required className={areaClass} />
               </label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-600">
                     Where it came from
@@ -798,7 +798,7 @@ export function GovernanceWorkspace({
               }
               className="space-y-3 rounded-2xl border border-slate-200 p-4"
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-slate-600">Who</span>
                   <Select name="userId" required defaultValue="">

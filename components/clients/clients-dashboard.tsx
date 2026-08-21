@@ -618,7 +618,7 @@ export function ClientsDashboard({
         </div>
 
         {showFilters ? (
-          <div className="grid gap-2 border-b border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2 border-b border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
             <Select
               className="h-9 text-xs"
               value={filters.ownerId}

@@ -265,7 +265,7 @@ export function ClientJourneyView({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 border-t border-slate-100 pt-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4 border-t border-slate-100 pt-3 sm:grid-cols-3">
           <div className="flex items-center gap-2">
             <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
             <div className="min-w-0">
@@ -323,7 +323,7 @@ export function ClientJourneyView({
       {/* ---------------------------------------------------------------- */}
       {/* Body                                                              */}
       {/* ---------------------------------------------------------------- */}
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_19rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] min-w-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_19rem]">
         {/*
           * On a phone the order is the reading order: what is next, then what
           * is wrong, then the detail. Needs Attention is pulled up out of the

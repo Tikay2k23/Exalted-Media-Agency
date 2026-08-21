@@ -101,7 +101,7 @@ export function ClientForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+        <form onSubmit={handleSubmit} className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-medium text-slate-600">Primary contact</span>
             <Input

@@ -200,7 +200,7 @@ export function ClientInvoices({
                   {payingId === invoice.id ? (
                     <form
                       action={(formData) => submitPayment(invoice.id, formData)}
-                      className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
+                      className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
                     >
                       <Field label="Amount received">
                         <Input
@@ -270,7 +270,7 @@ export function ClientInvoices({
         {raising ? (
           <form
             action={raiseInvoice}
-            className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
+            className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2"
           >
             <Field label="Amount">
               <Input name="amountDue" type="number" min="0" step="0.01" required />

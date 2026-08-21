@@ -420,7 +420,7 @@ export function SalesBoard({
         title="Needs Action"
         subtitle="Click one to filter the pipeline above."
       >
-        <div className="grid gap-2.5 p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 p-4 sm:grid-cols-2 lg:grid-cols-5">
           {actions.map((card) => (
             <button
               key={card.key}
