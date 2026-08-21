@@ -1,5 +1,8 @@
+"use client";
+
 import { UserRound } from "lucide-react";
 import Image from "next/image";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,8 +13,22 @@ interface AvatarProps {
   className?: string;
 }
 
+/**
+ * A photo when there is one, initials when there is not.
+ *
+ * Initials also cover an image that fails to load. A stored avatar can be
+ * bytes no browser can decode - a phone once supplied a HEIC file labelled as
+ * WebP, and the label is not something to trust - and the difference between
+ * a broken-image glyph and somebody's initials is the difference between the
+ * app looking faulty and the photo simply being absent.
+ */
 export function Avatar({ src, alt, fallback, className }: AvatarProps) {
-  if (src) {
+  // Which src failed, rather than a boolean. Remembering the value means a
+  // different person, or a re-upload, gets a fresh attempt on its own - no
+  // effect resetting state after the fact, which only causes a second render.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  if (src && failedSrc !== src) {
     const isDataUrl = src.startsWith("data:");
 
     return (
@@ -22,6 +39,7 @@ export function Avatar({ src, alt, fallback, className }: AvatarProps) {
           fill
           sizes="80px"
           unoptimized={isDataUrl}
+          onError={() => setFailedSrc(src)}
           className="object-cover"
         />
       </div>
@@ -39,3 +57,4 @@ export function Avatar({ src, alt, fallback, className }: AvatarProps) {
     </div>
   );
 }
+

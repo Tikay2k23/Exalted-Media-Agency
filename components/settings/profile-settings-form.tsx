@@ -43,7 +43,18 @@ const AVATAR_QUALITY = 0.85;
  * the canvas path fails, so a browser that will not decode the format still
  * gets the photo saved rather than an error.
  */
-async function downscaleImage(dataUrl: string): Promise<string> {
+/**
+ * Shrink an uploaded photo, and refuse anything the browser cannot read.
+ *
+ * Only ever returns bytes the canvas produced. That matters more than the
+ * resizing: a phone can hand over a HEIC file - and label it as something
+ * else - and no browser but Safari can decode HEIC. The earlier version fell
+ * back to storing the uploaded bytes whenever the decode failed, so an iPhone
+ * photo was saved verbatim under an image/webp label and rendered as a broken
+ * image everywhere it was shown. Returning null instead lets the caller say so
+ * rather than storing something unreadable.
+ */
+async function downscaleImage(dataUrl: string): Promise<string | null> {
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const element = new Image();
@@ -52,6 +63,11 @@ async function downscaleImage(dataUrl: string): Promise<string> {
       element.onerror = () => reject(new Error("decode failed"));
       element.src = dataUrl;
     });
+
+    // A file the browser cannot decode can still fire onload with no pixels.
+    if (!image.width || !image.height) {
+      return null;
+    }
 
     const longest = Math.max(image.width, image.height);
     const scale = longest > MAX_AVATAR_EDGE ? MAX_AVATAR_EDGE / longest : 1;
@@ -63,22 +79,27 @@ async function downscaleImage(dataUrl: string): Promise<string> {
 
     const context = canvas.getContext("2d");
 
-    if (!context) return dataUrl;
+    if (!context) {
+      return null;
+    }
 
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    const encoded = canvas.toDataURL("image/webp", AVATAR_QUALITY);
-
     // Safari used to hand back a PNG when asked for WebP, which can be larger
-    // than the original for a photograph. Keep whichever is actually smaller.
-    const jpeg = canvas.toDataURL("image/jpeg", AVATAR_QUALITY);
-    const best = [encoded, jpeg, dataUrl]
-      .filter((candidate) => candidate.startsWith("data:image/"))
-      .sort((a, b) => a.length - b.length)[0];
+    // than the original for a photograph. Keep whichever is actually smaller -
+    // but only ever these two, never the file that came in.
+    const candidates = [
+      canvas.toDataURL("image/webp", AVATAR_QUALITY),
+      canvas.toDataURL("image/jpeg", AVATAR_QUALITY),
+    ].filter((candidate) => /^data:image\/(webp|jpeg|png);base64,/.test(candidate));
 
-    return best ?? dataUrl;
+    if (!candidates.length) {
+      return null;
+    }
+
+    return candidates.sort((a, b) => a.length - b.length)[0];
   } catch {
-    return dataUrl;
+    return null;
   }
 }
 
@@ -117,6 +138,15 @@ export function ProfileSettingsForm({ user }: ProfileSettingsFormProps) {
       }
 
       void downscaleImage(result).then((stored) => {
+        if (!stored) {
+          setError(
+            "We couldn't read that image. iPhone photos are often saved as HEIC,"
+            + " which browsers cannot display - choose JPEG or PNG in your camera"
+            + " settings, or export the photo before uploading it.",
+          );
+          return;
+        }
+
         setError(null);
         setAvatarPreview(stored);
         setAvatarPayload(stored);
