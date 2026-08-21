@@ -127,10 +127,29 @@ export interface EvaluableClient {
   offboarding: EvaluableOffboarding | null;
 }
 
+/**
+ * Whose desk a requirement sits on.
+ *
+ * A role rather than a person. The requirements table has to answer "who do I
+ * chase about this" for every row, and most of these are owned by whoever
+ * holds the seat rather than by a named individual - the contract is Sales'
+ * job on every account, not one person's. Where a real person is knowable, the
+ * page shows them alongside this (the stage owner, the assigned PM).
+ */
+export type RequirementOwner =
+  | "Agency Owner"
+  | "Project Manager"
+  | "Sales Rep"
+  | "Sales / Finance"
+  | "Specialist"
+  | "Client";
+
 export interface RequirementDefinition {
   key: string;
   label: string;
   description: string;
+  /** The seat responsible for getting this done. */
+  owner: RequirementOwner;
   /** Returns null when satisfied, or a human-readable reason when not. */
   check: (client: EvaluableClient) => string | null;
 }
@@ -157,6 +176,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "account_owner_assigned",
     label: "Account owner assigned",
+    owner: "Agency Owner",
     description: "Someone at the agency owns this relationship.",
     check: (client) =>
       client.assignedUserId ? null : "No team member is assigned to this account.",
@@ -164,6 +184,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "primary_contact_recorded",
     label: "Primary client contact recorded",
+    owner: "Project Manager",
     description: "A named contact exists on the client side.",
     check: (client) =>
       client.contacts.some((contact) => contact.isPrimary)
@@ -173,6 +194,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "client_approver_recorded",
     label: "Authorized approver recorded",
+    owner: "Project Manager",
     description: "A contact is authorized to sign off on deliverables.",
     check: (client) =>
       client.contacts.some((contact) => contact.isApprover)
@@ -182,6 +204,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "contract_recorded",
     label: "Contract recorded",
+    owner: "Sales Rep",
     description: "Contract start date and monthly value are on file.",
     check: (client) => {
       const missing: string[] = [];
@@ -200,6 +223,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "project_exists",
     label: "Delivery project created",
+    owner: "Project Manager",
     description: "Production work is tracked under a project.",
     check: (client) =>
       client.projects.length ? null : "This account has no delivery project yet.",
@@ -207,6 +231,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "project_manager_assigned",
     label: "Project manager assigned",
+    owner: "Agency Owner",
     description: "Every delivery project has a named manager.",
     check: (client) => {
       if (!client.projects.length) {
@@ -223,6 +248,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "work_assigned",
     label: "Work assigned to the team",
+    owner: "Project Manager",
     description: "At least one work item exists and every item has an owner.",
     check: (client) => {
       if (!client.agencyTasks.length) {
@@ -241,6 +267,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "onboarding_tasks_complete",
     label: "Onboarding work complete",
+    owner: "Project Manager",
     description: "No onboarding work item is still open.",
     check: (client) => {
       const open = openTasksInCategory(client, "ONBOARDING");
@@ -252,6 +279,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "strategy_tasks_complete",
     label: "Strategy work complete",
+    owner: "Project Manager",
     description: "No strategy work item is still open.",
     check: (client) => {
       const open = openTasksInCategory(client, "STRATEGY");
@@ -263,6 +291,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "production_work_complete",
     label: "Production work complete",
+    owner: "Specialist",
     description: "No production work item is still open.",
     check: (client) => {
       // The categories that represent building something for the client.
@@ -297,6 +326,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "qa_tasks_complete",
     label: "Quality assurance passed",
+    owner: "Specialist",
     description: "No quality assurance work item is still open.",
     check: (client) => {
       const open = openTasksInCategory(client, "QUALITY_ASSURANCE");
@@ -308,6 +338,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "revisions_complete",
     label: "Revisions closed",
+    owner: "Specialist",
     description: "No revision work item is still open.",
     check: (client) => {
       const open = openTasksInCategory(client, "REVISION");
@@ -319,6 +350,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "no_critical_open_work",
     label: "No critical work outstanding",
+    owner: "Project Manager",
     description: "Nothing at critical or urgent priority is still open.",
     check: (client) => {
       const open = client.agencyTasks.filter(
@@ -335,6 +367,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "launch_owner_assigned",
     label: "Launch owner assigned",
+    owner: "Agency Owner",
     description: "A launch work item exists and has a named owner.",
     check: (client) => {
       const launchTasks = client.agencyTasks.filter((task) => task.category === "LAUNCH");
@@ -351,6 +384,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "launch_tasks_complete",
     label: "Launch work complete",
+    owner: "Project Manager",
     description: "No launch work item is still open.",
     check: (client) => {
       const open = openTasksInCategory(client, "LAUNCH");
@@ -362,6 +396,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "health_assessed",
     label: "Client health assessed",
+    owner: "Project Manager",
     description: "Somebody has assessed the account's health and said why.",
     check: (client) => {
       if (client.healthStatus === "NOT_ASSESSED") {
@@ -379,6 +414,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "renewal_date_set",
     label: "Renewal date set",
+    owner: "Project Manager",
     description: "The account has a renewal date on file.",
     check: (client) =>
       client.renewalDate ? null : "No renewal date has been recorded for this account.",
@@ -386,6 +422,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "no_open_work",
     label: "No open work items",
+    owner: "Project Manager",
     description: "Every work item on the account is closed.",
     check: (client) => {
       const open = client.agencyTasks.filter((task) => isOpenTask(task.status));
@@ -400,6 +437,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "payment_confirmed",
     label: "Payment confirmed",
+    owner: "Sales / Finance",
     description: "At least one invoice on this account has been paid.",
     check: (client) => {
       if (!client.invoices.length) {
@@ -424,6 +462,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "critical_access_collected",
     label: "Critical platform access collected",
+    owner: "Project Manager",
     description: "Every platform marked critical is granted and tested.",
     check: (client) => {
       const critical = client.accessRecords.filter((record) => record.isCritical);
@@ -450,6 +489,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "critical_access_tested",
     label: "Critical platform access tested",
+    owner: "Specialist",
     description: "Every critical platform has been logged into and verified.",
     check: (client) => {
       const critical = client.accessRecords.filter((record) => record.isCritical);
@@ -463,6 +503,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "strategy_brief_approved",
     label: "Strategy brief approved",
+    owner: "Client",
     description: "The internal project brief exists and has been approved.",
     check: (client) => {
       if (!client.strategyBrief) {
@@ -485,6 +526,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "critical_defects_closed",
     label: "Critical defects closed",
+    owner: "Specialist",
     description: "No critical defect is still open.",
     check: (client) => {
       const openCritical = client.defects.filter(
@@ -507,6 +549,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "high_defects_closed",
     label: "High severity defects closed",
+    owner: "Specialist",
     description: "No high severity defect is still open.",
     check: (client) => {
       const open = client.defects.filter(
@@ -523,6 +566,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "client_approval_recorded",
     label: "Client approval recorded",
+    owner: "Client",
     description: "A deliverable or final sign-off approval is on file, with evidence.",
     check: (client) => {
       if (hasGateSatisfyingApproval(client.approvals)) {
@@ -551,6 +595,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "backup_verified",
     label: "Backup verified and rollback plan written",
+    owner: "Specialist",
     description: "A launch record confirms a verified backup and a rollback plan.",
     check: (client) => {
       if (!client.launches.length) {
@@ -575,6 +620,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "launch_record_owned",
     label: "Launch has a named owner",
+    owner: "Agency Owner",
     description: "A launch record exists with someone accountable for it.",
     check: (client) => {
       if (!client.launches.length) {
@@ -589,6 +635,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "client_admin_access_confirmed",
     label: "Client administrator access confirmed",
+    owner: "Project Manager",
     description:
       "The client holds administrator access on their own platforms before agency access is removed.",
     check: (client) => {
@@ -604,6 +651,7 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     key: "final_billing_settled",
     label: "Final billing settled",
+    owner: "Sales / Finance",
     description: "No invoice is left unpaid, and final billing is marked settled.",
     check: (client) => {
       const outstanding = client.invoices.filter(
@@ -644,6 +692,7 @@ export interface StageRequirementRow {
 export interface RequirementEvaluation {
   key: string;
   label: string;
+  owner: RequirementOwner;
   isBlocking: boolean;
   satisfied: boolean;
   /** Why the requirement is not satisfied, or why it could not be checked. */
@@ -678,6 +727,9 @@ export function evaluateStageRequirements(
       return {
         key: requirement.requirementKey,
         label: requirement.label,
+        // An unknown rule has no known owner either; whoever runs the agency
+        // is the right person to hear that a gate is misconfigured.
+        owner: "Agency Owner",
         isBlocking: requirement.isBlocking,
         satisfied: false,
         reason:
@@ -692,6 +744,7 @@ export function evaluateStageRequirements(
     return {
       key: definition.key,
       label: requirement.label || definition.label,
+      owner: definition.owner,
       isBlocking: requirement.isBlocking,
       satisfied: reason === null,
       reason,

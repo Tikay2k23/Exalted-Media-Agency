@@ -312,6 +312,7 @@ export function buildJourneyAccount(
     return evaluateStageRequirements(client, rules).evaluations.map((evaluation) => ({
       key: evaluation.key,
       label: evaluation.label,
+      owner: evaluation.owner,
       isBlocking: evaluation.isBlocking,
       satisfied: evaluation.satisfied,
       reason: evaluation.reason,

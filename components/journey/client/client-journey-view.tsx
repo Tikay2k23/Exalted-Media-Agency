@@ -20,7 +20,8 @@ import {
   CurrentStageCard,
   MilestonesCard,
   StageRequirementsCard,
-  WhatHappensNext,
+  JourneyTimelineCard,
+  NextBestActionCard,
   WorkSummaryCard,
 } from "@/components/journey/client/journey-cards";
 import {
@@ -40,6 +41,7 @@ import {
   type FlagKind,
   type JourneyClientDetail,
   attentionCards,
+  formatDay,
   nextStep,
   stageClock,
 } from "@/lib/journey/client-detail";
@@ -49,6 +51,10 @@ import {
   deriveProgress,
   explainHealth,
 } from "@/lib/journey/journey-board";
+import {
+  TOTAL_JOURNEY_STAGES,
+  journeyStageForStoredStage,
+} from "@/lib/journey/phases";
 import { cn, formatEnumLabel } from "@/lib/utils";
 
 /**
@@ -78,6 +84,7 @@ export function ClientJourneyView({
   const [flagKind, setFlagKind] = useState<FlagKind | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
   const [showAllRequirements, setShowAllRequirements] = useState(false);
+  const [showFullJourney, setShowFullJourney] = useState(false);
   const [busyCard, setBusyCard] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +96,15 @@ export function ClientJourneyView({
   const clock = useMemo(() => stageClock(account, now), [account, now]);
   const health = useMemo(() => explainHealth(account, now), [account, now]);
   const progress = deriveProgress(account);
+  /*
+   * Stages behind the client, not including the one they are in. Read from
+   * the twelve-stage progression rather than a stored counter so it cannot
+   * disagree with the timeline directly above it.
+   */
+  const stagesCompleted = Math.max(
+    0,
+    journeyStageForStoredStage(account.stageKey, account.stagePosition).position - 1,
+  );
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -265,43 +281,101 @@ export function ClientJourneyView({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4 border-t border-slate-100 pt-3 sm:grid-cols-3">
-          <div className="flex items-center gap-2">
-            <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+        {/*
+          * The operational summary, read left to right: where the client is,
+          * whose desk it is on, how long it has sat there, where it goes next,
+          * and how far through the journey it is. Five cells rather than three
+          * because "which stage" and "what next" are the two questions asked
+          * most often, and putting them anywhere else means scrolling for them.
+          */}
+        <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wide text-slate-400">
+              Current Stage
+            </p>
+            <p className="truncate text-sm font-semibold text-slate-950">
+              {account.stageName}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+              Entered {formatDay(account.stageEnteredAt)}
+            </p>
+          </div>
+
+          <div className="flex min-w-0 items-start gap-2">
+            <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">
-                Project Manager
+                Stage Owner
               </p>
-              <p className="truncate text-xs font-semibold text-slate-800">
-                {account.projectManagerName ?? "Unassigned"}
-              </p>
+              {account.projectManagerName ? (
+                <>
+                  <p className="truncate text-sm font-semibold text-slate-950">
+                    {account.projectManagerName}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">Project Manager</p>
+                </>
+              ) : (
+                <>
+                  <p className="truncate text-sm font-semibold text-rose-600">
+                    Not assigned
+                  </p>
+                  {/*
+                    * No project manager is the single most common reason an
+                    * account sits still, so the fix is offered right here
+                    * rather than only inside Needs Attention.
+                    */}
+                  <Link
+                    href={`/clients/${account.id}?tab=overview`}
+                    className="mt-0.5 inline-block text-[11px] font-semibold text-sky-700 hover:text-sky-800"
+                  >
+                    Assign Project Manager
+                  </Link>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          <div className="flex min-w-0 items-start gap-2">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">
                 Days in Stage
               </p>
               <p
                 className={cn(
-                  "truncate text-xs font-semibold",
-                  clock.isOverTarget ? "text-rose-600" : "text-slate-800",
+                  "truncate text-sm font-semibold",
+                  clock.isOverTarget ? "text-rose-600" : "text-slate-950",
                 )}
               >
                 {clock.label}
-                {clock.remainingLabel ? (
-                  <span className="ml-1 font-normal text-slate-400">
-                    ({clock.remainingLabel})
-                  </span>
-                ) : null}
+              </p>
+              {clock.remainingLabel ? (
+                <p
+                  className={cn(
+                    "mt-0.5 truncate text-[11px]",
+                    clock.isOverTarget ? "text-rose-500" : "text-slate-400",
+                  )}
+                >
+                  {clock.remainingLabel}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex min-w-0 items-start gap-2">
+            <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                Next Stage
+              </p>
+              <p className="truncate text-sm font-semibold text-slate-950">
+                {account.nextStageName ?? "Journey complete"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Gauge className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          <div className="flex min-w-0 items-start gap-2">
+            <Gauge className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
             <div className="min-w-0 flex-1">
               <p className="text-[10px] uppercase tracking-wide text-slate-400">
                 Overall Progress
@@ -315,6 +389,9 @@ export function ClientJourneyView({
                 </div>
                 <span className="text-xs font-semibold text-slate-800">{progress}%</span>
               </div>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                {stagesCompleted} of {TOTAL_JOURNEY_STAGES} stages completed
+              </p>
             </div>
           </div>
         </div>
@@ -323,17 +400,42 @@ export function ClientJourneyView({
       {/* ---------------------------------------------------------------- */}
       {/* Body                                                              */}
       {/* ---------------------------------------------------------------- */}
-      <div className="grid grid-cols-[minmax(0,1fr)] min-w-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_19rem]">
-        {/*
-          * On a phone the order is the reading order: what is next, then what
-          * is wrong, then the detail. Needs Attention is pulled up out of the
-          * sidebar so it is not below five cards of context.
-          */}
-        <div className="min-w-0 xl:order-1">
-          <WhatHappensNext detail={detail} step={step} now={now} onPrimary={onPrimary} />
-        </div>
+      {/*
+        * Two columns, roughly 65/35, matching how the page is actually used:
+        * the left column is the work, the right column is the context you
+        * glance at while doing it. On a phone this collapses to one column in
+        * the order below, which puts Needs Attention directly under the action
+        * card rather than beneath five cards of detail.
+        */}
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
+          <NextBestActionCard
+            detail={detail}
+            step={step}
+            now={now}
+            onPrimary={onPrimary}
+            onAdvance={() => setAdvancing(true)}
+          />
 
-        <div className="min-w-0 xl:order-3">
+          <div className="xl:hidden">
+            <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
+          </div>
+
+          <StageRequirementsCard
+            detail={detail}
+            expanded={showAllRequirements}
+            onToggle={() => setShowAllRequirements((open) => !open)}
+          />
+
+          <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
+
+          <JourneyTimelineCard
+            detail={detail}
+            now={now}
+            expanded={showFullJourney}
+            onToggle={() => setShowFullJourney((open) => !open)}
+          />
+
           <CurrentStageCard
             detail={detail}
             now={now}
@@ -341,30 +443,18 @@ export function ClientJourneyView({
           />
         </div>
 
-        <div className="min-w-0 space-y-4 xl:order-2 xl:row-span-3">
-          <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
+        <div className="min-w-0 space-y-4">
+          <div className="hidden xl:block">
+            <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
+          </div>
+
+          <MilestonesCard milestones={detail.milestones} />
           <ClientInformationPanel detail={detail} />
           <RecentActivityPanel
             entries={detail.activity}
             now={now}
             clientId={account.id}
           />
-        </div>
-
-        <div className="min-w-0 xl:order-4">
-          <StageRequirementsCard
-            detail={detail}
-            expanded={showAllRequirements}
-            onToggle={() => setShowAllRequirements((open) => !open)}
-          />
-        </div>
-
-        <div className="min-w-0 xl:order-5">
-          <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
-        </div>
-
-        <div className="min-w-0 xl:order-6 xl:col-span-2">
-          <MilestonesCard milestones={detail.milestones} />
         </div>
       </div>
 

@@ -51,6 +51,7 @@ function requirement(
   return {
     key,
     label: key,
+    owner: "Project Manager",
     isBlocking,
     satisfied,
     reason: satisfied ? null : `${key} is not met`,

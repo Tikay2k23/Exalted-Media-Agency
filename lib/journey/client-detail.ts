@@ -78,6 +78,12 @@ export interface TimelineMilestone {
   source: string;
 }
 
+export interface JourneyStageStep {
+  id: string;
+  name: string;
+  position: number;
+}
+
 export interface JourneyClientDetail {
   account: JourneyAccount;
   /** Open secondary statuses, newest first. */
@@ -86,6 +92,14 @@ export interface JourneyClientDetail {
   contacts: DetailContact[];
   milestones: TimelineMilestone[];
   activity: JourneyActivityEntry[];
+  /**
+   * Every live stage in order, for the timeline.
+   *
+   * The stored stages rather than the twelve-stage display grouping: the
+   * timeline is showing this client's actual route, and operations add and
+   * retire stages in the database without a deploy.
+   */
+  stages: JourneyStageStep[];
 
   projectStartDate: string | null;
   targetLaunchDate: string | null;

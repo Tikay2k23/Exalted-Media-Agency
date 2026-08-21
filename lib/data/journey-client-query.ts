@@ -144,6 +144,9 @@ export async function getJourneyClientDetail(
     const liveStages: StageForAccount[] = stages;
 
     const account = buildJourneyAccount(client, requirementsByStageId, liveStages);
+    const stageSteps = liveStages
+      .map((stage) => ({ id: stage.id, name: stage.name, position: stage.position }))
+      .sort((a, b) => a.position - b.position);
 
     const tasks: DetailTask[] = client.agencyTasks.map((task) => ({
       id: task.id,
@@ -229,6 +232,7 @@ export async function getJourneyClientDetail(
     return {
       detail: {
         account,
+        stages: stageSteps,
         flags,
         tasks,
         contacts,

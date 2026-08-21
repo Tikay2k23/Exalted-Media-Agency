@@ -1,3 +1,4 @@
+import type { RequirementOwner } from "@/lib/journey/stage-requirements";
 import {
   JOURNEY_PHASES,
   type JourneyStage,
@@ -61,6 +62,8 @@ export const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED"];
 export interface JourneyRequirement {
   key: string;
   label: string;
+  /** The seat responsible, from the requirement catalogue. */
+  owner: RequirementOwner;
   isBlocking: boolean;
   satisfied: boolean;
   reason: string | null;

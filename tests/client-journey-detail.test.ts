@@ -43,7 +43,14 @@ function requirement(
   satisfied: boolean,
   isBlocking = true,
 ): JourneyRequirement {
-  return { key, label: key, isBlocking, satisfied, reason: satisfied ? null : "not met" };
+  return {
+    key,
+    label: key,
+    owner: "Project Manager",
+    isBlocking,
+    satisfied,
+    reason: satisfied ? null : "not met",
+  };
 }
 
 function task(overrides: Partial<DetailTask> = {}): DetailTask {
@@ -117,6 +124,7 @@ function account(overrides: Partial<JourneyAccount> = {}): JourneyAccount {
 function detail(overrides: Partial<JourneyClientDetail> = {}): JourneyClientDetail {
   return {
     account: account(),
+    stages: [],
     flags: [],
     tasks: [],
     contacts: [],

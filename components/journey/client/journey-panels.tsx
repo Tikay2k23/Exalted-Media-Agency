@@ -133,7 +133,7 @@ export function ClientInformationPanel({ detail }: { detail: JourneyClientDetail
   const primary = detail.contacts.find((contact) => contact.isPrimary) ?? detail.contacts[0];
 
   return (
-    <Card icon={Building2} title="Client Information">
+    <Card icon={Building2} title="Essential Client Info">
       <div className="divide-y divide-slate-100">
         <InfoRow label="Primary Contact" value={primary?.name ?? account.clientName} />
         <InfoRow
@@ -230,7 +230,7 @@ export function RecentActivityPanel({
   return (
     <Card
       icon={Clock}
-      title="Recent Activity"
+      title="Recent Stage Activity"
       action={
         <Link
           href={`/journey/${clientId}/history`}

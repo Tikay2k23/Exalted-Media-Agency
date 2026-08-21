@@ -2,13 +2,13 @@
 
 import {
   ArrowRight,
+  GitBranch,
   Calendar,
   Check,
   CircleCheck,
   ClipboardList,
   Flag,
   ListChecks,
-  Loader2,
   Target,
 } from "lucide-react";
 import Link from "next/link";
@@ -117,21 +117,35 @@ function Tick({ done }: { done: boolean }) {
  * this. When the account is ready to move it turns green and becomes the
  * advance control, so progression is never something to go hunting for.
  */
-export function WhatHappensNext({
+/**
+ * The single thing to do next.
+ *
+ * Deliberately framed around the current stage rather than the next one. A
+ * card headed with the stage the client is moving *to* reads like a status
+ * label; what a project manager opening this page actually needs is the list
+ * of things standing between here and there, and a button that opens them.
+ *
+ * Flips to a ready state once nothing blocking is outstanding, so the same
+ * card carries both halves of the job - finish the work, then move the client
+ * - without the page growing a second button that is wrong most of the time.
+ */
+export function NextBestActionCard({
   detail,
   step,
   now,
   onPrimary,
+  onAdvance,
 }: {
   detail: JourneyClientDetail;
   step: NextStep;
   now: Date;
   onPrimary: () => void;
+  onAdvance: () => void;
 }) {
   const { account } = detail;
   const groups = requirementGroups(account.exitCriteria);
-  const remaining = groups.outstanding.length;
   const ready = step.kind === "ready-to-advance";
+  const atEnd = !account.nextStageName;
 
   const shown = [...account.exitCriteria]
     .sort((a, b) => Number(b.satisfied) - Number(a.satisfied))
@@ -139,87 +153,94 @@ export function WhatHappensNext({
 
   return (
     <Card
-      icon={Flag}
-      title="What Happens Next"
+      icon={ready ? Flag : ListChecks}
+      title="Next Best Action"
       className={cn(ready && "border-emerald-300 ring-1 ring-emerald-100")}
+      action={
+        groups.total > 0 && !ready ? (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+            {groups.met} of {groups.total} complete
+          </span>
+        ) : null
+      }
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <h3 className="text-lg font-semibold leading-tight text-slate-950">
-          {account.nextStageName ?? "Journey complete"}
-        </h3>
-        {account.nextStageName ? (
-          <span
-            className={cn(
-              "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold",
-              ready
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700",
-            )}
-          >
-            {ready
-              ? "Ready to advance"
-              : `${remaining} requirement${remaining === 1 ? "" : "s"} remaining`}
-          </span>
-        ) : null}
-      </div>
+      <h3 className="text-lg font-semibold leading-tight text-slate-950">
+        {atEnd
+          ? "Journey complete"
+          : ready
+            ? "Ready to advance"
+            : `Complete ${account.stageName} requirements`}
+      </h3>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500">
-        <span className="inline-flex items-center gap-1.5">
-          <Calendar className="h-3.5 w-3.5 text-slate-400" aria-hidden />
-          Target:{" "}
-          <span className="font-medium text-slate-700">
-            {account.nextActionDueAt
-              ? formatDay(account.nextActionDueAt)
-              : stageTargetDate(detail, now)}
-          </span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Target className="h-3.5 w-3.5 text-slate-400" aria-hidden />
-          Owner:{" "}
-          <span className="font-medium text-slate-700">
-            {account.projectManagerName ?? "Unassigned"}
-          </span>
-        </span>
-      </div>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        {atEnd
+          ? "This account has reached the end of the journey."
+          : ready
+            ? `All required ${account.stageName} items are complete.`
+            : `Finish the items below to move this client to ${account.nextStageName}.`}
+      </p>
 
-      {shown.length > 0 ? (
-        <ul className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-2 sm:grid-cols-2">
+      {!atEnd ? (
+        <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500">
+          <span className="inline-flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-slate-400" aria-hidden />
+            Target:{" "}
+            <span className="font-medium text-slate-700">
+              {account.nextActionDueAt
+                ? formatDay(account.nextActionDueAt)
+                : stageTargetDate(detail, now)}
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Target className="h-3.5 w-3.5 text-slate-400" aria-hidden />
+            Owner:{" "}
+            <span className="font-medium text-slate-700">
+              {account.projectManagerName ?? "Unassigned"}
+            </span>
+          </span>
+        </div>
+      ) : null}
+
+      {!ready && shown.length > 0 ? (
+        <ul className="mt-4 space-y-2">
           {shown.map((requirement) => (
             <li key={requirement.key} className="flex items-start gap-2">
               <Tick done={requirement.satisfied} />
-              <span
-                className={cn(
-                  "text-xs leading-4",
-                  requirement.satisfied
-                    ? "text-slate-400 line-through"
-                    : "text-slate-700",
-                )}
-              >
-                {requirement.label}
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    "block text-xs leading-4",
+                    requirement.satisfied ? "text-slate-400" : "text-slate-700",
+                  )}
+                >
+                  {requirement.label}
+                </span>
               </span>
+              {!requirement.satisfied && requirement.isBlocking ? (
+                <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                  Blocks stage move
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="mt-4 text-xs leading-5 text-slate-500">{step.detail}</p>
-      )}
+      ) : null}
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="min-w-0 flex-1 text-[11px] leading-4 text-slate-500">
-          {step.detail}
-        </p>
-        <Button
-          size="sm"
-          onClick={onPrimary}
-          className={cn(
-            "shrink-0 gap-1.5",
-            ready && "bg-emerald-600 shadow-emerald-600/20 hover:bg-emerald-500",
+      {!atEnd ? (
+        <div className="mt-4 flex justify-end">
+          {ready ? (
+            <Button size="sm" className="gap-1.5" onClick={onAdvance}>
+              Move to {account.nextStageName}
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Button>
+          ) : (
+            <Button size="sm" className="gap-1.5" onClick={onPrimary}>
+              Complete Requirements
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Button>
           )}
-        >
-          {step.action}
-          {ready ? <ArrowRight className="h-3.5 w-3.5" aria-hidden /> : null}
-        </Button>
-      </div>
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -343,64 +364,6 @@ export function CurrentStageCard({
 /* Stage requirements                                                         */
 /* -------------------------------------------------------------------------- */
 
-function RequirementList({
-  items,
-  heading,
-  onComplete,
-  busyKey,
-}: {
-  items: JourneyRequirement[];
-  heading: string;
-  onComplete?: (requirement: JourneyRequirement) => void;
-  busyKey?: string | null;
-}) {
-  if (items.length === 0) return null;
-
-  return (
-    <div className="min-w-0">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {heading}
-      </p>
-      <ul className="space-y-1.5">
-        {items.map((requirement) => (
-          <li key={requirement.key} className="flex items-start gap-2">
-            <Tick done={requirement.satisfied} />
-            <span className="min-w-0 flex-1">
-              <span
-                className={cn(
-                  "block text-xs leading-4",
-                  requirement.satisfied ? "text-slate-400" : "text-slate-700",
-                )}
-              >
-                {requirement.label}
-              </span>
-              {!requirement.satisfied && requirement.reason ? (
-                <span className="mt-0.5 block text-[11px] leading-4 text-slate-400">
-                  {requirement.reason}
-                </span>
-              ) : null}
-            </span>
-            {!requirement.satisfied && onComplete ? (
-              <button
-                type="button"
-                onClick={() => onComplete(requirement)}
-                disabled={busyKey === requirement.key}
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 transition hover:bg-sky-50 disabled:opacity-50"
-              >
-                {busyKey === requirement.key ? (
-                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                ) : (
-                  "Fix"
-                )}
-              </button>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function StageRequirementsCard({
   detail,
   expanded,
@@ -410,9 +373,30 @@ export function StageRequirementsCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  // The gate on leaving this stage - see the note in CurrentStageCard.
   const groups = requirementGroups(detail.account.exitCriteria);
-  const limit = expanded ? Infinity : 5;
+  const rows = [...groups.required, ...groups.optional];
+  const limit = expanded ? rows.length : 8;
+  const shown = rows.slice(0, limit);
+
+  // A client-owned requirement on an account that is waiting on the client is
+  // not "missing" - somebody has already asked, and the page should say so
+  // rather than implying nobody has done anything.
+  // detail.flags carries only the live ones, so presence is enough.
+  const waitingOnClient = detail.flags.some((flag) => flag.kind === "WAITING_ON_CLIENT");
+
+  const statusOf = (requirement: JourneyRequirement) => {
+    if (requirement.satisfied) {
+      return { label: "Complete", tone: "bg-emerald-50 text-emerald-700" };
+    }
+
+    if (waitingOnClient && requirement.owner === "Client") {
+      return { label: "Waiting on Client", tone: "bg-amber-50 text-amber-700" };
+    }
+
+    return requirement.isBlocking
+      ? { label: "Missing", tone: "bg-rose-50 text-rose-700" }
+      : { label: "Pending", tone: "bg-amber-50 text-amber-700" };
+  };
 
   return (
     <Card
@@ -423,7 +407,7 @@ export function StageRequirementsCard({
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-              groups.met === groups.total
+              groups.outstanding.length === 0
                 ? "bg-emerald-50 text-emerald-700"
                 : "bg-slate-100 text-slate-600",
             )}
@@ -441,24 +425,76 @@ export function StageRequirementsCard({
         </Quiet>
       ) : (
         <>
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-4 sm:grid-cols-2">
-            <RequirementList
-              heading="Required"
-              items={groups.required.slice(0, limit)}
-            />
-            <RequirementList
-              heading="Optional"
-              items={groups.optional.slice(0, limit)}
-            />
+          {/* The table scrolls inside its own box rather than taking the page
+              sideways on a phone. */}
+          <div className="w-full min-w-0 max-w-full overflow-x-auto">
+            <table className="w-full min-w-[34rem] text-left">
+              <thead>
+                <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400">
+                  <th className="pb-2 pr-3 font-semibold">Requirement</th>
+                  <th className="pb-2 pr-3 font-semibold">Owner</th>
+                  <th className="pb-2 pr-3 font-semibold">Status</th>
+                  <th className="pb-2 font-semibold">Impact</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {shown.map((requirement) => {
+                  const status = statusOf(requirement);
+
+                  return (
+                    <tr key={requirement.key} className="align-top">
+                      <td className="py-2 pr-3">
+                        <span
+                          className={cn(
+                            "block text-xs leading-4",
+                            requirement.satisfied ? "text-slate-400" : "text-slate-700",
+                          )}
+                        >
+                          {requirement.label}
+                        </span>
+                        {!requirement.satisfied && requirement.reason ? (
+                          <span className="mt-0.5 block text-[11px] leading-4 text-slate-400">
+                            {requirement.reason}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-[11px] text-slate-500">
+                        {requirement.owner}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span
+                          className={cn(
+                            "inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            status.tone,
+                          )}
+                        >
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="py-2">
+                        <span
+                          className={cn(
+                            "text-[11px] font-medium",
+                            requirement.isBlocking ? "text-rose-600" : "text-slate-400",
+                          )}
+                        >
+                          {requirement.isBlocking ? "Blocks" : "Recommended"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
-          {groups.required.length > 5 || groups.optional.length > 5 ? (
+          {rows.length > 8 ? (
             <button
               type="button"
               onClick={onToggle}
-              className="mt-4 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+              className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
             >
-              {expanded ? "Show fewer" : "View All Requirements"}
+              {expanded ? "Show fewer" : `View All Requirements (${rows.length})`}
               <ArrowRight className="h-3 w-3" aria-hidden />
             </button>
           ) : null}
@@ -556,7 +592,7 @@ export function WorkSummaryCard({
   return (
     <Card
       icon={ClipboardList}
-      title="Work Summary"
+      title="Stage Work Summary"
       action={
         <span className="text-[11px] font-medium text-slate-500">
           {work.total} task{work.total === 1 ? "" : "s"}
@@ -670,7 +706,7 @@ export function MilestonesCard({ milestones }: { milestones: TimelineMilestone[]
   const shown = milestones.slice(0, 7);
 
   return (
-    <Card icon={CircleCheck} title="Milestones">
+    <Card icon={CircleCheck} title="Next Milestone">
       {shown.length === 0 ? (
         <Quiet>No upcoming milestone scheduled.</Quiet>
       ) : (
@@ -718,6 +754,144 @@ export function MilestonesCard({ milestones }: { milestones: TimelineMilestone[]
           </ol>
         </>
       )}
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Journey timeline                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The client's route, top to bottom.
+ *
+ * A vertical list rather than a row of pills. Sixteen stages across the width
+ * of a card gives sixteen unreadable slivers, and the question this answers -
+ * "how far along is this, and what is left" - is a reading task, not a
+ * glancing one.
+ *
+ * Stages come from the database rather than the twelve-stage display grouping,
+ * because operations add and retire stages without a deploy and the timeline
+ * has to show the route this client is actually on.
+ */
+export function JourneyTimelineCard({
+  detail,
+  now,
+  expanded,
+  onToggle,
+}: {
+  detail: JourneyClientDetail;
+  /* Passed in rather than read here: Date.now() during render is impure and
+     gives the server and the client two different answers. */
+  now: Date;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { account, stages } = detail;
+  const currentIndex = stages.findIndex((stage) => stage.id === account.stageId);
+
+  if (stages.length === 0) {
+    return (
+      <Card icon={GitBranch} title="Journey Timeline">
+        <Quiet>No journey stages are configured yet.</Quiet>
+      </Card>
+    );
+  }
+
+  /*
+   * Collapsed, the list is centred on where the client actually is: a couple
+   * of stages behind for context and the road ahead. Showing the first eight
+   * of sixteen would hide the current stage on any late-stage account, which
+   * is the one row that has to be visible.
+   */
+  const shown = expanded
+    ? stages
+    : stages.slice(Math.max(0, currentIndex - 2), Math.max(0, currentIndex - 2) + 8);
+
+  return (
+    <Card
+      icon={GitBranch}
+      title="Journey Timeline"
+      action={
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+          {currentIndex + 1} of {stages.length}
+        </span>
+      }
+    >
+      <ol className="space-y-0">
+        {shown.map((stage) => {
+          const index = stages.indexOf(stage);
+          const done = currentIndex >= 0 && index < currentIndex;
+          const current = index === currentIndex;
+          const last = stage === shown[shown.length - 1];
+
+          return (
+            <li key={stage.id} className="flex gap-3">
+              {/* The rail: a dot per stage, joined by a line that stops at the
+                  final row so it does not dangle. */}
+              <div className="flex flex-col items-center">
+                <span
+                  className={cn(
+                    "mt-1.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2",
+                    done && "border-emerald-500 bg-emerald-500",
+                    current && "border-sky-500 bg-white ring-4 ring-sky-100",
+                    !done && !current && "border-slate-200 bg-white",
+                  )}
+                >
+                  {done ? <Check className="h-2 w-2 text-white" aria-hidden /> : null}
+                </span>
+                {!last ? (
+                  <span
+                    className={cn(
+                      "w-0.5 flex-1",
+                      done ? "bg-emerald-200" : "bg-slate-100",
+                    )}
+                  />
+                ) : null}
+              </div>
+
+              <div className={cn("min-w-0 flex-1", last ? "pb-0" : "pb-3")}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <span
+                    className={cn(
+                      "text-xs leading-5",
+                      current && "font-semibold text-slate-950",
+                      done && "text-slate-500",
+                      !done && !current && "text-slate-400",
+                    )}
+                  >
+                    {stage.name}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-slate-400">
+                    {current
+                      ? `Current · day ${Math.max(
+                          1,
+                          Math.ceil(
+                            (now.getTime() - new Date(account.stageEnteredAt).getTime())
+                              / 86_400_000,
+                          ),
+                        )}`
+                      : done
+                        ? "Complete"
+                        : "Upcoming"}
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      {stages.length > shown.length || expanded ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+        >
+          {expanded ? "Show fewer" : "View Full Journey"}
+          <ArrowRight className="h-3 w-3" aria-hidden />
+        </button>
+      ) : null}
     </Card>
   );
 }
