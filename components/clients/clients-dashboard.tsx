@@ -433,13 +433,24 @@ export function ClientsDashboard({
                         own rows made every entry a different height, which is
                         what stopped the panel scanning cleanly.
                       */}
-                      <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-slate-600">
+                      <p className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] text-slate-600">
                         {reasons.slice(0, 3).map((reason, index) => (
-                          <span key={reason.key} className="flex shrink-0 items-center gap-1.5">
-                            {index > 0 ? <span className="text-slate-300">·</span> : null}
+                          <span key={reason.key} className="flex min-w-0 items-center gap-1.5">
+                            {index > 0 ? (
+                              <span className="shrink-0 text-slate-300">·</span>
+                            ) : null}
+                            {/*
+                              truncate belongs on the link, not the paragraph.
+                              On a flex container it only hard-clips - the items
+                              are laid out first and then cut, so at 364px the
+                              third reason was chopped mid-word with no ellipsis
+                              and 54px of it sat outside the card. Each item
+                              shrinking and ellipsising keeps the one-line shape
+                              the row is built around.
+                            */}
                             <Link
                               href={`/clients/${client.id}?tab=${reason.tab}`}
-                              className="underline-offset-2 hover:text-sky-700 hover:underline"
+                              className="truncate underline-offset-2 hover:text-sky-700 hover:underline"
                             >
                               {reason.label}
                             </Link>

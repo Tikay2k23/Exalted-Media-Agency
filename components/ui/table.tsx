@@ -7,7 +7,16 @@ export function Table({
   ...props
 }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-x-auto">
+    /*
+     * min-w-0 is what makes the scroller actually scroll.
+     *
+     * A grid or flex child defaults to min-width:auto and refuses to shrink
+     * below its own content, so without this the wrapper grows to the width of
+     * the widest row and takes the page sideways with it - the overflow-x-auto
+     * never gets the chance to do anything. max-w-full keeps it inside a block
+     * parent for the same reason.
+     */
+    <div className="w-full min-w-0 max-w-full overflow-x-auto">
       <table className={cn("w-full min-w-full text-sm", className)} {...props} />
     </div>
   );
