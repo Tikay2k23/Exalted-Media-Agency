@@ -55,12 +55,31 @@ describe("role dashboards (integration)", { skip: !hasDatabase }, () => {
     const automation = seatIds.get(TeamRole.AUTOMATION_SPECIALIST)!;
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+    /*
+     * Older than anything already in the database, deliberately.
+     *
+     * The project manager's overdue section is everybody's work, capped at the
+     * eight most overdue and sorted by due date. A fixture due yesterday is
+     * therefore invisible to it the moment the database holds more than eight
+     * older overdue tasks - which any real dataset does, so this test failed on
+     * a developer machine while passing on an empty one. Anchoring the fixtures
+     * below the current minimum puts them at the front of that ordering
+     * whatever else exists, without deleting anyone's data to get there.
+     */
+    const { _min } = await prisma.employeeTask.aggregate({
+      where: { deletedAt: null },
+      _min: { dueDate: true },
+    });
+    const anchor = Math.min(_min.dueDate?.getTime() ?? Date.now(), Date.now());
+    const oldest = new Date(anchor - 2 * 24 * 60 * 60 * 1000);
+    const secondOldest = new Date(anchor - 24 * 60 * 60 * 1000);
+
     const [owned, other] = await Promise.all([
       prisma.employeeTask.create({
         data: {
           title: `${TEST_PREFIX} creative work`,
           assignedToId: creative,
-          dueDate: yesterday,
+          dueDate: oldest,
           weekStartDate: yesterday,
           status: "IN_PROGRESS",
         },
@@ -70,7 +89,7 @@ describe("role dashboards (integration)", { skip: !hasDatabase }, () => {
         data: {
           title: `${TEST_PREFIX} automation work`,
           assignedToId: automation,
-          dueDate: yesterday,
+          dueDate: secondOldest,
           weekStartDate: yesterday,
           status: "IN_PROGRESS",
         },
