@@ -40,6 +40,26 @@ function daysBetween(from: Date, to: Date) {
   return Math.round((to.getTime() - from.getTime()) / DAY);
 }
 
+/**
+ * How far off a date is, in words.
+ *
+ * Exported so the milestone card and the milestone panel say the same thing.
+ * milestoneDayLabel, which the rest of the page uses, returns a formatted date
+ * for anything beyond a day either side - fine beside a label, but printed
+ * next to the date itself it reads "Aug 15, 2026 (Aug 15)".
+ */
+export function relativeDayLabel(value: string | Date, now: Date) {
+  const days = daysBetween(now, new Date(value));
+
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+
+  return days < 0
+    ? `${Math.abs(days)} days overdue`
+    : `in ${days} days`;
+}
+
 function shortDate(value: string | Date) {
   return new Date(value).toLocaleDateString("en-US", {
     month: "short",
@@ -132,11 +152,9 @@ function milestoneCard(milestone: ClientMilestone | null, now: Date): OverviewCa
     label: "Next Milestone",
     value: milestone.name,
     detail:
-      days < 0
-        ? `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} overdue`
-        : days === 0
-          ? "Due today"
-          : `${shortDate(milestone.dueAt)} · ${days} day${days === 1 ? "" : "s"} left`,
+      days <= 0
+        ? relativeDayLabel(milestone.dueAt, now)
+        : `${shortDate(milestone.dueAt)} · ${relativeDayLabel(milestone.dueAt, now)}`,
     tone: days < 0 ? "bad" : days <= 3 ? "warn" : "neutral",
     tab: "journey",
   };

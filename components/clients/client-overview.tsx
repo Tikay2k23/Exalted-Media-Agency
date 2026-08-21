@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  Activity as ActivityIcon,
   ArrowRight,
   CalendarDays,
+  Flag,
   CircleCheck,
   Clock,
   Mail,
@@ -25,6 +27,7 @@ import { TabLink } from "@/components/clients/client-tabs";
 import {
   overviewCardHref,
   overviewCards,
+  relativeDayLabel,
 } from "@/lib/clients/client-overview-cards";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -135,7 +138,12 @@ export function ClientOverview({
   contacts: OverviewContact[];
   activity: OverviewActivity[];
   teamNames: string[];
-  healthNote: { assessedAt: string; assessedBy: string | null; summary: string | null } | null;
+  healthNote: {
+    assessedAt: string;
+    assessedBy: string | null;
+    summary: string | null;
+    healthScore: number | null;
+  } | null;
   canSeeFinance: boolean;
   serverNow: string;
 }) {
@@ -199,6 +207,113 @@ export function ClientOverview({
             </p>
           </Link>
         ))}
+      </div>
+
+
+      {/*
+        * The band the reference puts under the header: what is coming, and how
+        * the account is doing. Both read existing data - the milestone from the
+        * same nextMilestone the cards use, the health from the latest recorded
+        * assessment - so neither can disagree with the row above it.
+        */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white">
+          <header className="flex items-center justify-between border-b border-slate-100 p-4">
+            <h2 className="text-sm font-semibold text-slate-950">Upcoming Milestone</h2>
+            <TabLink
+              tab="journey"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+            >
+              View journey
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </TabLink>
+          </header>
+
+          {next ? (
+            <div className="flex items-start gap-3 p-4">
+              <span
+                aria-hidden
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600"
+              >
+                <Flag className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-950">{next.name}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {formatEnumLabel(next.source)} milestone for {client.companyName}.
+                </p>
+                <p className="mt-2 text-xs text-slate-600">
+                  <span className="text-slate-400">Target: </span>
+                  {new Date(next.dueAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                  <span className="ml-1 text-slate-400">
+                    ({relativeDayLabel(next.dueAt, now)})
+                  </span>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <EmptyPanel>No upcoming milestone.</EmptyPanel>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white">
+          <header className="flex items-center justify-between border-b border-slate-100 p-4">
+            <h2 className="text-sm font-semibold text-slate-950">Account Health</h2>
+            <TabLink
+              tab="reports"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+            >
+              View details
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </TabLink>
+          </header>
+
+          <div className="flex flex-wrap items-start gap-4 p-4">
+            {/*
+              * The score is shown only when one was actually recorded. The
+              * reference has a 72/100 dial; assessments carry an optional
+              * healthScore, and inventing a number for the accounts that have
+              * none would make the dial the most confident wrong thing on the
+              * page.
+              */}
+            {healthNote?.healthScore !== null && healthNote?.healthScore !== undefined ? (
+              <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-4 border-slate-100">
+                <span className="text-xl font-semibold text-slate-950">
+                  {healthNote.healthScore}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                  of 100
+                </span>
+              </div>
+            ) : null}
+
+            <div className="min-w-0 flex-1">
+              <HealthBadge client={client} />
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                {healthNote?.summary
+                  ?? "No assessment has been recorded for this account yet."}
+              </p>
+              {healthNote ? (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Assessed {relativeDayLabel(healthNote.assessedAt, now)}
+                  {healthNote.assessedBy ? ` by ${healthNote.assessedBy}` : ""}
+                </p>
+              ) : null}
+
+              <TabLink
+                tab="reports"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <ActivityIcon className="h-3.5 w-3.5" aria-hidden />
+                Health assessment
+              </TabLink>
+            </div>
+          </div>
+        </section>
       </div>
 
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">

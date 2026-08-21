@@ -275,6 +275,10 @@ export default async function ClientDetailPage({
                       assessedAt: assessment.assessedAt.toISOString(),
                       assessedBy: assessment.assessedBy?.name ?? null,
                       summary: assessment.summary,
+                      // 0-100, and genuinely optional: an assessment can be
+                      // recorded without one, and a made-up number would be
+                      // worse than none.
+                      healthScore: assessment.healthScore,
                     }
                   : null
               }
