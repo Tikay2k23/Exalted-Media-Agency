@@ -452,7 +452,7 @@ export function SalesBoard({
       </Panel>
 
       {/* Secondary analysis, below the work. */}
-      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Panel title="Follow Ups Due" subtitle="Most urgent first.">
           {queue.length === 0 ? (
             <p className="p-6 text-center text-xs text-slate-500">Nothing is due right now.</p>
@@ -510,7 +510,8 @@ export function SalesBoard({
               No leads came in during this range.
             </p>
           ) : (
-            <table className="w-full text-left text-xs">
+            <div className="w-full min-w-0 max-w-full overflow-x-auto">
+              <table className="w-full text-left text-xs">
               <thead className="text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-2 font-semibold">Source</th>
@@ -540,6 +541,7 @@ export function SalesBoard({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Panel>
 
@@ -552,6 +554,7 @@ export function SalesBoard({
             {byRep.length === 0 ? (
               <p className="p-6 text-center text-xs text-slate-500">Nothing to compare yet.</p>
             ) : (
+              <div className="w-full min-w-0 max-w-full overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
@@ -576,6 +579,7 @@ export function SalesBoard({
                   ))}
                 </tbody>
               </table>
+            </div>
             )}
           </Panel>
         ) : null}

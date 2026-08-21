@@ -511,7 +511,7 @@ export function WeeklyWorkBoard({
         </Button>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.6fr)_minmax(17rem,1fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,2.6fr)_minmax(17rem,1fr)]">
         <div className="space-y-4">
           {/* Tabs */}
           <div className="flex gap-1 rounded-2xl border border-slate-200 bg-white p-1">

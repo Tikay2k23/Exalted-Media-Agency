@@ -217,7 +217,7 @@ export default async function WorkPage({
                 Department ownership, capacity, and client book at a glance.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-3">
               {data.members.map((member) => (
                 <div
                   key={member.id}
