@@ -10,6 +10,7 @@ import {
   TriangleAlert,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo } from "react";
 
 import {
@@ -21,7 +22,12 @@ import {
   money,
 } from "@/components/clients/client-bits";
 import { TabLink } from "@/components/clients/client-tabs";
+import {
+  overviewCardHref,
+  overviewCards,
+} from "@/lib/clients/client-overview-cards";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   HEALTH_LABELS,
   attentionReasons,
@@ -150,7 +156,51 @@ export function ClientOverview({
     hasBlocker: Boolean(client.currentBlocker?.trim()),
   });
 
+  const cards = overviewCards(client, now);
+
   return (
+    <div className="space-y-4">
+      {/*
+        * The summary row, about this client rather than the agency.
+        *
+        * The reference design carries the Clients-list row here - active
+        * clients, on track, at risk - but inside one account those answer a
+        * question nobody opened the page to ask. Same shape, client-specific
+        * content: where they are, how they are, what is open, what is next,
+        * and when the contract ends.
+        *
+        * Each card is a link to the tab that owns the number, so the figure and
+        * the place you act on it are one click apart.
+        */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {cards.map((card) => (
+          <Link
+            key={card.key}
+            href={overviewCardHref(card, client.id)}
+            className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              {card.label}
+            </p>
+            <p
+              className={cn(
+                "mt-1.5 truncate text-xl font-semibold",
+                card.tone === "good" && "text-emerald-700",
+                card.tone === "warn" && "text-amber-700",
+                card.tone === "bad" && "text-rose-700",
+                card.tone === "neutral" && "text-slate-950",
+              )}
+              title={card.value}
+            >
+              {card.value}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500" title={card.detail}>
+              {card.detail}
+            </p>
+          </Link>
+        ))}
+      </div>
+
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
       {/* Account summary */}
       <section className="rounded-2xl border border-slate-200 bg-white xl:row-span-1">
@@ -529,6 +579,7 @@ export function ClientOverview({
           </div>
         </div>
       </Panel>
+      </div>
     </div>
   );
 }
