@@ -203,3 +203,89 @@ export function overviewCards(client: ClientRow, now: Date): OverviewCard[] {
 export function overviewCardHref(card: OverviewCard, clientId: string) {
   return `/clients/${clientId}?tab=${card.tab}`;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Active work                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The client's work, grouped the way the overview reports it.
+ *
+ * Buckets rather than raw statuses: ten statuses is the right vocabulary for a
+ * task board and the wrong one for a summary, where the question is only
+ * "how much is done, moving, stuck, or waiting on a person".
+ *
+ * Cancelled work is left out of the total entirely. Counting it would make the
+ * denominator disagree with every other count of this client's work on the
+ * page, and "8 tasks, 3 of them cancelled" is not what anybody means by eight
+ * tasks.
+ */
+export interface WorkBucket {
+  key: "completed" | "inProgress" | "review" | "blocked" | "todo";
+  label: string;
+  count: number;
+  /** Tailwind background for the legend dot and the ring segment. */
+  color: string;
+}
+
+export interface WorkBreakdown {
+  total: number;
+  overdue: number;
+  buckets: WorkBucket[];
+}
+
+const BUCKET_OF: Record<string, WorkBucket["key"] | "excluded"> = {
+  DONE: "completed",
+  APPROVED: "completed",
+  IN_PROGRESS: "inProgress",
+  NEEDS_REVIEW: "review",
+  REVISION_REQUIRED: "review",
+  BLOCKED: "blocked",
+  WAITING_CLIENT: "blocked",
+  TODO: "todo",
+  BACKLOG: "todo",
+  CANCELLED: "excluded",
+};
+
+const BUCKET_META: { key: WorkBucket["key"]; label: string; color: string }[] = [
+  { key: "completed", label: "Completed", color: "bg-emerald-500" },
+  { key: "inProgress", label: "In progress", color: "bg-sky-500" },
+  { key: "review", label: "Needs review", color: "bg-violet-500" },
+  { key: "blocked", label: "Blocked or waiting", color: "bg-amber-500" },
+  { key: "todo", label: "To do", color: "bg-slate-300" },
+];
+
+export function workBreakdown(
+  tasks: { status: string; dueDate: Date | string | null }[],
+  now: Date,
+): WorkBreakdown {
+  const counts = new Map<WorkBucket["key"], number>();
+  let total = 0;
+  let overdue = 0;
+
+  for (const task of tasks) {
+    const bucket = BUCKET_OF[task.status];
+
+    if (!bucket || bucket === "excluded") continue;
+
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+    total += 1;
+
+    // Overdue is about work still to do: finished work that was late is a
+    // fact about the past, not something to act on today.
+    if (
+      bucket !== "completed"
+      && task.dueDate
+      && new Date(task.dueDate).getTime() < now.getTime()
+    ) {
+      overdue += 1;
+    }
+  }
+
+  return {
+    total,
+    overdue,
+    buckets: BUCKET_META.map((meta) => ({ ...meta, count: counts.get(meta.key) ?? 0 }))
+      .filter((bucket) => bucket.count > 0),
+  };
+}

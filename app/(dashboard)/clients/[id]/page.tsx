@@ -269,6 +269,10 @@ export default async function ClientDetailPage({
               teamNames={client.workstreams
                 .map((stream) => stream.owner?.name)
                 .filter((name): name is string => Boolean(name))}
+              tasks={client.agencyTasks.map((task) => ({
+                status: task.status as string,
+                dueDate: task.dueDate?.toISOString() ?? null,
+              }))}
               healthNote={
                 assessment
                   ? {

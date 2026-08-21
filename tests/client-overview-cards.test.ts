@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { overviewCardHref, overviewCards } from "@/lib/clients/client-overview-cards";
+import {
+  overviewCardHref,
+  overviewCards,
+  workBreakdown,
+} from "@/lib/clients/client-overview-cards";
 import type { ClientRow } from "@/lib/clients/client-workspace";
 
 /**
@@ -149,5 +153,77 @@ describe("client overview cards", () => {
 
       assert.match(href, /^\/clients\/abc123\?tab=(journey|tasks|reports)$/);
     }
+  });
+});
+
+/**
+ * How the overview counts a client's work.
+ *
+ * The bucket that matters most is the one that is absent: cancelled work. A
+ * total that quietly includes it disagrees with every other count of this
+ * client's work on the page, and nobody means "eight tasks" to include three
+ * that were called off.
+ */
+describe("work breakdown", () => {
+  const task = (status: string, dueDate: Date | null = null) => ({ status, dueDate });
+
+  it("groups ten statuses into the five the summary reports", () => {
+    const { buckets, total } = workBreakdown(
+      [
+        task("DONE"), task("APPROVED"),
+        task("IN_PROGRESS"),
+        task("NEEDS_REVIEW"), task("REVISION_REQUIRED"),
+        task("BLOCKED"), task("WAITING_CLIENT"),
+        task("TODO"), task("BACKLOG"),
+      ],
+      NOW,
+    );
+
+    assert.equal(total, 9);
+    assert.deepEqual(
+      buckets.map((bucket) => [bucket.key, bucket.count]),
+      [["completed", 2], ["inProgress", 1], ["review", 2], ["blocked", 2], ["todo", 2]],
+    );
+  });
+
+  it("leaves cancelled work out of the total", () => {
+    const { total, buckets } = workBreakdown(
+      [task("DONE"), task("CANCELLED"), task("CANCELLED")],
+      NOW,
+    );
+
+    assert.equal(total, 1, "cancelled work must not inflate the count");
+    assert.deepEqual(buckets.map((bucket) => bucket.key), ["completed"]);
+  });
+
+  it("hides buckets with nothing in them", () => {
+    const { buckets } = workBreakdown([task("IN_PROGRESS")], NOW);
+
+    assert.deepEqual(buckets.map((bucket) => bucket.key), ["inProgress"]);
+  });
+
+  it("counts overdue work that is still outstanding", () => {
+    const past = new Date(NOW.getTime() - DAY);
+
+    assert.equal(workBreakdown([task("IN_PROGRESS", past)], NOW).overdue, 1);
+    assert.equal(workBreakdown([task("BLOCKED", past)], NOW).overdue, 1);
+  });
+
+  it("does not call finished work overdue", () => {
+    const past = new Date(NOW.getTime() - DAY);
+
+    assert.equal(
+      workBreakdown([task("DONE", past), task("APPROVED", past)], NOW).overdue,
+      0,
+      "work that was late but is finished is not something to act on",
+    );
+  });
+
+  it("reports an empty client as empty rather than guessing", () => {
+    const empty = workBreakdown([], NOW);
+
+    assert.equal(empty.total, 0);
+    assert.equal(empty.overdue, 0);
+    assert.deepEqual(empty.buckets, []);
   });
 });

@@ -23,11 +23,13 @@ import {
   WaitingBadge,
   money,
 } from "@/components/clients/client-bits";
+import { ClientOverviewFooter } from "@/components/clients/client-overview-footer";
 import { TabLink } from "@/components/clients/client-tabs";
 import {
   overviewCardHref,
   overviewCards,
   relativeDayLabel,
+  workBreakdown,
 } from "@/lib/clients/client-overview-cards";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -121,6 +123,38 @@ function day(value: string | null) {
  * are derived from the same functions the dashboard uses, given one row instead
  * of all of them.
  */
+
+/** Tailwind class -> the colour the conic gradient needs. */
+const RING_COLORS: Record<string, string> = {
+  "bg-emerald-500": "#10b981",
+  "bg-sky-500": "#0ea5e9",
+  "bg-violet-500": "#8b5cf6",
+  "bg-amber-500": "#f59e0b",
+  "bg-slate-300": "#cbd5e1",
+};
+
+/**
+ * The donut, as a single conic-gradient.
+ *
+ * Segments are laid out in the order the buckets come back, so the ring and
+ * the legend below it read the same way round.
+ */
+function ringGradient(work: { total: number; buckets: { count: number; color: string }[] }) {
+  if (work.total === 0) return "#e2e8f0";
+
+  let cursor = 0;
+  const stops = work.buckets.map((bucket) => {
+    const start = (cursor / work.total) * 360;
+    cursor += bucket.count;
+    const end = (cursor / work.total) * 360;
+    const color = RING_COLORS[bucket.color] ?? "#cbd5e1";
+
+    return `${color} ${start}deg ${end}deg`;
+  });
+
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
 export function ClientOverview({
   client,
   nextStageName,
@@ -128,6 +162,7 @@ export function ClientOverview({
   contacts,
   activity,
   teamNames,
+  tasks,
   healthNote,
   canSeeFinance,
   serverNow,
@@ -138,6 +173,7 @@ export function ClientOverview({
   contacts: OverviewContact[];
   activity: OverviewActivity[];
   teamNames: string[];
+  tasks: { status: string; dueDate: string | null }[];
   healthNote: {
     assessedAt: string;
     assessedBy: string | null;
@@ -165,6 +201,7 @@ export function ClientOverview({
   });
 
   const cards = overviewCards(client, now);
+  const work = workBreakdown(tasks, now);
 
   return (
     <div className="space-y-4">
@@ -313,6 +350,78 @@ export function ClientOverview({
               </TabLink>
             </div>
           </div>
+        </section>
+      </div>
+
+
+      {/*
+        * Work at a glance: one ring, one number, and the buckets that make it
+        * up. A stacked bar of ten task statuses is a worse answer to "how is
+        * this account doing" than five groups and a total.
+        */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white">
+          <header className="flex items-center justify-between border-b border-slate-100 p-4">
+            <h2 className="text-sm font-semibold text-slate-950">Active Work</h2>
+            <TabLink
+              tab="tasks"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+            >
+              View all tasks
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </TabLink>
+          </header>
+
+          {work.total === 0 ? (
+            <EmptyPanel>No active work for this client.</EmptyPanel>
+          ) : (
+            <div className="flex flex-wrap items-center gap-5 p-4">
+              {/*
+                * The ring is a conic gradient rather than a chart library: it
+                * is five numbers, and the page should not pull a rendering
+                * dependency to draw them.
+                */}
+              <div
+                className="relative h-24 w-24 shrink-0 rounded-full"
+                style={{ background: ringGradient(work) }}
+                role="img"
+                aria-label={`${work.total} tasks: ${work.buckets
+                  .map((bucket) => `${bucket.count} ${bucket.label.toLowerCase()}`)
+                  .join(", ")}`}
+              >
+                <div className="absolute inset-[10px] flex flex-col items-center justify-center rounded-full bg-white">
+                  <span className="text-lg font-semibold text-slate-950">{work.total}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    {work.total === 1 ? "Task" : "Tasks"}
+                  </span>
+                </div>
+              </div>
+
+              <ul className="min-w-0 flex-1 space-y-1.5">
+                {work.buckets.map((bucket) => (
+                  <li key={bucket.key} className="flex items-center gap-2 text-xs">
+                    <span
+                      aria-hidden
+                      className={cn("h-2 w-2 shrink-0 rounded-full", bucket.color)}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-slate-600">
+                      {bucket.label}
+                    </span>
+                    <span className="font-semibold text-slate-900">{bucket.count}</span>
+                    <span className="w-10 text-right text-slate-400">
+                      {Math.round((bucket.count / work.total) * 100)}%
+                    </span>
+                  </li>
+                ))}
+                {work.overdue > 0 ? (
+                  <li className="flex items-center gap-2 border-t border-slate-100 pt-1.5 text-xs text-rose-700">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {work.overdue} still open past its due date
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          )}
         </section>
       </div>
 
@@ -695,6 +804,8 @@ export function ClientOverview({
         </div>
       </Panel>
       </div>
+
+      <ClientOverviewFooter loadedAt={serverNow} />
     </div>
   );
 }
