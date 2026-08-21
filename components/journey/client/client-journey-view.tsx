@@ -402,13 +402,19 @@ export function ClientJourneyView({
       {/* Body                                                              */}
       {/* ---------------------------------------------------------------- */}
       {/*
-        * Two columns, roughly 65/35, matching how the page is actually used:
-        * the left column is the work, the right column is the context you
-        * glance at while doing it. On a phone this collapses to one column in
-        * the order below, which puts Needs Attention directly under the action
-        * card rather than beneath five cards of detail.
+        * Three columns, as the reference lays them out.
+        *
+        * The brief describes a 65/35 split, and the image shows that 65 split
+        * again: the action and the work it produces on the left, the gate and
+        * the route in the middle, the context you glance at on the right. Three
+        * roughly equal columns rather than one wide one - a single 65% column
+        * stacks six cards into a very long page and buries the timeline.
+        *
+        * Needs Attention appears twice, once per breakpoint. On a phone it has
+        * to sit directly under the action card rather than below five cards of
+        * detail, and the two never render together.
         */}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.95fr)]">
         <div className="min-w-0 space-y-4">
           <NextBestActionCard
             detail={detail}
@@ -422,15 +428,17 @@ export function ClientJourneyView({
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
           </div>
 
-          <StageFocusCard detail={detail} />
+          <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
 
+          <StageFocusCard detail={detail} />
+        </div>
+
+        <div className="min-w-0 space-y-4">
           <StageRequirementsCard
             detail={detail}
             expanded={showAllRequirements}
             onToggle={() => setShowAllRequirements((open) => !open)}
           />
-
-          <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
 
           <JourneyTimelineCard
             detail={detail}
