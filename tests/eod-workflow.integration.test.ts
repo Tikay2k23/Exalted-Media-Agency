@@ -39,6 +39,24 @@ async function cleanup() {
   });
   const userIds = users.map((user) => user.id);
 
+  /*
+   * The weekly report notifies the oversight accounts, not the author.
+   *
+   * The delete further down is scoped to the fixture's own users, so those
+   * rows survived every run and piled up on live accounts. They name the
+   * report they are about, so collect the ids while the reports still exist
+   * and remove the notifications by reference.
+   */
+  const reports = await prisma.weeklyReport.findMany({
+    where: { userId: { in: userIds } },
+    select: { id: true },
+  });
+  const aboutFixture = [...reports.map((report) => report.id), ...taskIds];
+
+  if (aboutFixture.length) {
+    await prisma.notification.deleteMany({ where: { entityId: { in: aboutFixture } } });
+  }
+
   await prisma.employeeTaskEodEntry.deleteMany({ where: { taskId: { in: taskIds } } });
   await prisma.employeeTask.deleteMany({ where: { id: { in: taskIds } } });
   await prisma.weeklyReport.deleteMany({ where: { userId: { in: userIds } } });

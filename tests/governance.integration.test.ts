@@ -40,6 +40,47 @@ async function cleanup() {
   });
   const sopIds = sops.map((sop) => sop.id);
 
+  /*
+   * Notifications about this fixture go to the real oversight accounts.
+   *
+   * An audit finding notifies whoever holds oversight, not the person who
+   * raised it, so scoping the delete below to recipients whose email starts
+   * with the prefix never touches them - it only ever matched notifications
+   * sent to the fixture's own users. Eight rows per run were accumulating on
+   * live accounts and showing up in the header badge.
+   *
+   * They carry the entity they are about, so the ids are collected here while
+   * the records still exist and the notifications are removed by reference.
+   */
+  const [audits, findings, actions, requests] = await Promise.all([
+    // The finding notifies about the audit it belongs to, not about itself -
+    // entityId is audit.id - so the audits have to be in this list or the
+    // rows survive.
+    prisma.audit.findMany({
+      where: { scope: { startsWith: TEST_PREFIX } },
+      select: { id: true },
+    }),
+    prisma.auditFinding.findMany({
+      where: { title: { startsWith: TEST_PREFIX } },
+      select: { id: true },
+    }),
+    prisma.correctiveAction.findMany({
+      where: { title: { startsWith: TEST_PREFIX } },
+      select: { id: true },
+    }),
+    prisma.improvementRequest.findMany({
+      where: { title: { startsWith: TEST_PREFIX } },
+      select: { id: true },
+    }),
+  ]);
+  const raisedAbout = [...audits, ...findings, ...actions, ...requests, ...sops].map(
+    (row) => row.id,
+  );
+
+  if (raisedAbout.length) {
+    await prisma.notification.deleteMany({ where: { entityId: { in: raisedAbout } } });
+  }
+
   await prisma.sopVersion.deleteMany({ where: { sopId: { in: sopIds } } });
   await prisma.correctiveAction.deleteMany({
     where: { title: { startsWith: TEST_PREFIX } },
