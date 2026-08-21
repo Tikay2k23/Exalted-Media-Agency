@@ -21,6 +21,7 @@ import {
   MilestonesCard,
   StageRequirementsCard,
   JourneyTimelineCard,
+  StageFocusCard,
   NextBestActionCard,
   WorkSummaryCard,
 } from "@/components/journey/client/journey-cards";
@@ -420,6 +421,8 @@ export function ClientJourneyView({
           <div className="xl:hidden">
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
           </div>
+
+          <StageFocusCard detail={detail} />
 
           <StageRequirementsCard
             detail={detail}

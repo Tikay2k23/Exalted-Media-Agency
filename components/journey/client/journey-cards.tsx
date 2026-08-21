@@ -2,6 +2,7 @@
 
 import {
   ArrowRight,
+  Compass,
   GitBranch,
   Calendar,
   Check,
@@ -35,6 +36,11 @@ import {
   HEALTH_COLORS,
   HEALTH_LABELS,
 } from "@/lib/journey/journey-board";
+import { journeyStageForStoredStage } from "@/lib/journey/phases";
+import {
+  stageFocusFor,
+  stageFocusHref,
+} from "@/lib/journey/stage-focus";
 import { cn } from "@/lib/utils";
 
 /* -------------------------------------------------------------------------- */
@@ -892,6 +898,57 @@ export function JourneyTimelineCard({
           <ArrowRight className="h-3 w-3" aria-hidden />
         </button>
       ) : null}
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Stage focus                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What this stage is for, and where the work happens.
+ *
+ * The rest of the page is the same shape at every stage - requirements, work,
+ * attention - which is what makes it learnable. This card is the part that
+ * changes, so somebody landing on an account in Internal QA sees defects and
+ * checklists rather than the onboarding language they saw last week.
+ *
+ * The links go to the client record's own tabs. Journey summarises delivery;
+ * it does not host a second copy of the intake form, the access register or
+ * the QA plans.
+ */
+export function StageFocusCard({ detail }: { detail: JourneyClientDetail }) {
+  const { account } = detail;
+  const stage = journeyStageForStoredStage(account.stageKey, account.stagePosition);
+  const focus = stageFocusFor(stage.key);
+
+  return (
+    <Card icon={Compass} title={`Focus: ${stage.label}`}>
+      <p className="text-xs leading-5 text-slate-600">{focus.purpose}</p>
+
+      <ul className="mt-3 space-y-1.5">
+        {focus.watchFor.map((item) => (
+          <li key={item} className="flex items-start gap-2">
+            <span
+              aria-hidden
+              className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-300"
+            />
+            <span className="text-xs leading-5 text-slate-600">{item}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {focus.links.map((link) => (
+          <Link key={link.tab + link.label} href={stageFocusHref(link, account.id)}>
+            <Button size="sm" variant="secondary" className="gap-1.5">
+              {link.label}
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Button>
+          </Link>
+        ))}
+      </div>
     </Card>
   );
 }
