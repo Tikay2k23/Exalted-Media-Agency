@@ -1,3 +1,4 @@
+import type { JourneyAccount } from "@/lib/journey/journey-board";
 import type { JourneyStageKey } from "@/lib/journey/phases";
 
 /**
@@ -221,4 +222,212 @@ export function stageFocusFor(key: JourneyStageKey): StageFocus {
 /** Where a focus link points for a given client. */
 export function stageFocusHref(link: StageFocusLink, clientId: string) {
   return `/clients/${clientId}?tab=${link.tab}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Live signals                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The handful of real numbers that matter at this stage.
+ *
+ * All of it is already on the account - the stage gate loads the intake form,
+ * the access register, the defects and the approvals in order to evaluate
+ * requirements, and the counts fall out of that. Showing them costs no extra
+ * query, and they cannot drift from the gate because they are the same data.
+ *
+ * A signal is only produced when there is something real to say. A stage that has
+ * nothing to report shows its watch list and no numbers, rather than a row of
+ * zeroes pretending to be information.
+ */
+export type SignalTone = "neutral" | "good" | "warn" | "bad";
+
+export interface StageSignal {
+  label: string;
+  value: string;
+  tone: SignalTone;
+}
+
+const plural = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
+
+function taskSignals(account: JourneyAccount): StageSignal[] {
+  const signals: StageSignal[] = [];
+
+  if (account.openTaskCount > 0) {
+    signals.push({
+      label: "Open work",
+      value: plural(account.openTaskCount, "task", "tasks"),
+      tone: "neutral",
+    });
+  }
+
+  if (account.overdueTaskCount > 0) {
+    signals.push({
+      label: "Overdue",
+      value: plural(account.overdueTaskCount, "task", "tasks"),
+      tone: "bad",
+    });
+  }
+
+  if (account.blockedTaskCount > 0) {
+    signals.push({
+      label: "Blocked",
+      value: plural(account.blockedTaskCount, "task", "tasks"),
+      tone: "warn",
+    });
+  }
+
+  return signals;
+}
+
+export function stageSignals(
+  key: JourneyStageKey,
+  account: JourneyAccount,
+): StageSignal[] {
+  switch (key) {
+    case "payment_received":
+      return [
+        {
+          label: "Project manager",
+          value: account.projectManagerName ?? "Not assigned",
+          tone: account.projectManagerName ? "good" : "bad",
+        },
+        ...taskSignals(account).slice(0, 1),
+      ];
+
+    case "onboarding":
+      return [
+        {
+          label: "Intake form",
+          value: account.intakeStatus
+            ? account.intakeStatus.replaceAll("_", " ").toLowerCase()
+            : "Not sent",
+          tone: account.intakeStatus === "SUBMITTED" ? "good"
+            : account.intakeStatus ? "warn" : "bad",
+        },
+      ];
+
+    case "access_assets":
+      return [
+        {
+          label: "Critical access missing",
+          value: account.criticalAccessMissing === 0
+            ? "None"
+            : plural(account.criticalAccessMissing, "platform", "platforms"),
+          tone: account.criticalAccessMissing === 0 ? "good" : "bad",
+        },
+      ];
+
+    case "strategy_planning":
+      return [
+        {
+          label: "Strategy brief",
+          value: account.strategyBriefStatus
+            ? account.strategyBriefStatus.replaceAll("_", " ").toLowerCase()
+            : "Not started",
+          tone: account.strategyBriefStatus === "APPROVED" ? "good"
+            : account.strategyBriefStatus ? "warn" : "bad",
+        },
+      ];
+
+    case "build_implementation":
+      return taskSignals(account);
+
+    case "internal_qa":
+      return [
+        {
+          label: "Open defects",
+          value: account.openDefectCount === 0
+            ? "None"
+            : plural(account.openDefectCount, "defect", "defects"),
+          tone: account.openDefectCount === 0 ? "good" : "bad",
+        },
+        ...(account.reviewTaskCount > 0
+          ? [{
+              label: "Awaiting review",
+              value: plural(account.reviewTaskCount, "task", "tasks"),
+              tone: "warn" as SignalTone,
+            }]
+          : []),
+      ];
+
+    case "client_review":
+      return [
+        {
+          label: "Awaiting the client",
+          value: account.awaitingReviewCount === 0
+            ? "Nothing outstanding"
+            : plural(account.awaitingReviewCount, "review", "reviews"),
+          tone: account.awaitingReviewCount === 0 ? "good" : "warn",
+        },
+      ];
+
+    case "ready_to_launch":
+      return [
+        {
+          label: "Launch date",
+          value: account.launchDate
+            ? new Date(account.launchDate).toLocaleDateString("en-US",
+                { month: "short", day: "numeric" })
+            : "Not scheduled",
+          tone: account.launchDate ? "good" : "warn",
+        },
+        ...taskSignals(account).filter((signal) => signal.tone !== "neutral"),
+      ];
+
+    case "live_optimization":
+      return [
+        {
+          label: "Went live",
+          value: account.launchDate
+            ? new Date(account.launchDate).toLocaleDateString("en-US",
+                { month: "short", day: "numeric" })
+            : "Date not recorded",
+          tone: account.launchDate ? "good" : "warn",
+        },
+        ...taskSignals(account).filter((signal) => signal.tone === "bad"),
+      ];
+
+    case "ongoing_management":
+      return [
+        ...(account.satisfactionScore !== null
+          ? [{
+              label: "Satisfaction",
+              value: `${account.satisfactionScore} / 5`,
+              tone: (account.satisfactionScore >= 4 ? "good" : "warn") as SignalTone,
+            }]
+          : []),
+        ...(account.renewalDate
+          ? [{
+              label: "Renewal",
+              value: new Date(account.renewalDate).toLocaleDateString("en-US",
+                { month: "short", day: "numeric" }),
+              tone: "neutral" as SignalTone,
+            }]
+          : []),
+      ];
+
+    case "renewal_upsell":
+      return [
+        {
+          label: "Renewal date",
+          value: account.renewalDate
+            ? new Date(account.renewalDate).toLocaleDateString("en-US",
+                { month: "short", day: "numeric" })
+            : "Not set",
+          tone: account.renewalDate ? "neutral" : "warn",
+        },
+        ...(account.satisfactionScore !== null
+          ? [{
+              label: "Satisfaction",
+              value: `${account.satisfactionScore} / 5`,
+              tone: (account.satisfactionScore >= 4 ? "good" : "warn") as SignalTone,
+            }]
+          : []),
+      ];
+
+    case "offboarding_completed":
+      return taskSignals(account).slice(0, 2);
+  }
 }

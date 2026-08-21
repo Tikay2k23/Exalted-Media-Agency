@@ -445,13 +445,23 @@ export function buildJourneyAccount(
         (a.targetLaunchDate?.getTime() ?? 0) - (b.targetLaunchDate?.getTime() ?? 0),
     )[0];
 
-  // The project manager is whoever runs the delivery work. Where no
-  // project exists yet the account owner is holding it, and naming them is
-  // more useful than an empty cell.
+  /*
+   * Only an actual project manager, never a stand-in.
+   *
+   * This used to fall back to the account owner when no project had a manager,
+   * on the reasoning that a name beats an empty cell. It does not: it labelled
+   * a sales rep "Project Manager" on the board and the client page, and it
+   * disagreed with the stage gate, which checks projectManagerId and was
+   * correctly reporting the same account as unmanaged. A page that answers
+   * "who owns this" with the wrong person is worse than one that admits
+   * nobody does - and "Not assigned" is what prompts somebody to fix it.
+   *
+   * The account owner is still available as ownerName for anywhere that wants
+   * it.
+   */
   const projectManagerName =
     client.projects.find((project) => project.projectManager?.name)?.projectManager
       ?.name
-    ?? client.assignedUser?.name
     ?? null;
 
   const services = Array.from(
@@ -521,6 +531,7 @@ export function buildJourneyAccount(
       AWAITING_CLIENT_REVIEW.has(cycle.status),
     ).length,
     intakeStatus: client.intakeForm?.status ?? null,
+    strategyBriefStatus: client.strategyBrief?.status ?? null,
     satisfactionScore: client.healthAssessments[0]?.satisfactionScore ?? null,
 
     requirements: evaluate(stage.id),

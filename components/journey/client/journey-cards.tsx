@@ -40,6 +40,7 @@ import { journeyStageForStoredStage } from "@/lib/journey/phases";
 import {
   stageFocusFor,
   stageFocusHref,
+  stageSignals,
 } from "@/lib/journey/stage-focus";
 import { cn } from "@/lib/utils";
 
@@ -922,10 +923,45 @@ export function StageFocusCard({ detail }: { detail: JourneyClientDetail }) {
   const { account } = detail;
   const stage = journeyStageForStoredStage(account.stageKey, account.stagePosition);
   const focus = stageFocusFor(stage.key);
+  const signals = stageSignals(stage.key, account);
 
   return (
     <Card icon={Compass} title={`Focus: ${stage.label}`}>
       <p className="text-xs leading-5 text-slate-600">{focus.purpose}</p>
+
+      {/* The real numbers for this stage, from the same data the stage gate
+          reads - so they cannot disagree with the requirements table. */}
+      {signals.length > 0 ? (
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
+          {signals.map((signal) => (
+            <div
+              key={signal.label}
+              className={cn(
+                "rounded-xl border px-3 py-2",
+                signal.tone === "good" && "border-emerald-100 bg-emerald-50/60",
+                signal.tone === "warn" && "border-amber-100 bg-amber-50/60",
+                signal.tone === "bad" && "border-rose-100 bg-rose-50/60",
+                signal.tone === "neutral" && "border-slate-100 bg-slate-50",
+              )}
+            >
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                {signal.label}
+              </p>
+              <p
+                className={cn(
+                  "mt-0.5 truncate text-xs font-semibold capitalize",
+                  signal.tone === "good" && "text-emerald-700",
+                  signal.tone === "warn" && "text-amber-700",
+                  signal.tone === "bad" && "text-rose-700",
+                  signal.tone === "neutral" && "text-slate-700",
+                )}
+              >
+                {signal.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <ul className="mt-3 space-y-1.5">
         {focus.watchFor.map((item) => (

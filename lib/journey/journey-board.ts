@@ -146,6 +146,8 @@ export interface JourneyAccount {
   openDefectCount: number;
   awaitingReviewCount: number;
   intakeStatus: string | null;
+  /** Strategy brief state, already loaded for the stage gate. */
+  strategyBriefStatus: string | null;
   /** The most recent recorded satisfaction score, when one exists. */
   satisfactionScore: number | null;
 

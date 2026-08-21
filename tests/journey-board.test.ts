@@ -101,6 +101,7 @@ function account(overrides: Partial<JourneyAccount> = {}): JourneyAccount {
     openDefectCount: 0,
     awaitingReviewCount: 0,
     intakeStatus: null,
+    strategyBriefStatus: null,
     satisfactionScore: null,
 
     requirements: [],
