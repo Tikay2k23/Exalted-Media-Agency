@@ -64,7 +64,17 @@ export default async function ClientsPage() {
       serverNow={new Date().toISOString()}
       addClientAction={
         data.canCreate ? (
+          /*
+           * Keyed because it crosses the server/client boundary.
+           *
+           * ClientsDashboard renders this next to the export button, and an
+           * element deserialised from the RSC payload does not carry the
+           * static-children optimisation its siblings do - so React reconciles
+           * the pair as a dynamic array and asks for a key. Nothing here is in
+           * a list; the key exists to satisfy that boundary.
+           */
           <AddClientButton
+            key="add-client"
             services={serviceOptions}
             team={data.owners.map((member) => ({
               id: member.id,
