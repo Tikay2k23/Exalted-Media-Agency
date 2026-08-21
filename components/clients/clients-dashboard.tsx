@@ -375,7 +375,7 @@ export function ClientsDashboard({
       </div>
 
       {/* Attention and what is coming up. */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(20rem,1fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(20rem,1fr)]">
         <Panel
           title="Clients Needing Attention"
           subtitle="Worst first. Each reason opens the tab that can fix it."

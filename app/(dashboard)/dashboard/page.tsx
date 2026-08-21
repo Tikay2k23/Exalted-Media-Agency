@@ -167,7 +167,18 @@ export default async function DashboardPage() {
         Alerts and clients get the room because they are the two panels somebody
         actually reads; the figures on the right are glanced at.
       */}
-      <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
+      {/*
+        * The base track is minmax(0,1fr), not the implicit auto.
+        *
+        * An auto track cannot size below the min-content of what is in it,
+        * and these cards contain truncated single-line text - `truncate`
+        * sets white-space:nowrap, whose min-content width is the whole
+        * string. On a 320px phone that pinned every card at 366px and took
+        * the page sideways, so the left edge of the heading sat off screen.
+        * The named breakpoints are already minmax(0,...); only the phone
+        * case was missing one.
+        */}
+      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
         <PriorityAlerts alerts={view.attention.slice(0, 5)} now={now} />
         <ClientSnapshot clients={view.clients} now={now} />
 

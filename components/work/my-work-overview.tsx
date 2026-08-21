@@ -272,7 +272,7 @@ export function MyWorkOverview({
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         {/* Left column */}
         <div className="space-y-4">
           <Panel
