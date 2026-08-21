@@ -220,6 +220,11 @@ export async function getSharedOptions() {
         orderBy: {
           position: "asc",
         },
+        // The requirement count travels with the stage so the move dialog can
+        // say what a stage will ask for before anybody commits to it. Counted
+        // rather than loaded: the dialog only needs the number, and the gate
+        // check fetches the requirements themselves when a target is picked.
+        include: { _count: { select: { requirements: true } } },
       }),
       prisma.user.findMany({
         where: { isActive: true },

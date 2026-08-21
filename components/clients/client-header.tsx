@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AddTaskDialog } from "@/components/clients/add-task-dialog";
+import {
+  StageMoveDialog,
+  type StageOption,
+} from "@/components/journey/stage-move-dialog";
 import { HealthBadge, Monogram, money } from "@/components/clients/client-bits";
 import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +23,8 @@ export interface HeaderClient {
   contactEmail: string;
   contactPhone: string | null;
   stageName: string;
+  /** Needed by the stage gate, which starts from where the client is. */
+  currentStageId: string;
   serviceType: string;
   status: string;
   healthStatus: string;
@@ -42,6 +48,9 @@ export function ClientHeader({
   canAssignWork,
   assignees,
   statusControl,
+  stages,
+  canMoveStage,
+  canOverrideStage,
 }: {
   client: HeaderClient;
   canManage: boolean;
@@ -50,9 +59,13 @@ export function ClientHeader({
   canAssignWork: boolean;
   assignees: { id: string; name: string }[];
   statusControl: React.ReactNode;
+  stages: StageOption[];
+  canMoveStage: boolean;
+  canOverrideStage: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const [stageOpen, setStageOpen] = useState(false);
 
   // HealthBadge reads a full row; this is the part of one it actually uses.
   const healthShape = {
@@ -62,6 +75,17 @@ export function ClientHeader({
 
   return (
     <header className="rounded-2xl border border-slate-200 bg-white p-4">
+      {stageOpen ? (
+        <StageMoveDialog
+          clientId={client.id}
+          companyName={client.companyName}
+          currentStageId={client.currentStageId}
+          stages={stages}
+          canOverride={canOverrideStage}
+          onClose={() => setStageOpen(false)}
+        />
+      ) : null}
+
       {taskOpen ? (
         <AddTaskDialog
           clientId={client.id}
@@ -80,13 +104,25 @@ export function ClientHeader({
         </Link>
 
         <div className="flex flex-wrap items-center gap-2">
-          <TabLink
-            tab="journey"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            <Workflow className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Move Stage</span>
-          </TabLink>
+          {/*
+            * Opens the gate, rather than jumping to the Journey tab.
+            *
+            * This used to be a link. Moving a client is the one action on this
+            * header that can be wrong in a way nobody notices for a week, and
+            * the dialog that checks it already exists - it evaluates the
+            * current stage's requirements, refuses on blocking ones, and takes
+            * an override reason from anybody entitled to give one.
+            */}
+          {canMoveStage ? (
+            <button
+              type="button"
+              onClick={() => setStageOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <Workflow className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Move Stage</span>
+            </button>
+          ) : null}
           {canAssignWork ? (
             <button
               type="button"
@@ -97,8 +133,12 @@ export function ClientHeader({
               <span className="hidden sm:inline">Add Task</span>
             </button>
           ) : null}
+          {/*
+            * Goes to Activity & Notes, which is where notes actually are.
+            * It pointed at Contacts, which is a different tab entirely.
+            */}
           <TabLink
-            tab="contacts"
+            tab="activity"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
           >
             <StickyNote className="h-3.5 w-3.5" />

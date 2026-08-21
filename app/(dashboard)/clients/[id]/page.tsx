@@ -203,6 +203,7 @@ export default async function ClientDetailPage({
           contactEmail: client.contactEmail,
           contactPhone: client.contactPhone,
           stageName: client.currentStage.name,
+          currentStageId: client.currentStageId,
           serviceType: client.serviceType,
           status: client.status,
           healthStatus: client.healthStatus,
@@ -211,6 +212,17 @@ export default async function ClientDetailPage({
           monthlyValue: client.monthlyValue === null ? null : Number(client.monthlyValue),
         }}
         canManage={canManageClient}
+        stages={options.stages.map((stage) => ({
+          id: stage.id,
+          name: stage.name,
+          color: stage.color,
+          position: stage.position,
+          requirementCount: stage._count.requirements,
+        }))}
+        /* The same two permissions the Journey page gates on, so the header
+           cannot offer a move this person would be refused for. */
+        canMoveStage={can(actor, "journey.move")}
+        canOverrideStage={can(actor, "journey.override")}
         canViewFinance={canViewFinance}
         canAssignWork={can(actor, "workItems.assign")}
         assignees={options.users.map((member) => ({ id: member.id, name: member.name }))}
