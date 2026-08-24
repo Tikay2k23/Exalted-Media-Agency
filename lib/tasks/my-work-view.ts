@@ -57,7 +57,12 @@ export interface AttentionItem {
   taskId: string;
 }
 
-export type ClientState = "On Track" | "At Risk" | "Waiting";
+/*
+ * Exactly the labels journey health uses, so the Dashboard's chip can carry the
+ * account's real health rather than a second opinion derived from one person's
+ * tasks. "Blocked" was missing, which flattened every blocked account to At Risk.
+ */
+export type ClientState = "On Track" | "At Risk" | "Waiting" | "Blocked";
 
 export interface ClientCard {
   id: string | null;
@@ -67,7 +72,13 @@ export interface ClientCard {
   needsReview: number;
   nextDue: string | null;
   latestActivity: string | null;
-  /** Derived from the account's own work, not from a stored health field. */
+  /**
+   * The account's health.
+   *
+   * Derived here from the reader's own tasks as a fallback, then replaced by
+   * the Journey board's health wherever the account is visible - the chip sits
+   * beside an account name, so it has to mean what Journey means by it.
+   */
   state: ClientState;
   overdue: number;
   blocked: number;

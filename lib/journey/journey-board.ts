@@ -23,12 +23,19 @@ import {
 /** The four states delivery health may take. */
 export type JourneyHealth = "ON_TRACK" | "WAITING" | "AT_RISK" | "BLOCKED";
 
-export const HEALTH_LABELS: Record<JourneyHealth, string> = {
+/*
+ * `as const satisfies`, not `Record<JourneyHealth, string>`.
+ *
+ * The Dashboard's client chip carries these exact labels, so its ClientState is
+ * this union. Typed as string the two could drift silently; typed as literals,
+ * adding a health value here without adding it there fails to compile.
+ */
+export const HEALTH_LABELS = {
   ON_TRACK: "On Track",
   WAITING: "Waiting",
   AT_RISK: "At Risk",
   BLOCKED: "Blocked",
-};
+} as const satisfies Record<JourneyHealth, string>;
 
 export const HEALTH_TONES: Record<JourneyHealth, "emerald" | "amber" | "rose" | "slate"> = {
   ON_TRACK: "emerald",

@@ -1,6 +1,6 @@
 import { type AuthContext } from "@/lib/authz";
-import { summaryCards } from "@/lib/journey/journey-board";
-import type { SummaryCard } from "@/lib/journey/journey-board";
+import { deriveHealth, summaryCards } from "@/lib/journey/journey-board";
+import type { JourneyAccount, JourneyHealth, SummaryCard } from "@/lib/journey/journey-board";
 import { buildJourneyAccount, journeyAccountSelect } from "@/lib/data/journey-queries";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -31,12 +31,9 @@ import { prisma } from "@/lib/prisma";
  * definition of health to keep in step.
  */
 
-export async function getJourneySummaryCards(
-  actor: AuthContext,
-  now: Date,
-): Promise<SummaryCard[]> {
+async function loadAccounts(actor: AuthContext): Promise<JourneyAccount[]> {
   if (!can(actor, "clients.view.all") && !can(actor, "clients.view.assigned")) {
-    return summaryCards([], now);
+    return [];
   }
 
   const clients = await prisma.client.findMany({
@@ -55,9 +52,36 @@ export async function getJourneySummaryCards(
    * buildJourneyAccount returns an empty evaluation for any stage with no rules,
    * so an empty map skips the requirement engine entirely. nextStage comes from
    * the stage list and goes unread here, so that stays empty too. Every field
-   * the six cards actually look at is on the row itself.
+   * health and the six cards actually look at is on the row itself.
    */
-  const accounts = clients.map((client) => buildJourneyAccount(client, new Map(), []));
+  return clients.map((client) => buildJourneyAccount(client, new Map(), []));
+}
 
-  return summaryCards(accounts, now);
+export async function getJourneySummaryCards(
+  actor: AuthContext,
+  now: Date,
+): Promise<SummaryCard[]> {
+  return summaryCards(await loadAccounts(actor), now);
+}
+
+/**
+ * Each visible account's health, keyed by client id.
+ *
+ * For the Dashboard's Client Snapshot, whose chip sits beside an account name
+ * and so reads as a statement about the account. It used to derive its own from
+ * the reader's tasks alone, which meant an account with a missed milestone and
+ * no late tasks was labelled On Track while the Journey board called it At Risk,
+ * and a blocked account read At Risk because that vocabulary had no Blocked.
+ *
+ * Same deriveHealth, same accounts, so all three pages now answer with one
+ * voice. The task counts beside the chip stay personal - those genuinely are
+ * about the reader's own work.
+ */
+export async function getJourneyHealthByClient(
+  actor: AuthContext,
+  now: Date,
+): Promise<Map<string, JourneyHealth>> {
+  const accounts = await loadAccounts(actor);
+
+  return new Map(accounts.map((account) => [account.id, deriveHealth(account, now)]));
 }

@@ -12,6 +12,8 @@ import {
 } from "@/components/dashboard/dashboard-panels";
 import type { TaskRow } from "@/components/work/task-types";
 import { loadAuthContext } from "@/lib/authz";
+import { getJourneyHealthByClient } from "@/lib/data/client-metrics-query";
+import { HEALTH_LABELS } from "@/lib/journey/journey-board";
 import { prisma } from "@/lib/prisma";
 import { teamRoleLabels } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
@@ -49,7 +51,9 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const [work, activity, comments, profile] = await Promise.all([
+  const now = new Date();
+
+  const [work, activity, comments, profile, healthByClient] = await Promise.all([
     getAssignedTasks(actor),
     getMyRecentActivity(actor, 5),
     getRecentCommentsOnMyWork(actor),
@@ -57,6 +61,7 @@ export default async function DashboardPage() {
       where: { id: actor.id },
       select: { weeklyCapacityHours: true },
     }),
+    getJourneyHealthByClient(actor, now),
   ]);
 
   /*
@@ -101,8 +106,6 @@ export default async function DashboardPage() {
     commentCount: task._count.comments,
   }));
 
-  const now = new Date();
-
   const view = deriveDashboard(
     tasks,
     actor.id,
@@ -117,6 +120,23 @@ export default async function DashboardPage() {
       createdAt: comment.createdAt.toISOString(),
     })),
   );
+
+  /*
+   * The chip beside each account name carries the Journey board's health.
+   *
+   * myClients works it out from the reader's own tasks, which is the wrong
+   * question for a label sitting next to a client's name: an account with a
+   * missed milestone and no late tasks of mine read "On Track" here while
+   * Journey called it "At Risk". The counts beside the chip stay personal -
+   * those really are about this person's work.
+   *
+   * Internal work has no client id and keeps its task-derived state.
+   */
+  const clients = view.clients.map((card) => {
+    const health = card.id ? healthByClient.get(card.id) : undefined;
+
+    return health ? { ...card, state: HEALTH_LABELS[health] } : card;
+  });
 
   // The greeting uses whatever the person is actually called, not a literal.
   const firstName = actor.name.trim().split(/\s+/)[0];
@@ -180,7 +200,7 @@ export default async function DashboardPage() {
         */}
       <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
         <PriorityAlerts alerts={view.attention.slice(0, 5)} now={now} />
-        <ClientSnapshot clients={view.clients} now={now} />
+        <ClientSnapshot clients={clients} now={now} />
 
         <div className="space-y-4 lg:col-span-2 2xl:col-span-1">
           <WeeklyProgress view={view} />

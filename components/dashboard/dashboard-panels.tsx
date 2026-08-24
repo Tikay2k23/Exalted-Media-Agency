@@ -282,10 +282,12 @@ export function PriorityAlerts({
 
 /* ------------------------------------------------------------ client snapshot */
 
+// The same colours the Journey board gives these words.
 const STATE_TONES: Record<ClientState, Tone> = {
   "On Track": "emerald",
   "At Risk": "rose",
   Waiting: "amber",
+  Blocked: "slate",
 };
 
 export function ClientSnapshot({ clients, now }: { clients: ClientCard[]; now: Date }) {

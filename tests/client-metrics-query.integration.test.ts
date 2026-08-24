@@ -4,9 +4,12 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
 import { loadAuthContext } from "@/lib/authz";
-import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
+import {
+  getJourneyHealthByClient,
+  getJourneySummaryCards,
+} from "@/lib/data/client-metrics-query";
 import { getJourneyWorkspaceData } from "@/lib/data/journey-queries";
-import { summaryCards } from "@/lib/journey/journey-board";
+import { HEALTH_LABELS, deriveHealth, summaryCards } from "@/lib/journey/journey-board";
 import { prisma } from "@/lib/prisma";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL ?? process.env.DIRECT_URL);
@@ -116,6 +119,64 @@ describe("overview portfolio row (integration)", { skip: !hasDatabase }, () => {
         card.value <= active,
         `${card.key} (${card.value}) exceeds the active book (${active}), so its percentage would read over 100%`,
       );
+    }
+  });
+});
+
+/**
+ * The Dashboard's client chip, against the real database.
+ *
+ * It used to answer from the reader's own tasks: an account with a missed
+ * milestone and no late tasks of theirs read "On Track" while the Journey board
+ * called it "At Risk", and every blocked account read "At Risk" because that
+ * vocabulary had no "Blocked". Now all three pages ask deriveHealth.
+ */
+describe("dashboard client health (integration)", { skip: !hasDatabase }, () => {
+  const now = new Date();
+
+  after(async () => {
+    await prisma.$disconnect();
+  });
+
+  async function owner() {
+    const user = await prisma.user.findFirstOrThrow({
+      where: { teamRole: "AGENCY_OWNER", isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+
+    return loadAuthContext(user.id);
+  }
+
+  it("gives every visible account the health the journey board gives it", async () => {
+    const actor = await owner();
+
+    assert.ok(actor);
+
+    const [health, workspace] = await Promise.all([
+      getJourneyHealthByClient(actor, now),
+      getJourneyWorkspaceData(actor),
+    ]);
+
+    assert.equal(health.size, workspace.accounts.length, "an account is missing its health");
+
+    for (const account of workspace.accounts) {
+      assert.equal(
+        health.get(account.id),
+        deriveHealth(account, now),
+        `${account.companyName} reads differently on the dashboard than on the board`,
+      );
+    }
+  });
+
+  it("only ever produces labels the dashboard chip can colour", async () => {
+    const actor = await owner();
+
+    assert.ok(actor);
+
+    const allowed = new Set(Object.values(HEALTH_LABELS));
+
+    for (const value of (await getJourneyHealthByClient(actor, now)).values()) {
+      assert.ok(allowed.has(HEALTH_LABELS[value]), `${value} has no label`);
     }
   });
 });
