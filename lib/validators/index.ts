@@ -329,6 +329,127 @@ export const clientContactUpdateSchema = clientContactSchema.extend({
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 });
 
+// --- Structured strategy ---------------------------------------------------
+
+const cuidOrEmpty = z.string().cuid().nullable().optional();
+
+/**
+ * One section's state.
+ *
+ * Only ever one section at a time: the card that changes these shows one
+ * section, and a bulk write would let a stale page reset the others.
+ */
+export const strategySectionSchema = z.object({
+  key: z.enum([
+    "BUSINESS_GOALS",
+    "TARGET_AUDIENCE",
+    "OFFER",
+    "VALUE_PROPOSITION",
+    "COMPETITIVE_POSITIONING",
+    "BRAND_FOUNDATION",
+    "ACQUISITION_STRATEGY",
+    "CHANNEL_STRATEGY",
+    "FUNNEL_STRATEGY",
+    "TRACKING_MEASUREMENT",
+    "EXECUTION_ROADMAP",
+  ]),
+  status: z.enum([
+    "NOT_REQUIRED",
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "READY_FOR_REVIEW",
+    "APPROVED",
+  ]),
+  ownerId: cuidOrEmpty,
+  notes: accountText(2000),
+});
+
+/**
+ * The whole goal list, replaced in one write.
+ *
+ * The editor shows every goal at once, so what it submits is what the person
+ * was looking at - there is no field they cannot see being written back. Rows
+ * absent from the list are the ones they deleted.
+ */
+export const strategyGoalsSchema = z.object({
+  goals: z
+    .array(
+      z.object({
+        id: z.string().cuid().nullable(),
+        title: z.string().trim().min(3).max(200),
+        category: accountText(80),
+        metric: accountText(120),
+        baseline: accountText(80),
+        target: accountText(80),
+        targetDate: accountText(32),
+        priority: z.enum(["LOW", "MEDIUM", "HIGH"]),
+        status: z.enum(["PROPOSED", "AGREED", "IN_PROGRESS", "ACHIEVED", "DROPPED"]),
+        ownerId: cuidOrEmpty,
+        notes: accountText(1000),
+      }),
+    )
+    .max(25),
+});
+
+export const strategyAudiencesSchema = z.object({
+  audiences: z
+    .array(
+      z.object({
+        id: z.string().cuid().nullable(),
+        tier: z.enum(["PRIMARY", "SECONDARY"]),
+        name: z.string().trim().min(2).max(160),
+        location: accountText(200),
+        attributes: accountText(1000),
+        needs: accountText(1000),
+        painPoints: accountText(1000),
+        buyingTriggers: accountText(1000),
+        objections: accountText(1000),
+        decisionMakers: accountText(500),
+        channels: accountText(500),
+        notes: accountText(1000),
+      }),
+    )
+    .max(12),
+});
+
+export const strategyValuePropSchema = z.object({
+  statement: accountText(1000),
+  offer: accountText(1000),
+  primaryOutcome: accountText(500),
+  differentiators: z.array(z.string().trim().min(2).max(160)).max(6),
+  proofPoints: accountText(1000),
+  guarantees: accountText(500),
+  objections: accountText(1000),
+  positioningStatement: accountText(500),
+  competitorNotes: accountText(1000),
+});
+
+export const strategyRoadmapSchema = z.object({
+  key: z.enum([
+    "DISCOVERY",
+    "RESEARCH_ANALYSIS",
+    "STRATEGY_DEVELOPMENT",
+    "PLANNING_EXECUTION",
+    "REVIEW_OPTIMIZATION",
+  ]),
+  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
+  ownerId: cuidOrEmpty,
+  startDate: accountText(32),
+  targetDate: accountText(32),
+  notes: accountText(1000),
+  /**
+   * Set only by somebody entitled to it, and only with a reason. Completing a
+   * phase whose requirements are unmet is a decision, and a decision with
+   * nobody's name on it is how a roadmap stops meaning anything.
+   */
+  overrideReason: accountText(500),
+});
+
+export const clientNoteSchema = z.object({
+  category: z.enum(["GENERAL", "STRATEGY"]),
+  body: z.string().trim().min(2).max(4000),
+});
+
 // --- Strategy brief --------------------------------------------------------
 
 const briefField = z.string().max(4000).optional().or(z.literal(""));
