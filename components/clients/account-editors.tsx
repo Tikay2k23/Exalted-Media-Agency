@@ -21,7 +21,13 @@ import { Textarea } from "@/components/ui/textarea";
 interface Saver {
   saving: boolean;
   error: string | null;
-  save: (url: string, body: unknown, onDone: () => void) => void;
+  /** PATCH by default; creating something takes POST. */
+  save: (
+    url: string,
+    body: unknown,
+    onDone: () => void,
+    method?: "PATCH" | "POST",
+  ) => void;
 }
 
 /** POST-and-refresh, with the error states every one of these needs. */
@@ -31,14 +37,19 @@ export function useAccountSaver(): Saver {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function save(url: string, body: unknown, onDone: () => void) {
+  function save(
+    url: string,
+    body: unknown,
+    onDone: () => void,
+    method: "PATCH" | "POST" = "PATCH",
+  ) {
     setSaving(true);
     setError(null);
 
     void (async () => {
       try {
         const response = await fetch(url, {
-          method: "PATCH",
+          method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });

@@ -581,6 +581,36 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             approvedBy: { select: { id: true, name: true } },
           },
         },
+
+        /*
+         * The structured strategy layer the Strategy tab reasons about. The
+         * brief above stays the narrative; these carry the state - which
+         * sections apply and how far each has got, the goals with their own
+         * targets, the audiences, the positioning and the roadmap.
+         */
+        strategySections: {
+          include: {
+            owner: { select: { id: true, name: true } },
+            approvedBy: { select: { id: true, name: true } },
+            updatedBy: { select: { id: true, name: true } },
+          },
+        },
+        strategyGoals: {
+          orderBy: { position: "asc" },
+          include: { owner: { select: { id: true, name: true } } },
+        },
+        strategyAudiences: { orderBy: [{ tier: "asc" }, { position: "asc" }] },
+        strategyValueProp: true,
+        roadmapPhases: {
+          include: { owner: { select: { id: true, name: true } } },
+        },
+        clientNotes: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          include: { author: { select: { id: true, name: true } } },
+        },
+        assets: { orderBy: [{ isRequired: "desc" }, { type: "asc" }] },
         intakeForm: {
           include: { reviewedBy: { select: { id: true, name: true } } },
         },

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientAccount } from "@/components/clients/client-account";
+import { ClientStrategy } from "@/components/clients/client-strategy";
 import { ClientHeader } from "@/components/clients/client-header";
 import { ClientIntegrations } from "@/components/clients/client-integrations";
 import { ClientOverview } from "@/components/clients/client-overview";
@@ -35,7 +36,7 @@ import {
   serviceTypeOptions,
 } from "@/lib/data/queries";
 import { loadAuthContext } from "@/lib/authz";
-import type { ClientTab } from "@/lib/clients/client-workspace";
+import { type ClientTab, nextMilestone } from "@/lib/clients/client-workspace";
 import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
 import { getClientRow } from "@/lib/data/clients-dashboard-query";
 import { prisma } from "@/lib/prisma";
@@ -81,6 +82,12 @@ import {
   outstandingOffboardingSteps,
 } from "@/lib/success/offboarding-service";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
+import {
+  STRATEGY_SECTIONS,
+  type SectionStatus,
+  sectionApplies,
+  strategyProgress,
+} from "@/lib/strategy/strategy-sections";
 import {
   deriveIntakeProgress,
   sectionsForService,
@@ -415,44 +422,87 @@ export default async function ClientDetailPage({
             />
           ),
 
-          services: (
-            <div className="space-y-6">
-              {/* Intake comes before the brief: the brief is written from what the
-                  client tells us here. */}
-              {(() => {
-                const form = client.intakeForm;
-                const answers = (form?.answers as Record<string, string> | null) ?? null;
-                const progress = deriveIntakeProgress(client.serviceType, answers);
+          services: (() => {
+            const form = client.intakeForm;
+            const answers = (form?.answers as Record<string, string> | null) ?? null;
+            const intakeProgress = deriveIntakeProgress(client.serviceType, answers);
 
-                return (
-                  <ClientIntake
-                    clientId={client.id}
-                    canManage={can(actor, "clients.edit")}
-                    intake={{
-                      exists: form !== null,
-                      status: form?.status ?? "NOT_SENT",
-                      sentAt: form?.sentAt?.toISOString() ?? null,
-                      viewedAt: form?.viewedAt?.toISOString() ?? null,
-                      submittedAt: form?.submittedAt?.toISOString() ?? null,
-                      reviewedAt: form?.reviewedAt?.toISOString() ?? null,
-                      reviewedByName: form?.reviewedBy?.name ?? null,
-                      reviewNotes: form?.reviewNotes ?? null,
-                      expiresAt: form?.expiresAt?.toISOString() ?? null,
-                      percent: progress.percent,
-                      missingRequired: progress.missingRequired,
-                      groups: form?.submittedAt
-                        ? sectionsForService(client.serviceType).map((section) => ({
-                            title: section.title,
-                            answers: section.questions.map((question) => ({
-                              label: question.label,
-                              value: answers?.[question.id] ?? null,
-                            })),
-                          }))
-                        : [],
-                    }}
-                  />
-                );
-              })()}
+            /*
+             * Every service the account actually has, not only the headline
+             * one. Which strategy sections are required depends on all of them.
+             */
+            const services = [
+              client.serviceType,
+              ...client.projects.map((project) => project.serviceType),
+            ];
+
+            const sections = STRATEGY_SECTIONS.filter((definition) =>
+              sectionApplies(definition, services),
+            ).map((definition) => {
+              const sectionRow = client.strategySections.find(
+                (candidate) => candidate.key === definition.key,
+              );
+
+              return {
+                key: definition.key,
+                status: (sectionRow?.status ?? "NOT_STARTED") as SectionStatus,
+                ownerName: sectionRow?.owner?.name ?? null,
+                approvedByName: sectionRow?.approvedBy?.name ?? null,
+                approvedAt: sectionRow?.approvedAt?.toISOString() ?? null,
+                notes: sectionRow?.notes ?? null,
+              };
+            });
+
+            const progress = strategyProgress(
+              client.strategySections.map((section) => ({
+                key: section.key,
+                status: section.status as SectionStatus,
+              })),
+              services,
+            );
+
+            /*
+             * The next dated thing on this account. Journey owns milestones, so
+             * this reads the row the workspace already derived rather than
+             * keeping a second copy of the same dates.
+             */
+            const upcoming = row ? nextMilestone(row, new Date()) : null;
+
+            /*
+             * The existing intake workspace, untouched, handed to the new page
+             * to reveal on demand. Sending, resending and reviewing still
+             * happen only in here - there is one send path and this is it.
+             */
+            const intakeWorkspace = (
+              <ClientIntake
+                clientId={client.id}
+                canManage={can(actor, "clients.edit")}
+                intake={{
+                  exists: form !== null,
+                  status: form?.status ?? "NOT_SENT",
+                  sentAt: form?.sentAt?.toISOString() ?? null,
+                  viewedAt: form?.viewedAt?.toISOString() ?? null,
+                  submittedAt: form?.submittedAt?.toISOString() ?? null,
+                  reviewedAt: form?.reviewedAt?.toISOString() ?? null,
+                  reviewedByName: form?.reviewedBy?.name ?? null,
+                  reviewNotes: form?.reviewNotes ?? null,
+                  expiresAt: form?.expiresAt?.toISOString() ?? null,
+                  percent: intakeProgress.percent,
+                  missingRequired: intakeProgress.missingRequired,
+                  groups: form?.submittedAt
+                    ? sectionsForService(client.serviceType).map((section) => ({
+                        title: section.title,
+                        answers: section.questions.map((question) => ({
+                          label: question.label,
+                          value: answers?.[question.id] ?? null,
+                        })),
+                      }))
+                    : [],
+                }}
+              />
+            );
+
+            const briefWorkspace = (
               <ClientBrief
                 clientId={client.id}
                 currentUserId={actor.id}
@@ -474,12 +524,15 @@ export default async function ClientDetailPage({
                   })(),
                 }}
               />
+            );
+
+            const projectsWorkspace = (
               <ClientProjects
                 clientId={client.id}
                 canEdit={can(actor, "projects.manage")}
                 managers={options.users}
                 projects={client.projects.map((project) => {
-                  const progress = deriveProjectProgress(project.milestones);
+                  const projectProgress = deriveProjectProgress(project.milestones);
 
                   return {
                     id: project.id,
@@ -488,10 +541,10 @@ export default async function ClientDetailPage({
                     riskLevel: project.riskLevel,
                     managerName: project.projectManager?.name ?? null,
                     targetLaunchDate: project.targetLaunchDate?.toISOString() ?? null,
-                    percentComplete: progress.percentComplete,
-                    currentMilestone: progress.currentMilestone,
-                    nextMilestone: progress.nextMilestone,
-                    overdueMilestones: progress.overdueCount,
+                    percentComplete: projectProgress.percentComplete,
+                    currentMilestone: projectProgress.currentMilestone,
+                    nextMilestone: projectProgress.nextMilestone,
+                    overdueMilestones: projectProgress.overdueCount,
                     milestones: project.milestones.map((milestone) => ({
                       id: milestone.id,
                       name: milestone.name,
@@ -505,8 +558,103 @@ export default async function ClientDetailPage({
                   };
                 })}
               />
-            </div>
-          ),
+            );
+
+            return (
+              <ClientStrategy
+                clientId={client.id}
+                companyName={client.companyName}
+                progress={progress}
+                sections={sections}
+                goals={client.strategyGoals.map((goal) => ({
+                  id: goal.id,
+                  title: goal.title,
+                  category: goal.category ?? "",
+                  metric: goal.metric ?? "",
+                  baseline: goal.baseline ?? "",
+                  target: goal.target ?? "",
+                  targetDate: goal.targetDate?.toISOString().slice(0, 10) ?? "",
+                  priority: goal.priority,
+                  status: goal.status,
+                  ownerId: goal.ownerId,
+                  notes: goal.notes ?? "",
+                }))}
+                audiences={client.strategyAudiences.map((audience) => ({
+                  id: audience.id,
+                  tier: audience.tier,
+                  name: audience.name,
+                  location: audience.location ?? "",
+                  attributes: audience.attributes ?? "",
+                  needs: audience.needs ?? "",
+                  painPoints: audience.painPoints ?? "",
+                  buyingTriggers: audience.buyingTriggers ?? "",
+                  objections: audience.objections ?? "",
+                  decisionMakers: audience.decisionMakers ?? "",
+                  channels: audience.channels ?? "",
+                  notes: audience.notes ?? "",
+                }))}
+                valueProp={{
+                  statement: client.strategyValueProp?.statement ?? "",
+                  offer: client.strategyValueProp?.offer ?? "",
+                  primaryOutcome: client.strategyValueProp?.primaryOutcome ?? "",
+                  differentiators: client.strategyValueProp?.differentiators ?? [],
+                  proofPoints: client.strategyValueProp?.proofPoints ?? "",
+                  guarantees: client.strategyValueProp?.guarantees ?? "",
+                  objections: client.strategyValueProp?.objections ?? "",
+                  positioningStatement:
+                    client.strategyValueProp?.positioningStatement ?? "",
+                  competitorNotes: client.strategyValueProp?.competitorNotes ?? "",
+                }}
+                roadmap={client.roadmapPhases.map((phase) => ({
+                  key: phase.key,
+                  status: phase.status,
+                  ownerName: phase.owner?.name ?? null,
+                  targetDate: phase.targetDate?.toISOString() ?? null,
+                  completedAt: phase.completedAt?.toISOString() ?? null,
+                }))}
+                assets={client.assets.map((asset) => ({
+                  id: asset.id,
+                  name: asset.name,
+                  type: asset.type,
+                  status: asset.status,
+                  fileUrl: asset.fileUrl,
+                }))}
+                notes={client.clientNotes
+                  .filter((note) => note.category === "STRATEGY")
+                  .map((note) => ({
+                    id: note.id,
+                    body: note.body,
+                    authorName: note.author?.name ?? null,
+                    createdAt: note.createdAt.toISOString(),
+                  }))}
+                intake={{
+                  exists: form !== null,
+                  status: form?.status ?? "NOT_SENT",
+                  sentAt: form?.sentAt?.toISOString() ?? null,
+                  viewedAt: form?.viewedAt?.toISOString() ?? null,
+                  submittedAt: form?.submittedAt?.toISOString() ?? null,
+                  percent: intakeProgress.percent,
+                  missingRequired: intakeProgress.missingRequired,
+                  recipientEmail: client.contactEmail,
+                }}
+                users={options.users.map((member) => ({
+                  id: member.id,
+                  name: member.name,
+                }))}
+                briefUpdatedAt={client.strategyBrief?.updatedAt.toISOString() ?? null}
+                briefAuthorName={client.strategyBrief?.author?.name ?? null}
+                nextMilestone={
+                  upcoming ? { name: upcoming.name, dueAt: upcoming.dueAt } : null
+                }
+                canEdit={canManageClient}
+                serverNow={new Date().toISOString()}
+                timezone={client.timezone}
+                intakeWorkspace={intakeWorkspace}
+                briefWorkspace={briefWorkspace}
+                projectsWorkspace={projectsWorkspace}
+              />
+            );
+          })(),
 
           tasks: (
             <div className="space-y-6">
