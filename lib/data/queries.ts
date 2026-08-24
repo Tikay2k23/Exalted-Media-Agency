@@ -566,6 +566,15 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
         },
+        /*
+         * The Account tab reads the current agreement: value, dates, terms and
+         * the stored document. Newest first and signed ones preferred, so a
+         * draft raised beside a live contract does not displace it.
+         */
+        contracts: {
+          where: { deletedAt: null },
+          orderBy: [{ signedAt: "desc" }, { createdAt: "desc" }],
+        },
         strategyBrief: {
           include: {
             author: { select: { id: true, name: true } },

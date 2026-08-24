@@ -158,6 +158,7 @@ model User {
   activityLogs           ActivityLog[]            @relation("ActivityActor")
   assignedClients        Client[]                 @relation("ClientAssignee")
   currentlyHeldClients   Client[]                 @relation("ClientCurrentOwner")
+  contactsDeactivated    ClientContact[]          @relation("ContactDeactivator")
   stageChanges           ClientStageHistory[]     @relation("StageChangedBy")
   assignedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskAssignee")
   createdAgencyTasks     EmployeeTask[]           @relation("EmployeeTaskCreator")

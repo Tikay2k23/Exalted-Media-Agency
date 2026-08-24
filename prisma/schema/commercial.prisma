@@ -94,6 +94,13 @@ model Contract {
   endDate          DateTime?
   renewalDate      DateTime?
   cancellationNoticeDays Int?
+  /// When money is due, in the words the agreement uses - "Due on the 15th of
+  /// each month". Free text because payment terms are prose in a contract, not
+  /// an enum, and forcing them into one would lose the ones that do not fit.
+  paymentTerms     String?
+  /// Whether the term rolls over on its own. Distinct from having a renewal
+  /// date: a contract can renew on a date and still need a signature.
+  autoRenew        Boolean         @default(false)
   cancellationRequestedAt DateTime?
   finalInvoiceIssuedAt DateTime?
   documentUrl      String?

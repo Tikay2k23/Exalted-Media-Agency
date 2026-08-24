@@ -187,6 +187,90 @@ export const clientContactSchema = z.object({
   notes: z.string().max(1000).optional().or(z.literal("")),
 });
 
+// --- Account tab -----------------------------------------------------------
+
+/** Optional free text on the Account tab that may legitimately be cleared. */
+const accountText = (max: number) =>
+  z.string().trim().max(max).optional().or(z.literal(""));
+
+/**
+ * The company itself.
+ *
+ * Everything is optional because an account starts life as a converted lead
+ * with a name and an email; the rest arrives as somebody learns it. What is
+ * validated is shape, not presence - a website that is not a URL and an email
+ * that is not an address are mistakes worth catching, an empty one is not.
+ */
+export const clientCompanySchema = z.object({
+  legalName: accountText(160),
+  website: z
+    .string()
+    .trim()
+    .max(200)
+    // Accepts "cedarridgeland.com" as readily as the full URL, because that is
+    // how people type it. Normalised to a real URL before it is stored.
+    .refine(
+      (value) => value === "" || /^(https?:\/\/)?[^\s/$.?#][^\s]*\.[^\s]{2,}$/i.test(value),
+      { message: "Enter a valid website, for example cedarridgeland.com" },
+    )
+    .optional()
+    .or(z.literal("")),
+  industry: accountText(120),
+  addressLine1: accountText(160),
+  addressLine2: accountText(160),
+  city: accountText(80),
+  stateRegion: accountText(80),
+  postalCode: accountText(24),
+  country: accountText(80),
+  businessPhone: accountText(40),
+  businessEmail: z.string().trim().email().max(160).optional().or(z.literal("")),
+  serviceArea: accountText(200),
+  taxId: accountText(40),
+  timezone: accountText(64),
+});
+
+/**
+ * Who holds this account, seat by seat.
+ *
+ * The account owner is a field on the client; every other seat is a
+ * ClientWorkstream row keyed by TeamRole, which is where the application
+ * already records who runs what. Null clears a seat, which is a real state -
+ * "nobody is doing this" is worth showing.
+ */
+export const clientOwnershipSchema = z.object({
+  assignedUserId: z.string().cuid().nullable(),
+  seats: z
+    .array(
+      z.object({
+        role: z.enum([
+          "AGENCY_OWNER",
+          "SALES_REP",
+          "PROJECT_MANAGER",
+          "AUTOMATION_SPECIALIST",
+          "CREATIVE_SPECIALIST",
+          "ADS_SPECIALIST",
+        ]),
+        ownerId: z.string().cuid().nullable(),
+      }),
+    )
+    .max(6),
+});
+
+/** The one persistent note pinned to the account. */
+export const clientInternalNoteSchema = z.object({
+  notes: z.string().trim().max(2000),
+});
+
+/**
+ * Editing one contact.
+ *
+ * The same shape as creating one plus its status, so the add and edit forms can
+ * share a component rather than drifting into two different sets of rules.
+ */
+export const clientContactUpdateSchema = clientContactSchema.extend({
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+});
+
 // --- Strategy brief --------------------------------------------------------
 
 const briefField = z.string().max(4000).optional().or(z.literal(""));

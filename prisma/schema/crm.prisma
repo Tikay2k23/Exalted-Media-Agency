@@ -5,6 +5,12 @@ enum PipelineKind {
   FULFILLMENT
 }
 
+/// Whether a contact is still someone to deal with.
+enum ContactStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum ClientStatus {
   ACTIVE
   AT_RISK
@@ -437,6 +443,30 @@ model Client {
   lastClientUpdateAt DateTime?
   deletedAt         DateTime?
 
+  /// The company itself, as opposed to the engagement.
+  ///
+  /// These belong on the Account tab, which is the one place stable company
+  /// facts are kept. All optional: an account is created from a lead with a
+  /// name and an email, and the rest is filled in as somebody learns it. A
+  /// missing value reads as "Not provided" rather than being invented.
+  legalName      String?
+  website        String?
+  industry       String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  stateRegion    String?
+  postalCode     String?
+  country        String?
+  /// The company's own switchboard and inbox, distinct from contactEmail and
+  /// contactPhone, which belong to the primary person.
+  businessPhone  String?
+  businessEmail  String?
+  serviceArea    String?
+  taxId          String?
+  /// An IANA zone. The footer reads the viewer's browser when this is unset.
+  timezone       String?
+
   assignedUser User?                @relation("ClientAssignee", fields: [assignedUserId], references: [id])
   currentOwner User?                @relation("ClientCurrentOwner", fields: [currentOwnerId], references: [id], onDelete: SetNull)
   currentStage PipelineStage        @relation(fields: [currentStageId], references: [id])
@@ -497,14 +527,21 @@ model ClientContact {
   isApprover  Boolean  @default(false)
   communicationPreference String?
   notes       String?
+  /// Deactivated rather than deleted once a contact has history: approvals and
+  /// review cycles point at these rows, and removing one would orphan them.
+  status      ContactStatus @default(ACTIVE)
+  deactivatedAt DateTime?
+  deactivatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  deactivatedBy User?        @relation("ContactDeactivator", fields: [deactivatedById], references: [id], onDelete: SetNull)
   reviewCycles ReviewCycle[] @relation("ReviewApprover")
   approvals    Approval[]    @relation("ApprovalContact")
 
   @@index([clientId])
+  @@index([status])
 }
 
 model ClientStageHistory {

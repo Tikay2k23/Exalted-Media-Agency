@@ -17,7 +17,19 @@ function subscribeToNothing() {
  * away. router.refresh() is the existing pattern the rest of the app uses
  * after a mutation; this is the same thing on a button.
  */
-export function ClientOverviewFooter({ loadedAt }: { loadedAt: string }) {
+export function ClientOverviewFooter({
+  loadedAt,
+  timezone,
+}: {
+  loadedAt: string;
+  /**
+   * The account's own timezone, when somebody has recorded one on the Account
+   * tab. Without it the footer falls back to the reader's browser, which is
+   * still true and still useful - what it must never do is name a fixed zone
+   * for every account and tell somebody in Manila that times are Chicago's.
+   */
+  timezone?: string | null;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
@@ -37,11 +49,12 @@ export function ClientOverviewFooter({ loadedAt }: { loadedAt: string }) {
     () => false,
   );
 
-  const zone = isClient ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
+  const zone = timezone ?? (isClient ? Intl.DateTimeFormat().resolvedOptions().timeZone : null);
   const stamp = isClient
     ? new Date(refreshedAt ?? loadedAt).toLocaleTimeString(undefined, {
         hour: "numeric",
         minute: "2-digit",
+        ...(timezone ? { timeZone: timezone } : {}),
       })
     : null;
 

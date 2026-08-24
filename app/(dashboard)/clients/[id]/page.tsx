@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { AccountDetailsForm } from "@/components/clients/account-details-form";
+import { ClientAccount } from "@/components/clients/client-account";
 import { ClientHeader } from "@/components/clients/client-header";
 import { ClientIntegrations } from "@/components/clients/client-integrations";
 import { ClientOverview } from "@/components/clients/client-overview";
@@ -8,18 +8,15 @@ import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
 import { ClientApprovals } from "@/components/clients/client-approvals";
 import { ClientBrief } from "@/components/clients/client-brief";
-import { ClientContacts } from "@/components/clients/client-contacts";
 import { ClientGrowth } from "@/components/clients/client-growth";
 import { ClientHealth } from "@/components/clients/client-health";
 import { ClientOffboarding } from "@/components/clients/client-offboarding";
-import { ClientForm } from "@/components/clients/client-form";
 import { ClientIntake } from "@/components/clients/client-intake";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
 import { ClientProjects } from "@/components/clients/client-projects";
 import { ClientQuality } from "@/components/clients/client-quality";
 import { ClientReporting } from "@/components/clients/client-reporting";
-import { DeleteClientButton } from "@/components/clients/delete-client-button";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
 import { JourneyOverview } from "@/components/clients/journey-overview";
 import { StageReadiness } from "@/components/clients/stage-readiness";
@@ -32,11 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  getClientDetail,
-  getSharedOptions,
-  serviceTypeOptions,
-} from "@/lib/data/queries";
+import { getClientDetail, getSharedOptions } from "@/lib/data/queries";
 import { loadAuthContext } from "@/lib/authz";
 import type { ClientTab } from "@/lib/clients/client-workspace";
 import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
@@ -99,11 +92,6 @@ import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-/** A date input needs YYYY-MM-DD, not an ISO timestamp. */
-function toDateInput(value: Date | null) {
-  return value ? value.toISOString().slice(0, 10) : null;
-}
 
 
 /** Only the tabs that exist. Anything else falls back to the overview. */
@@ -195,6 +183,27 @@ export default async function ClientDetailPage({
 
   const requested = typeof query.tab === "string" ? (query.tab as ClientTab) : "overview";
   const initialTab = TAB_KEYS.includes(requested) ? requested : "overview";
+
+  /*
+   * Who last touched the standing internal note.
+   *
+   * The note is a column on the client, so it carries no author of its own -
+   * this reads the last activity entry that recorded a change to it, which is
+   * what the internal-note route writes.
+   */
+  const noteEntry = client.notes
+    ? await prisma.activityLog.findFirst({
+        where: {
+          entityType: "CLIENT",
+          entityId: id,
+          action: { contains: "internal account note" },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { actor: { select: { name: true } } },
+      })
+    : null;
+
+  const noteAuthor = noteEntry?.actor?.name ?? null;
 
   const assessment = client.healthAssessments[0] ?? null;
 
@@ -297,70 +306,92 @@ export default async function ClientDetailPage({
           ) : null,
 
           contacts: (
-            <div className="space-y-6">
-              <section className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 xl:grid-cols-2">
-                <AccountDetailsForm
-                  clientId={client.id}
-                  canEdit={canManageClient}
-                  users={options.users}
-                  values={{
-                    assignedUserId: client.assignedUserId,
-                    monthlyValue: client.monthlyValue === null ? null : Number(client.monthlyValue),
-                    contractStartDate: toDateInput(client.contractStartDate),
-                    contractEndDate: toDateInput(client.contractEndDate),
-                    renewalDate: toDateInput(client.renewalDate),
-                    currentBlocker: client.currentBlocker,
-                    nextAction: client.nextAction,
-                    nextActionDueAt: toDateInput(client.nextActionDueAt),
-                  }}
-                />
+            <ClientAccount
+              clientId={client.id}
+              company={{
+                companyName: client.companyName,
+                monthlyValue:
+                  canViewFinance && client.monthlyValue !== null
+                    ? Number(client.monthlyValue)
+                    : null,
+                legalName: client.legalName ?? "",
+                website: client.website ?? "",
+                industry: client.industry ?? "",
+                addressLine1: client.addressLine1 ?? "",
+                addressLine2: client.addressLine2 ?? "",
+                city: client.city ?? "",
+                stateRegion: client.stateRegion ?? "",
+                postalCode: client.postalCode ?? "",
+                country: client.country ?? "",
+                businessPhone: client.businessPhone ?? "",
+                businessEmail: client.businessEmail ?? "",
+                serviceArea: client.serviceArea ?? "",
+                taxId: client.taxId ?? "",
+                timezone: client.timezone ?? "",
+              }}
+              contacts={client.contacts.map((contact) => ({
+                id: contact.id,
+                name: contact.name,
+                role: contact.role,
+                email: contact.email,
+                phone: contact.phone,
+                isPrimary: contact.isPrimary,
+                isDecisionMaker: contact.isDecisionMaker,
+                isApprover: contact.isApprover,
+                communicationPreference: contact.communicationPreference,
+                status: contact.status,
+              }))}
+              /* The live agreement: a signed one wins, otherwise the newest. */
+              contract={(() => {
+                const current =
+                  client.contracts.find((row) => row.agreementStatus === "SIGNED")
+                  ?? client.contracts[0]
+                  ?? null;
 
-                <ClientContacts
-                  clientId={client.id}
-                  canEdit={canManageClient}
-                  contacts={client.contacts}
-                />
-              </section>
-              {canManageClient ? (
-                <section className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                  <ClientForm
-                    users={options.users}
-                    stages={options.stages}
-                    serviceTypes={serviceTypeOptions}
-                    client={{
-                      id: client.id,
-                      clientName: client.clientName,
-                      companyName: client.companyName,
-                      contactEmail: client.contactEmail,
-                      contactPhone: client.contactPhone,
-                      assignedUserId: client.assignedUserId,
-                      status: client.status,
-                      serviceType: client.serviceType,
-                      currentStageId: client.currentStageId,
-                      notes: client.notes,
-                    }}
-                  />
+                if (!current) return null;
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Danger Zone</CardTitle>
-                      <CardDescription>
-                        Delete the client if the account should be removed from the system.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-sm leading-7 text-slate-600">
-                        This removes the client profile and pipeline history. Linked internal tasks stay in the system but lose the client reference.
-                      </p>
-                      <DeleteClientButton
-                        clientId={client.id}
-                        companyName={client.companyName}
-                      />
-                    </CardContent>
-                  </Card>
-                </section>
-              ) : null}
-            </div>
+                return {
+                  id: current.id,
+                  title: current.title,
+                  agreementStatus: current.agreementStatus,
+                  recurringFee:
+                    current.recurringFee === null ? null : Number(current.recurringFee),
+                  contractValue:
+                    current.contractValue === null ? null : Number(current.contractValue),
+                  billingCadence: current.billingCadence,
+                  startDate: current.startDate?.toISOString() ?? null,
+                  endDate: current.endDate?.toISOString() ?? null,
+                  renewalDate:
+                    current.renewalDate?.toISOString()
+                    ?? client.renewalDate?.toISOString()
+                    ?? null,
+                  paymentTerms: current.paymentTerms,
+                  autoRenew: current.autoRenew,
+                  documentUrl: current.documentUrl,
+                };
+              })()}
+              ownership={{
+                assignedUserId: client.assignedUserId,
+                owner: client.assignedUser?.name ?? null,
+                /* The seats this account actually has, from its workstreams. */
+                seats: client.workstreams.map((stream) => ({
+                  role: stream.role,
+                  label: teamRoleLabels[stream.role],
+                  ownerId: stream.ownerId,
+                })),
+              }}
+              users={options.users.map((member) => ({
+                id: member.id,
+                name: member.name,
+                teamRole: member.teamRole,
+              }))}
+              internalNote={client.notes}
+              noteAuthor={noteAuthor}
+              noteUpdatedAt={client.updatedAt.toISOString()}
+              canEdit={canManageClient}
+              canSeeFinance={canViewFinance}
+              serverNow={new Date().toISOString()}
+            />
           ),
 
           services: (
