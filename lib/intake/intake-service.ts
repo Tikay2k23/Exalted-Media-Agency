@@ -9,6 +9,7 @@ import {
   deriveIntakeProgress,
   questionsForService,
 } from "@/lib/intake/question-catalogue";
+import { applyIntakeToA2P } from "@/lib/a2p/intake-mapping";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -304,16 +305,47 @@ export async function saveIntakeAnswers(input: {
 
   const now = new Date();
 
-  await prisma.intakeForm.update({
-    where: { id: form.id },
-    data: {
-      answers: merged,
-      lastSavedAt: now,
-      ...(submit
-        ? { status: IntakeStatus.SUBMITTED, submittedAt: now }
-        : { status: IntakeStatus.PARTIALLY_COMPLETED }),
-    },
+  /*
+   * The form and the A2P profile move together.
+   *
+   * A submission that saved the answers but failed to carry them into the
+   * registration profile would leave somebody looking at an empty A2P page
+   * beside a completed intake, with nothing to say which was right - so both
+   * happen inside one transaction or neither does.
+   */
+  const mapping = await prisma.$transaction(async (tx) => {
+    await tx.intakeForm.update({
+      where: { id: form.id },
+      data: {
+        answers: merged,
+        lastSavedAt: now,
+        ...(submit
+          ? { status: IntakeStatus.SUBMITTED, submittedAt: now }
+          : { status: IntakeStatus.PARTIALLY_COMPLETED }),
+      },
+    });
+
+    // Only on submit, and only for a client whose answers include the A2P
+    // section at all. The intake row itself is never rewritten: it stays the
+    // record of exactly what was sent.
+    if (!submit || !("a2pLegalName" in merged || "a2pUseCases" in merged)) return null;
+
+    return applyIntakeToA2P(tx, form.client.id, merged as Record<string, string>);
   });
+
+  if (mapping && (mapping.fieldsFilled.length > 0 || mapping.samplesAdded > 0)) {
+    await logActivity({
+      actorId: null,
+      action: `${form.client.companyName} supplied A2P registration information with their intake`,
+      entityType: "CLIENT",
+      entityId: form.client.id,
+      metadataJson: {
+        fields: mapping.fieldsFilled,
+        samples: mapping.samplesAdded,
+        profileCreated: mapping.created,
+      },
+    });
+  }
 
   if (submit) {
     // Empty actor: this was the client, not a team member, so there is nobody

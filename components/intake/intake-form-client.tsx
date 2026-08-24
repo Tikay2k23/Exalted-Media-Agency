@@ -3,7 +3,7 @@
 import { Check, LoaderCircle, Save } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import type { IntakeSection } from "@/lib/intake/question-catalogue";
+import { questionApplies, type IntakeSection } from "@/lib/intake/question-catalogue";
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100";
@@ -163,7 +163,9 @@ export function IntakeFormClient({
           </div>
 
           <div className="space-y-4">
-            {section.questions.map((question) => (
+            {section.questions
+              .filter((question) => questionApplies(question, answers))
+              .map((question) => (
               <label key={question.id} className="block space-y-1.5">
                 <span className="text-sm font-medium text-slate-700">
                   {question.label}
@@ -173,7 +175,72 @@ export function IntakeFormClient({
                     </span>
                   ) : null}
                 </span>
-                {question.kind === "long" ? (
+                {question.kind === "boolean" ? (
+                  <select
+                    className={inputClass}
+                    value={answers[question.id] ?? ""}
+                    onChange={(event) =>
+                      setAnswers((current) => ({
+                        ...current,
+                        [question.id]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Please choose</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                ) : question.kind === "choice" ? (
+                  <select
+                    className={inputClass}
+                    value={answers[question.id] ?? ""}
+                    onChange={(event) =>
+                      setAnswers((current) => ({
+                        ...current,
+                        [question.id]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Please choose</option>
+                    {(question.options ?? []).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : question.kind === "multi" ? (
+                  /* Stored as the chosen values joined by a comma, so the
+                     answers stay the flat string map everything else reads. */
+                  <span className="block space-y-1.5 rounded-xl border border-slate-200 p-3">
+                    {(question.options ?? []).map((option) => {
+                      const chosen = (answers[question.id] ?? "")
+                        .split(",")
+                        .map((value) => value.trim())
+                        .filter(Boolean);
+
+                      return (
+                        <span key={option.value} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={chosen.includes(option.value)}
+                            onChange={(event) => {
+                              const next = event.target.checked
+                                ? [...chosen, option.value]
+                                : chosen.filter((value) => value !== option.value);
+
+                              setAnswers((current) => ({
+                                ...current,
+                                [question.id]: next.join(","),
+                              }));
+                            }}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <span className="text-sm text-slate-700">{option.label}</span>
+                        </span>
+                      );
+                    })}
+                  </span>
+                ) : question.kind === "long" ? (
                   <textarea
                     rows={3}
                     className={inputClass}

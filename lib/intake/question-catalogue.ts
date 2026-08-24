@@ -1,5 +1,6 @@
 import type { ServiceType, TeamRole } from "@prisma/client";
 
+import { a2pApplies } from "@/lib/a2p/a2p-readiness";
 import { specialistsForService } from "@/lib/workflow/service-blueprints";
 
 /**
@@ -19,7 +20,19 @@ import { specialistsForService } from "@/lib/workflow/service-blueprints";
  * guard the tracker uses.
  */
 
-export type QuestionKind = "short" | "long" | "email" | "phone" | "url" | "money";
+export type QuestionKind =
+  | "short"
+  | "long"
+  | "email"
+  | "phone"
+  | "url"
+  | "money"
+  /** One of a list. Stored as the option value. */
+  | "choice"
+  /** Several of a list. Stored as the values joined by a comma. */
+  | "multi"
+  /** Yes or no. Stored as "yes" or "no" - an empty string is unanswered. */
+  | "boolean";
 
 export interface IntakeQuestion {
   id: string;
@@ -27,6 +40,14 @@ export interface IntakeQuestion {
   kind: QuestionKind;
   help?: string;
   required?: boolean;
+  /** For choice and multi. Value is what gets stored; label is what is asked. */
+  options?: { value: string; label: string }[];
+  /**
+   * Only shown when another answer has one of these values. Keeps the form
+   * from asking a business that takes consent on paper to describe a website
+   * checkbox it does not have.
+   */
+  showWhen?: { questionId: string; hasAnyOf: string[] };
 }
 
 export interface IntakeSection {
@@ -162,13 +183,232 @@ const BY_SEAT: Record<TeamRole, IntakeSection | null> = {
   AGENCY_OWNER: null,
 };
 
+/**
+ * A2P registration, asked only of clients who will actually send SMS.
+ *
+ * Written in the client's language rather than a carrier's. Nobody outside
+ * this industry knows what a campaign use-case is, and asking them to pick one
+ * produces a worse answer than asking what they will use texting for. The
+ * mapping to carrier vocabulary happens internally, on the A2P profile.
+ *
+ * Nothing here asks for a password. Platform access is requested and tracked in
+ * Files & Access, which is the only place credentials are ever handled.
+ */
+export const A2P_SECTION: IntakeSection = {
+  id: "a2p",
+  title: "Text messaging",
+  description:
+    "Before a phone carrier will let us text your customers, they need to know who you are and what you will send. These answers go straight into that registration.",
+  questions: [
+    {
+      id: "a2pLegalName",
+      label: "Your registered legal business name",
+      kind: "short",
+      required: true,
+      help: "Exactly as it appears on your registration paperwork - this often differs from your trading name.",
+    },
+    {
+      id: "a2pEntityType",
+      label: "What kind of business is it?",
+      kind: "choice",
+      required: true,
+      options: [
+        { value: "SOLE_PROPRIETOR", label: "Sole proprietor" },
+        { value: "LLC", label: "LLC" },
+        { value: "CORPORATION", label: "Corporation" },
+        { value: "PARTNERSHIP", label: "Partnership" },
+        { value: "NONPROFIT", label: "Nonprofit" },
+        { value: "GOVERNMENT", label: "Government" },
+        { value: "OTHER", label: "Something else" },
+      ],
+    },
+    {
+      id: "a2pTaxId",
+      label: "Business tax ID or registration number",
+      kind: "short",
+      required: true,
+      help: "EIN in the US, or the equivalent registration number where you are.",
+    },
+    {
+      id: "a2pRepName",
+      label: "Who can we name as the authorised contact?",
+      kind: "short",
+      required: true,
+      help: "Somebody able to confirm this business is yours.",
+    },
+    { id: "a2pRepTitle", label: "Their job title", kind: "short", required: true },
+    { id: "a2pRepEmail", label: "Their email", kind: "email", required: true },
+    { id: "a2pRepPhone", label: "Their phone number", kind: "phone", required: true },
+    {
+      id: "a2pUseCases",
+      label: "What will you use text messages for?",
+      kind: "multi",
+      required: true,
+      options: [
+        { value: "APPOINTMENT_CONFIRMATION", label: "Confirming appointments" },
+        { value: "APPOINTMENT_REMINDER", label: "Reminding people about appointments" },
+        { value: "LEAD_FOLLOW_UP", label: "Following up on enquiries" },
+        { value: "QUOTE_FOLLOW_UP", label: "Following up on quotes or estimates" },
+        { value: "CUSTOMER_SUPPORT", label: "Answering customer questions" },
+        { value: "SERVICE_NOTIFICATION", label: "Telling customers about their job or service" },
+        { value: "ORDER_STATUS", label: "Order or delivery updates" },
+        { value: "ACCOUNT_NOTIFICATION", label: "Account notifications" },
+        { value: "MARKETING_PROMOTION", label: "Offers and promotions" },
+        { value: "REACTIVATION", label: "Getting back in touch with past customers" },
+        { value: "MISSED_CALL_TEXT_BACK", label: "Texting back when we miss a call" },
+        { value: "OTHER", label: "Something else" },
+      ],
+    },
+    {
+      id: "a2pCampaignDescription",
+      label: "Describe the texts you will send",
+      kind: "long",
+      required: true,
+      help: "Who sends them, who receives them, why those people are getting them, and what the messages are for. A few sentences is plenty.",
+    },
+    {
+      id: "a2pOptInMethods",
+      label: "How do customers agree to be texted?",
+      kind: "multi",
+      required: true,
+      options: [
+        { value: "WEBSITE_FORM", label: "A form on our website" },
+        { value: "CONTACT_FORM", label: "Our contact form" },
+        { value: "LANDING_PAGE", label: "A landing page" },
+        { value: "BOOKING_FORM", label: "When they book" },
+        { value: "CHECKOUT", label: "At checkout" },
+        { value: "PAPER_FORM", label: "On a paper form" },
+        { value: "IN_PERSON", label: "In person" },
+        { value: "VERBAL", label: "They tell us verbally" },
+        { value: "TEXT_TO_JOIN", label: "They text a keyword to join" },
+        { value: "EXISTING_CUSTOMER", label: "They are already a customer" },
+        { value: "OTHER", label: "Some other way" },
+      ],
+    },
+    {
+      id: "a2pConsentLanguage",
+      label: "What wording do customers see when they agree?",
+      kind: "long",
+      required: true,
+      help: "Copy it across exactly as it appears, even if it is short.",
+    },
+    {
+      id: "a2pOptInPageUrl",
+      label: "Where is that form?",
+      kind: "url",
+      showWhen: {
+        questionId: "a2pOptInMethods",
+        hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
+      },
+      help: "A link to the page with the form on it.",
+    },
+    {
+      id: "a2pCheckboxOptional",
+      label: "Is ticking the text-message box optional?",
+      kind: "boolean",
+      showWhen: {
+        questionId: "a2pOptInMethods",
+        hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
+      },
+      help: "Customers should be able to submit the form without agreeing to texts.",
+    },
+    {
+      id: "a2pCheckboxUnticked",
+      label: "Is that box unticked when the page loads?",
+      kind: "boolean",
+      showWhen: {
+        questionId: "a2pOptInMethods",
+        hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
+      },
+    },
+    {
+      id: "a2pPrivacyPolicyUrl",
+      label: "Link to your privacy policy",
+      kind: "url",
+      required: true,
+    },
+    { id: "a2pTermsUrl", label: "Link to your terms and conditions", kind: "url" },
+    {
+      id: "a2pSampleTransactional",
+      label: "Write an example of a routine text you would send",
+      kind: "long",
+      required: true,
+      help: "An appointment reminder or a job update, for instance. Include your business name in it.",
+    },
+    {
+      id: "a2pSampleMarketing",
+      label: "Write an example of a promotional text",
+      kind: "long",
+      showWhen: { questionId: "a2pUseCases", hasAnyOf: ["MARKETING_PROMOTION", "REACTIVATION"] },
+      help: "Only needed because you said you would send offers.",
+    },
+    {
+      id: "a2pMessagesContainLinks",
+      label: "Will your texts contain links?",
+      kind: "boolean",
+      required: true,
+    },
+    {
+      id: "a2pMonthlyVolume",
+      label: "Roughly how many texts a month?",
+      kind: "short",
+      required: true,
+      help: "An estimate is fine.",
+    },
+    {
+      id: "a2pExistingNumber",
+      label: "What number do customers call you on now?",
+      kind: "phone",
+    },
+    {
+      id: "a2pRepliesHandledBy",
+      label: "Who will read and answer replies?",
+      kind: "short",
+      required: true,
+    },
+    {
+      id: "a2pBusinessHours",
+      label: "What hours should we text within?",
+      kind: "short",
+      required: true,
+    },
+  ],
+};
+
 /** The sections this client should actually see. */
 export function sectionsForService(service: ServiceType): IntakeSection[] {
   const extra = specialistsForService(service)
     .map((seat) => BY_SEAT[seat])
     .filter((section): section is IntakeSection => section !== null);
 
-  return [...GENERAL, ...extra];
+  /*
+   * The A2P questions are asked only of clients who will actually send SMS.
+   * Everyone else is spared twenty carrier questions about a registration they
+   * will never need - the same condition the A2P workspace uses, so the form
+   * and the profile can never disagree about who it applies to.
+   */
+  const a2p = a2pApplies([service]) ? [A2P_SECTION] : [];
+
+  return [...GENERAL, ...extra, ...a2p];
+}
+
+/**
+ * Whether a question should be asked, given what has been answered so far.
+ *
+ * A question with no condition is always asked. One with a condition is asked
+ * only when the answer it depends on contains one of the listed values, so a
+ * business taking consent on paper is never asked to describe a web form.
+ */
+export function questionApplies(
+  question: IntakeQuestion,
+  answers: Record<string, unknown> | null,
+): boolean {
+  if (!question.showWhen) return true;
+
+  const raw = answers?.[question.showWhen.questionId];
+  const given = typeof raw === "string" ? raw.split(",").map((value) => value.trim()) : [];
+
+  return question.showWhen.hasAnyOf.some((value) => given.includes(value));
 }
 
 export function questionsForService(service: ServiceType): IntakeQuestion[] {
@@ -194,7 +434,15 @@ export function deriveIntakeProgress(
   service: ServiceType,
   answers: Record<string, unknown> | null,
 ): IntakeProgress {
-  const questions = questionsForService(service);
+  /*
+   * Only the questions actually being asked. A conditional question nobody is
+   * shown - the web-form consent wording for a business using paper - must not
+   * sit in the denominator, or the client can never reach a hundred per cent
+   * and the required list names something they were never asked.
+   */
+  const questions = questionsForService(service).filter((question) =>
+    questionApplies(question, answers),
+  );
   const given = (id: string) => {
     const value = answers?.[id];
     return typeof value === "string" && value.trim().length > 0;

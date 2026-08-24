@@ -105,9 +105,30 @@ export default async function IntakePreviewPage({
                 {question.help ? (
                   <p className="mt-0.5 text-[11px] text-slate-500">{question.help}</p>
                 ) : null}
-                {/* Disabled on purpose: it shows the shape of the answer box
-                    without offering anywhere to type into. */}
-                <div className="mt-1.5 h-9 rounded-lg border border-dashed border-slate-200 bg-slate-50" />
+                {/* Inert on purpose: it shows the shape of the answer without
+                    offering anywhere to type. Choices list what is on offer,
+                    because "which options does this ask for" is most of the
+                    reason to look at a preview. */}
+                {question.options?.length ? (
+                  <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                    {question.options.map((option) => (
+                      <li
+                        key={option.value}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+                      >
+                        {option.label}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-1.5 h-9 rounded-lg border border-dashed border-slate-200 bg-slate-50" />
+                )}
+
+                {question.showWhen ? (
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Only asked depending on an earlier answer.
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
