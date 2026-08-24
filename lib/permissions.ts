@@ -105,6 +105,17 @@ export const PERMISSIONS = [
   "governance.view",
   "governance.audit",
   "governance.correctiveAction",
+
+  /*
+   * Recording what a carrier said about an A2P registration.
+   *
+   * Separate from clients.edit, which a project manager holds: preparing the
+   * information is ordinary account work, but telling the agency a
+   * registration was approved when it was not is the kind of wrong that gets
+   * found out by a carrier rather than by us. The seat that actually deals
+   * with the provider holds this.
+   */
+  "a2p.submit",
   "sop.manage",
 
   // Administration and security
@@ -244,7 +255,7 @@ const TEAM_ROLE_PERMISSIONS: Record<TeamRole, readonly Permission[]> = {
 
   // The three specialist seats share a shape: their own assigned work, plus QA
   // on the part of the build they are responsible for.
-  AUTOMATION_SPECIALIST: [...SPECIALIST, "qa.test"],
+  AUTOMATION_SPECIALIST: [...SPECIALIST, "qa.test", "a2p.submit"],
   CREATIVE_SPECIALIST: [...SPECIALIST, "qa.test"],
   ADS_SPECIALIST: [...SPECIALIST, "qa.test", "reporting.client"],
 };

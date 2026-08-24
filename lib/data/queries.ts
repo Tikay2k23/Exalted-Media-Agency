@@ -611,6 +611,10 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           include: { author: { select: { id: true, name: true } } },
         },
         assets: { orderBy: [{ isRequired: "desc" }, { type: "asc" }] },
+
+        /* The A2P profile, for the compact readiness line on Strategy. The
+           full workspace loads its own copy with samples and submissions. */
+        a2pProfile: { include: { samples: { orderBy: { position: "asc" } } } },
         intakeForm: {
           include: { reviewedBy: { select: { id: true, name: true } } },
         },

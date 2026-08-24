@@ -81,6 +81,7 @@ import {
   isOffboardingComplete,
   outstandingOffboardingSteps,
 } from "@/lib/success/offboarding-service";
+import { a2pApplies, a2pReadiness } from "@/lib/a2p/a2p-readiness";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import {
   STRATEGY_SECTIONS,
@@ -469,6 +470,36 @@ export default async function ClientDetailPage({
             const upcoming = row ? nextMilestone(row, new Date()) : null;
 
             /*
+             * A2P applies only to clients who bought something that sends SMS.
+             * The readiness figure is calculated here from the profile and the
+             * evidence already on file, so the card cannot claim a number the
+             * profile page would disagree with.
+             */
+            const a2pSummary = a2pApplies(services)
+              ? (() => {
+                  const readiness = a2pReadiness({
+                    ...(client.a2pProfile ?? {}),
+                    samples:
+                      client.a2pProfile?.samples.map((sample) => ({
+                        category: sample.category,
+                        body: sample.body,
+                      })) ?? [],
+                    documents: client.assets
+                      .filter((asset) => ["RECEIVED", "APPROVED"].includes(asset.status))
+                      .map((asset) => asset.type),
+                  });
+
+                  return {
+                    status: client.a2pProfile?.status ?? "INFORMATION_NEEDED",
+                    percent: readiness.percent,
+                    complete: readiness.complete,
+                    total: readiness.total,
+                    headline: readiness.headline,
+                  };
+                })()
+              : null;
+
+            /*
              * The existing intake workspace, untouched, handed to the new page
              * to reveal on demand. Sending, resending and reviewing still
              * happen only in here - there is one send path and this is it.
@@ -637,6 +668,7 @@ export default async function ClientDetailPage({
                   missingRequired: intakeProgress.missingRequired,
                   recipientEmail: client.contactEmail,
                 }}
+                a2p={a2pSummary}
                 users={options.users.map((member) => ({
                   id: member.id,
                   name: member.name,

@@ -88,6 +88,20 @@ export interface StrategyNoteRow {
   createdAt: string;
 }
 
+/**
+ * The compact A2P line on the intake card.
+ *
+ * Null when the client bought nothing that sends SMS - they have nothing to
+ * register and the card says nothing about it.
+ */
+export interface StrategyA2P {
+  status: string;
+  percent: number;
+  complete: number;
+  total: number;
+  headline: string;
+}
+
 export interface StrategyIntake {
   exists: boolean;
   status: string;
@@ -331,6 +345,7 @@ export function ClientStrategy({
   assets,
   notes,
   intake,
+  a2p,
   users,
   briefWorkspace,
   projectsWorkspace,
@@ -353,6 +368,8 @@ export function ClientStrategy({
   assets: StrategyAssetRow[];
   notes: StrategyNoteRow[];
   intake: StrategyIntake;
+  /** Null when A2P does not apply to this client. */
+  a2p: StrategyA2P | null;
   users: { id: string; name: string }[];
   briefUpdatedAt: string | null;
   briefAuthorName: string | null;
@@ -543,6 +560,33 @@ export function ClientStrategy({
             * of it - there is one send path in the application and this is not
             * a second one.
             */}
+          {/*
+            * A2P, when the client needs it.
+            *
+            * One line and a link. The registration itself is sixty fields and a
+            * review trail, which belongs on its own page rather than swamping a
+            * card whose job is to say where the intake has got to.
+            */}
+          {a2p ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                  A2P registration
+                </p>
+                <p className="text-xs text-slate-700">
+                  {a2p.complete} of {a2p.total} items · {a2p.headline}
+                </p>
+              </div>
+              <a
+                href={`/clients/${clientId}/a2p`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50"
+              >
+                Open A2P profile
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+              </a>
+            </div>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
