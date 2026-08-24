@@ -1,0 +1,238 @@
+/// The structured half of a client's strategy.
+///
+/// StrategyBrief already holds the written document - seventeen prose fields,
+/// an author and an approval. These models hold the parts the Strategy tab has
+/// to reason about rather than only display: which sections are required for
+/// what this client bought, how far each one has got, the goals with their own
+/// targets and dates, the audiences, the positioning, and the roadmap.
+///
+/// The brief is not replaced. It stays the narrative; these carry the state.
+
+/// How far one section of the strategy has got.
+///
+/// NOT_REQUIRED is a real answer, not an absence: a website-only client has no
+/// paid media strategy to write, and counting that against their progress would
+/// make every account look unfinished forever.
+enum StrategySectionStatus {
+  NOT_REQUIRED
+  NOT_STARTED
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  APPROVED
+}
+
+/// The sections a full strategy can have. Which of them apply depends on the
+/// services the client actually bought - see lib/strategy/strategy-sections.
+enum StrategySectionKey {
+  BUSINESS_GOALS
+  TARGET_AUDIENCE
+  OFFER
+  VALUE_PROPOSITION
+  COMPETITIVE_POSITIONING
+  BRAND_FOUNDATION
+  ACQUISITION_STRATEGY
+  CHANNEL_STRATEGY
+  FUNNEL_STRATEGY
+  TRACKING_MEASUREMENT
+  EXECUTION_ROADMAP
+}
+
+model StrategySection {
+  id       String                @id @default(cuid())
+  clientId String
+  key      StrategySectionKey
+  status   StrategySectionStatus @default(NOT_STARTED)
+
+  /// The seat carrying this section. Null is "nobody yet", which is worth
+  /// showing rather than defaulting to whoever owns the account.
+  ownerId       String?
+  notes         String?
+  updatedById   String?
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner     User?  @relation("StrategySectionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  updatedBy User?  @relation("StrategySectionEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+  approvedBy User? @relation("StrategySectionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  /// One row per section per client. The section list is a fixed catalogue, so
+  /// a second row for the same key would be a bug rather than a variant.
+  @@unique([clientId, key])
+  @@index([clientId])
+  @@index([status])
+}
+
+enum StrategyGoalStatus {
+  PROPOSED
+  AGREED
+  IN_PROGRESS
+  ACHIEVED
+  DROPPED
+}
+
+enum StrategyPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// One thing the client is trying to achieve.
+///
+/// Structured rather than a bullet in a text field, because a goal without a
+/// number and a date is a wish - and reporting later needs the baseline it
+/// started from.
+model StrategyGoal {
+  id       String @id @default(cuid())
+  clientId String
+
+  title      String
+  category   String?
+  /// What is being measured: "qualified leads per month", "organic sessions".
+  metric     String?
+  baseline   String?
+  target     String?
+  targetDate DateTime?
+  priority   StrategyPriority   @default(MEDIUM)
+  status     StrategyGoalStatus @default(PROPOSED)
+  ownerId    String?
+  notes      String?
+  /// Manual ordering, so the card shows them the way somebody arranged them.
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("StrategyGoalOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([status])
+}
+
+enum AudienceTier {
+  PRIMARY
+  SECONDARY
+}
+
+/// Who the work is aimed at.
+model StrategyAudience {
+  id       String       @id @default(cuid())
+  clientId String
+  tier     AudienceTier @default(PRIMARY)
+
+  name            String
+  location        String?
+  attributes      String?
+  needs           String?
+  painPoints      String?
+  buyingTriggers  String?
+  objections      String?
+  decisionMakers  String?
+  channels        String?
+  notes           String?
+  position        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([tier])
+}
+
+/// What the client says, and why anybody should believe it.
+///
+/// One per client: a business with two value propositions has not decided on
+/// one yet, and the card would have nothing to lead with.
+model StrategyValueProp {
+  id       String @id @default(cuid())
+  clientId String @unique
+
+  statement            String?
+  offer                String?
+  primaryOutcome       String?
+  /// Two to four short phrases. An array rather than rows: they are ordered
+  /// labels with nothing else hanging off them.
+  differentiators      String[]
+  proofPoints          String?
+  guarantees           String?
+  objections           String?
+  positioningStatement String?
+  competitorNotes      String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+enum RoadmapPhaseKey {
+  DISCOVERY
+  RESEARCH_ANALYSIS
+  STRATEGY_DEVELOPMENT
+  PLANNING_EXECUTION
+  REVIEW_OPTIMIZATION
+}
+
+enum RoadmapPhaseStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETE
+  BLOCKED
+}
+
+/// The five phases the roadmap strip draws.
+///
+/// Deliberately not journey stages. The journey is where the account is in the
+/// agency's process and is gated by requirements; this is how far the strategy
+/// work itself has got, which can run ahead of or behind the stage.
+model StrategyRoadmapPhase {
+  id       String             @id @default(cuid())
+  clientId String
+  key      RoadmapPhaseKey
+  status   RoadmapPhaseStatus @default(PENDING)
+
+  ownerId     String?
+  startDate   DateTime?
+  targetDate  DateTime?
+  completedAt DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("RoadmapPhaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, key])
+  @@index([clientId])
+  @@index([status])
+}
+
+/// What a note is about.
+///
+/// The application had nowhere to put a note against a client - only LeadNote,
+/// which belongs to the sales side. The category is what lets the Strategy card
+/// show strategy notes without becoming a second activity feed.
+enum ClientNoteCategory {
+  GENERAL
+  STRATEGY
+}
+
+model ClientNote {
+  id       String             @id @default(cuid())
+  clientId String
+  category ClientNoteCategory @default(GENERAL)
+
+  body      String
+  authorId  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author User?  @relation("ClientNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, category])
+  @@index([deletedAt])
+}

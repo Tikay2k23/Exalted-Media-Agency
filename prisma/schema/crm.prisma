@@ -507,6 +507,14 @@ model Client {
   salesHandoffs          LeadHandoff[]
   journeyFlags           ClientJourneyFlag[]
 
+  /// The structured strategy layer. StrategyBrief above stays the narrative.
+  strategySections       StrategySection[]
+  strategyGoals          StrategyGoal[]
+  strategyAudiences      StrategyAudience[]
+  strategyValueProp      StrategyValueProp?
+  roadmapPhases          StrategyRoadmapPhase[]
+  clientNotes            ClientNote[]
+
   @@index([assignedUserId])
   @@index([status])
   @@index([currentStageId])
