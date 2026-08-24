@@ -25,7 +25,7 @@ interface Saver {
 }
 
 /** POST-and-refresh, with the error states every one of these needs. */
-function useSaver(): Saver {
+export function useAccountSaver(): Saver {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
@@ -102,7 +102,7 @@ export function CompanyDialog({
   onClose: () => void;
 }) {
   const [form, setForm] = useState(values);
-  const { saving, error, save } = useSaver();
+  const { saving, error, save } = useAccountSaver();
 
   const isDirty = (Object.keys(values) as (keyof CompanyValues)[]).some(
     (key) => form[key] !== values[key],
@@ -270,7 +270,7 @@ export function OwnershipDialog({
   const [staffing, setStaffing] = useState(() =>
     Object.fromEntries(seats.map((seat) => [seat.role, seat.ownerId ?? ""])),
   );
-  const { saving, error, save } = useSaver();
+  const { saving, error, save } = useAccountSaver();
 
   const isDirty =
     owner !== (assignedUserId ?? "")
@@ -367,7 +367,7 @@ export function InternalNoteDialog({
   onClose: () => void;
 }) {
   const [text, setText] = useState(note);
-  const { saving, error, save } = useSaver();
+  const { saving, error, save } = useAccountSaver();
 
   return (
     <AccountDialog

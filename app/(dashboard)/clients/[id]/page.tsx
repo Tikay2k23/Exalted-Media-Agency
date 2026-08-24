@@ -388,8 +388,14 @@ export default async function ClientDetailPage({
               internalNote={client.notes}
               noteAuthor={noteAuthor}
               noteUpdatedAt={client.updatedAt.toISOString()}
+              nextStep={{
+                currentBlocker: client.currentBlocker ?? "",
+                nextAction: client.nextAction ?? "",
+                nextActionDueAt: client.nextActionDueAt?.toISOString() ?? "",
+              }}
               canEdit={canManageClient}
               canSeeFinance={canViewFinance}
+              canEditFinance={canEditFinance}
               serverNow={new Date().toISOString()}
             />
           ),

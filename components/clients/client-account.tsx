@@ -17,6 +17,11 @@ import { useState } from "react";
 
 import { AccountDialog } from "@/components/clients/account-dialog";
 import {
+  CommercialsDialog,
+  NextStepDialog,
+  type NextStepValues,
+} from "@/components/clients/account-commercial-editors";
+import {
   CompanyDialog,
   ContactDialog,
   EMPTY_CONTACT,
@@ -155,6 +160,11 @@ export const CADENCE_MONTHS: Record<string, number> = {
   SEMI_ANNUAL: 6,
   ANNUAL: 12,
 };
+
+/** A date input wants YYYY-MM-DD, not an ISO timestamp. */
+function dateInput(value: string | null) {
+  return value ? new Date(value).toISOString().slice(0, 10) : "";
+}
 
 function shortDate(value: string | null) {
   if (!value) return null;
@@ -304,8 +314,10 @@ export function ClientAccount({
   internalNote,
   noteAuthor,
   noteUpdatedAt,
+  nextStep,
   canEdit,
   canSeeFinance,
+  canEditFinance,
   serverNow,
 }: {
   clientId: string;
@@ -317,11 +329,17 @@ export function ClientAccount({
   internalNote: string | null;
   noteAuthor: string | null;
   noteUpdatedAt: string | null;
+  /** Blocker and next action, which three other pages read. */
+  nextStep: NextStepValues;
   canEdit: boolean;
   canSeeFinance: boolean;
+  /** Editing what the account is worth needs finance.edit, not clients.edit. */
+  canEditFinance: boolean;
   serverNow: string;
 }) {
-  const [editing, setEditing] = useState<null | "company" | "ownership" | "note">(null);
+  const [editing, setEditing] = useState<
+    null | "company" | "ownership" | "note" | "commercials" | "nextStep"
+  >(null);
   const [contactForm, setContactForm] = useState<ContactValues | null>(null);
   const [confirming, setConfirming] = useState<null | { contact: AccountContact; kind: "deactivate" }>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -439,6 +457,35 @@ export function ClientAccount({
           clientId={clientId}
           companyName={company.companyName}
           note={internalNote ?? ""}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
+
+      {editing === "commercials" ? (
+        <CommercialsDialog
+          clientId={clientId}
+          companyName={company.companyName}
+          hasContractRow={contract !== null}
+          values={{
+            monthlyValue: company.monthlyValue === null ? "" : String(company.monthlyValue),
+            contractStartDate: dateInput(contract?.startDate ?? null),
+            contractEndDate: dateInput(contract?.endDate ?? null),
+            renewalDate: dateInput(contract?.renewalDate ?? null),
+            billingCadence: contract?.billingCadence ?? "MONTHLY",
+            agreementStatus: contract?.agreementStatus ?? "NOT_SENT",
+            paymentTerms: contract?.paymentTerms ?? "",
+            autoRenew: contract?.autoRenew ?? false,
+            documentUrl: contract?.documentUrl ?? "",
+          }}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
+
+      {editing === "nextStep" ? (
+        <NextStepDialog
+          clientId={clientId}
+          companyName={company.companyName}
+          values={nextStep}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -573,15 +620,20 @@ export function ClientAccount({
         <Card
           title="Contract & Commercials"
           action={
-            contract ? (
-              <Badge tone={contract.agreementStatus === "SIGNED" ? "emerald" : "amber"}>
-                {contract.agreementStatus === "SIGNED"
-                  ? "Active Contract"
-                  : formatEnumLabel(contract.agreementStatus)}
-              </Badge>
-            ) : (
-              <Badge tone="slate">No contract</Badge>
-            )
+            <div className="flex shrink-0 items-center gap-2">
+              {contract ? (
+                <Badge tone={contract.agreementStatus === "SIGNED" ? "emerald" : "amber"}>
+                  {contract.agreementStatus === "SIGNED"
+                    ? "Active Contract"
+                    : formatEnumLabel(contract.agreementStatus)}
+                </Badge>
+              ) : (
+                <Badge tone="slate">No contract</Badge>
+              )}
+              {/* Editing the terms is finance work, so it follows finance.edit
+                  rather than the clients.edit that gates the other cards. */}
+              {canEditFinance ? <EditButton onClick={() => setEditing("commercials")} /> : null}
+            </div>
           }
         >
           {!canSeeFinance ? (
@@ -873,6 +925,57 @@ export function ClientAccount({
                 </p>
               )}
             </div>
+          </div>
+
+          {/*
+            * What is stopping the account and what happens next.
+            *
+            * Under the standing note because both are internal annotations
+            * rather than terms of the agreement - and they need to live
+            * somewhere, because a recorded blocker turns journey health to
+            * Blocked on three pages and an empty next action is one of the
+            * reasons Needs Attention lists an account.
+            */}
+          <div className="border-t border-slate-100 px-5 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Blocker &amp; next action
+              </p>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => setEditing("nextStep")}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Pencil className="h-3 w-3" aria-hidden />
+                  Edit
+                </button>
+              ) : null}
+            </div>
+
+            <dl className="mt-2 space-y-1.5">
+              <div className="flex items-start gap-3">
+                <dt className="w-24 shrink-0 text-[11px] text-slate-500">Blocker</dt>
+                <dd className="min-w-0 flex-1 text-xs">
+                  {nextStep.currentBlocker ? (
+                    <span className="text-rose-600">{nextStep.currentBlocker}</span>
+                  ) : (
+                    <span className="text-slate-400">None recorded</span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-start gap-3">
+                <dt className="w-24 shrink-0 text-[11px] text-slate-500">Next action</dt>
+                <dd className="min-w-0 flex-1 text-xs text-slate-800">
+                  {nextStep.nextAction || <span className="text-slate-400">Not set</span>}
+                  {nextStep.nextActionDueAt ? (
+                    <span className="ml-1.5 text-slate-400">
+                      · due {shortDate(nextStep.nextActionDueAt)}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+            </dl>
           </div>
         </Card>
 

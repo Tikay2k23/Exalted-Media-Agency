@@ -256,6 +256,47 @@ export const clientOwnershipSchema = z.object({
     .max(6),
 });
 
+/**
+ * The commercial terms, across both records that hold them.
+ *
+ * The money and the dates live on Client (the header, the renewal metrics and
+ * the stage gates all read them there); the agreement's own shape lives on
+ * Contract. One dialog writes both, so a person setting a renewal date does not
+ * have to know which table it lands in.
+ */
+export const clientCommercialsSchema = z.object({
+  monthlyValue: z.coerce.number().min(0).max(10_000_000).nullable(),
+  contractStartDate: accountText(32),
+  contractEndDate: accountText(32),
+  renewalDate: accountText(32),
+  billingCadence: z.enum(["ONE_TIME", "MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"]),
+  agreementStatus: z.enum([
+    "NOT_SENT",
+    "SENT",
+    "VIEWED",
+    "SIGNED",
+    "DECLINED",
+    "EXPIRED",
+    "CANCELLED",
+  ]),
+  paymentTerms: accountText(200),
+  autoRenew: z.boolean(),
+  documentUrl: accountText(500),
+});
+
+/**
+ * What is stopping this account, and what happens next.
+ *
+ * Operational rather than commercial, and read by the journey health
+ * derivation and the Needs Attention panel - which is why they need somewhere
+ * to be set from.
+ */
+export const clientNextStepSchema = z.object({
+  currentBlocker: accountText(500),
+  nextAction: accountText(500),
+  nextActionDueAt: accountText(32),
+});
+
 /** The one persistent note pinned to the account. */
 export const clientInternalNoteSchema = z.object({
   notes: z.string().trim().max(2000),
