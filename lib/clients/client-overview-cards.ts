@@ -1,38 +1,10 @@
-import {
-  HEALTH_LABELS,
-  type ClientMilestone,
-  type ClientRow,
-  healthFromStatus,
-  nextMilestone,
-} from "@/lib/clients/client-workspace";
-import { JOURNEY_OWNERSHIP, journeyPosition } from "@/lib/workflow/handoff-engine";
-
 /**
- * The five numbers at the top of a client's Overview.
+ * Shared reading of a client's Overview.
  *
- * The reference design shows the agency-wide row from the Clients list here -
- * active clients, on track, at risk. Inside one account those answer a question
- * nobody is asking: you opened Cedar Ridge to find out about Cedar Ridge. So
- * the row keeps its shape and changes its content, which is what the brief
- * asks for over the picture.
- *
- * Every figure comes from data the page already loads, and every card points at
- * the tab that owns it. Journey progress in particular reuses journeyPosition -
- * the same helper the Journey tab renders - so the two cannot disagree, which
- * they would within a week if this recomputed it its own way.
+ * Dates in words, and the way the page groups a client's work. The six figures
+ * across the top live in client-overview-metrics; the Needs Attention rows live
+ * in client-overview-attention.
  */
-
-export type CardTone = "neutral" | "good" | "warn" | "bad";
-
-export interface OverviewCard {
-  key: "journey" | "health" | "work" | "milestone" | "renewal";
-  label: string;
-  value: string;
-  detail: string;
-  tone: CardTone;
-  /** The tab that owns this, for the card link. */
-  tab: "journey" | "tasks" | "reports";
-}
 
 const DAY = 86_400_000;
 
@@ -43,10 +15,10 @@ function daysBetween(from: Date, to: Date) {
 /**
  * How far off a date is, in words.
  *
- * Exported so the milestone card and the milestone panel say the same thing.
- * milestoneDayLabel, which the rest of the page uses, returns a formatted date
- * for anything beyond a day either side - fine beside a label, but printed
- * next to the date itself it reads "Aug 15, 2026 (Aug 15)".
+ * Exported so the milestone panel and anything else quoting a target say the
+ * same thing. milestoneDayLabel, which the rest of the workspace uses, returns
+ * a formatted date for anything beyond a day either side - fine beside a label,
+ * but printed next to the date itself it reads "Aug 15, 2026 (Aug 15)".
  */
 export function relativeDayLabel(value: string | Date, now: Date) {
   const days = daysBetween(now, new Date(value));
@@ -55,153 +27,32 @@ export function relativeDayLabel(value: string | Date, now: Date) {
   if (days === 1) return "tomorrow";
   if (days === -1) return "yesterday";
 
-  return days < 0
-    ? `${Math.abs(days)} days overdue`
-    : `in ${days} days`;
+  return days < 0 ? `${Math.abs(days)} days overdue` : `in ${days} days`;
 }
 
-function shortDate(value: string | Date) {
-  return new Date(value).toLocaleDateString("en-US", {
+/**
+ * When something happened, the way the activity feed prints it.
+ *
+ * "Today at 2:15 PM" rather than "3 hours ago": the feed is read as a record of
+ * what happened and in what order, and a list of elapsed times makes the reader
+ * do arithmetic to work out whether two entries were minutes or days apart.
+ */
+export function activityStamp(value: string | Date, now: Date) {
+  const at = new Date(value);
+  const time = at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.floor((midnight.getTime() - at.getTime()) / DAY);
+
+  if (at.getTime() >= midnight.getTime()) return `Today at ${time}`;
+  if (days === 0) return `Yesterday at ${time}`;
+
+  const date = at.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-}
 
-function journeyCard(client: ClientRow): OverviewCard {
-  const position = journeyPosition(client.stageKey);
-  const total = JOURNEY_OWNERSHIP.length;
-  const completed = position === null ? 0 : position;
-  const percent = position === null ? 0 : Math.round(((position + 1) / total) * 100);
-
-  return {
-    key: "journey",
-    label: "Journey Progress",
-    value: `${percent}%`,
-    detail:
-      position === null
-        ? client.stageName
-        : `${client.stageName} · ${completed} of ${total} stages done`,
-    tone: "neutral",
-    tab: "journey",
-  };
-}
-
-function healthCard(client: ClientRow): OverviewCard {
-  /*
-   * The same mapping the clients list uses, blocker signal included - an
-   * account nobody can move reads as Blocked here too rather than repeating
-   * last month's assessment.
-   */
-  const health = healthFromStatus(client.healthStatus, {
-    hasBlocker: Boolean(client.currentBlocker),
-  });
-
-  return {
-    key: "health",
-    label: "Client Health",
-    value: HEALTH_LABELS[health],
-    detail:
-      health === "ON_TRACK"
-        ? "No open risks on this account"
-        : health === "NEEDS_ATTENTION"
-          ? "Worth keeping an eye on"
-          : health === "AT_RISK"
-            ? "Needs attention now"
-            : "Nothing can move until this clears",
-    tone:
-      health === "ON_TRACK" ? "good"
-        : health === "NEEDS_ATTENTION" ? "warn"
-          : "bad",
-    tab: "reports",
-  };
-}
-
-function workCard(client: ClientRow): OverviewCard {
-  const parts = [`${client.openTaskCount} open`];
-
-  if (client.overdueTaskCount > 0) parts.push(`${client.overdueTaskCount} overdue`);
-  if (client.waitingTaskCount > 0) parts.push(`${client.waitingTaskCount} waiting`);
-
-  return {
-    key: "work",
-    label: "Active Work",
-    value: client.openTaskCount === 0 ? "Clear" : String(client.openTaskCount),
-    detail: client.openTaskCount === 0 ? "No open work for this client" : parts.join(" · "),
-    tone: client.overdueTaskCount > 0 ? "bad" : client.openTaskCount > 0 ? "neutral" : "good",
-    tab: "tasks",
-  };
-}
-
-function milestoneCard(milestone: ClientMilestone | null, now: Date): OverviewCard {
-  if (!milestone) {
-    return {
-      key: "milestone",
-      label: "Next Milestone",
-      value: "None",
-      detail: "No upcoming milestone",
-      tone: "neutral",
-      tab: "journey",
-    };
-  }
-
-  const days = daysBetween(now, new Date(milestone.dueAt));
-
-  return {
-    key: "milestone",
-    label: "Next Milestone",
-    value: milestone.name,
-    detail:
-      days <= 0
-        ? relativeDayLabel(milestone.dueAt, now)
-        : `${shortDate(milestone.dueAt)} · ${relativeDayLabel(milestone.dueAt, now)}`,
-    tone: days < 0 ? "bad" : days <= 3 ? "warn" : "neutral",
-    tab: "journey",
-  };
-}
-
-function renewalCard(client: ClientRow, now: Date): OverviewCard {
-  if (!client.renewalDate) {
-    return {
-      key: "renewal",
-      label: "Renewal",
-      value: "Not set",
-      detail: "No renewal date configured",
-      tone: "neutral",
-      tab: "reports",
-    };
-  }
-
-  const days = daysBetween(now, new Date(client.renewalDate));
-
-  return {
-    key: "renewal",
-    label: "Renewal",
-    value: shortDate(client.renewalDate),
-    detail:
-      days < 0
-        ? `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} past`
-        : `${days} day${days === 1 ? "" : "s"} left`,
-    // 45 days is the horizon the clients list already treats as "due soon", so
-    // the card and the list agree about what counts as approaching.
-    tone: days < 0 ? "bad" : days <= 45 ? "warn" : "neutral",
-    tab: "reports",
-  };
-}
-
-export function overviewCards(client: ClientRow, now: Date): OverviewCard[] {
-  return [
-    journeyCard(client),
-    healthCard(client),
-    workCard(client),
-    milestoneCard(nextMilestone(client, now), now),
-    renewalCard(client, now),
-  ];
-}
-
-/** Where a card sends you. Always a tab that exists on this client. */
-export function overviewCardHref(card: OverviewCard, clientId: string) {
-  return `/clients/${clientId}?tab=${card.tab}`;
+  return `${date} at ${time}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -249,10 +100,10 @@ const BUCKET_OF: Record<string, WorkBucket["key"] | "excluded"> = {
 
 const BUCKET_META: { key: WorkBucket["key"]; label: string; color: string }[] = [
   { key: "completed", label: "Completed", color: "bg-emerald-500" },
-  { key: "inProgress", label: "In progress", color: "bg-sky-500" },
-  { key: "review", label: "Needs review", color: "bg-violet-500" },
-  { key: "blocked", label: "Blocked or waiting", color: "bg-amber-500" },
-  { key: "todo", label: "To do", color: "bg-slate-300" },
+  { key: "inProgress", label: "In Progress", color: "bg-sky-500" },
+  { key: "blocked", label: "Blocked", color: "bg-rose-500" },
+  { key: "review", label: "Needs Review", color: "bg-amber-500" },
+  { key: "todo", label: "To Do", color: "bg-slate-300" },
 ];
 
 export function workBreakdown(

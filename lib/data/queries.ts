@@ -551,6 +551,10 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             id: true,
             name: true,
             role: true,
+            // The seat they hold, not their access level: the header says
+            // "Project Manager" under the owner's name, and `role` is
+            // OWNER/ADMIN/MANAGER, which is a different question.
+            teamRole: true,
             email: true,
           },
         },

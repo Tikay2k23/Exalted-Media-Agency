@@ -3,47 +3,51 @@
 import {
   Activity as ActivityIcon,
   ArrowRight,
+  Ban,
+  Bug,
   CalendarDays,
-  Flag,
+  CalendarClock,
+  ChartNoAxesColumn,
   CircleCheck,
+  ClipboardList,
   Clock,
+  FileText,
+  Flag,
   Mail,
+  MessageSquare,
   Phone,
+  Rocket,
   TriangleAlert,
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
-import {
-  EmptyPanel,
-  HealthBadge,
-  MilestoneText,
-  Monogram,
-  WaitingBadge,
-  money,
-} from "@/components/clients/client-bits";
+import { EmptyPanel, Monogram, money } from "@/components/clients/client-bits";
 import { ClientOverviewFooter } from "@/components/clients/client-overview-footer";
 import { TabLink } from "@/components/clients/client-tabs";
+import { Badge } from "@/components/ui/badge";
 import {
-  overviewCardHref,
-  overviewCards,
+  activityStamp,
   relativeDayLabel,
   workBreakdown,
 } from "@/lib/clients/client-overview-cards";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { attentionItems } from "@/lib/clients/client-overview-attention";
+import {
+  type MetricKey,
+  type MetricTone,
+  agencyMetrics,
+  healthScoreColor,
+  healthScoreLabel,
+} from "@/lib/clients/client-overview-metrics";
 import {
   HEALTH_LABELS,
-  attentionReasons,
-  healthFromStatus,
-  isWaitingOnClient,
-  milestoneDayLabel,
-  nextMilestone,
-  relativeTime,
+  type AttentionKey,
   type ClientRow,
+  healthFromStatus,
+  nextMilestone,
 } from "@/lib/clients/client-workspace";
-import { formatEnumLabel } from "@/lib/utils";
+import { cn, formatEnumLabel } from "@/lib/utils";
 
 export interface OverviewService {
   id: string;
@@ -72,19 +76,46 @@ export interface OverviewActivity {
   createdAt: string;
 }
 
+/**
+ * One client, at a glance.
+ *
+ * A summary and only a summary: every figure is read from a record that already
+ * exists, and every control goes to the tab that owns the work rather than
+ * opening a second copy of a form living somewhere else. In particular the
+ * intake form is never sent from here - that belongs to Strategy, and a second
+ * send button would rotate the client's link from a page whose job is to
+ * report.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Shared furniture                                                           */
+/* -------------------------------------------------------------------------- */
+
 function Panel({
   title,
+  badge,
   action,
   children,
+  className,
 }: {
   title: string;
+  badge?: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 p-4">
-        <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
+    <section
+      className={cn(
+        "flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white",
+        className,
+      )}
+    >
+      <header className="flex items-center justify-between gap-2 px-4 py-3.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-sm font-semibold text-slate-950">{title}</h2>
+          {badge}
+        </div>
         {action}
       </header>
       {children}
@@ -92,43 +123,343 @@ function Panel({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** The blue "View all →" every panel header carries. */
+function PanelLink({
+  tab,
+  href,
+  children,
+}: {
+  tab?: Parameters<typeof TabLink>[0]["tab"];
+  href?: string;
+  children: React.ReactNode;
+}) {
+  const className =
+    "inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-sky-600 transition hover:text-sky-700";
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {children}
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+      </Link>
+    );
+  }
+
   return (
-    <div className="min-w-0">
-      <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
-      <div className="mt-0.5 break-words text-xs text-slate-800">{children}</div>
+    <TabLink tab={tab!} className={className}>
+      {children}
+      <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+    </TabLink>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The six figures across the top                                             */
+/* -------------------------------------------------------------------------- */
+
+const METRIC_ICONS: Record<MetricKey, typeof Users> = {
+  active: Users,
+  "on-track": CircleCheck,
+  waiting: Clock,
+  "at-risk": TriangleAlert,
+  launching: Rocket,
+  renewals: CalendarClock,
+};
+
+const METRIC_TONES: Record<MetricTone, string> = {
+  violet: "bg-violet-50 text-violet-600",
+  emerald: "bg-emerald-50 text-emerald-600",
+  amber: "bg-amber-50 text-amber-600",
+  rose: "bg-rose-50 text-rose-600",
+  sky: "bg-sky-50 text-sky-600",
+  indigo: "bg-indigo-50 text-indigo-600",
+};
+
+function MetricRow({ clients, now }: { clients: ClientRow[]; now: Date }) {
+  const metrics = useMemo(() => agencyMetrics(clients, now), [clients, now]);
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      {metrics.map((metric) => {
+        const Icon = METRIC_ICONS[metric.key];
+
+        return (
+          <div
+            key={metric.key}
+            className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+          >
+            <span
+              aria-hidden
+              className={cn("shrink-0 rounded-xl p-2.5", METRIC_TONES[metric.tone])}
+            >
+              <Icon className="h-4 w-4" />
+            </span>
+
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-slate-600">{metric.label}</p>
+              <p className="mt-0.5 text-2xl font-semibold leading-8 text-slate-950">
+                {metric.value}
+              </p>
+              {metric.href ? (
+                <Link
+                  href={metric.href}
+                  className="text-[11px] font-medium text-sky-600 transition hover:text-sky-700"
+                >
+                  {metric.detail}
+                </Link>
+              ) : (
+                <p className="truncate text-[11px] text-slate-400">{metric.detail}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function day(value: string | null) {
-  if (!value) return "—";
+/* -------------------------------------------------------------------------- */
+/* Needs attention                                                            */
+/* -------------------------------------------------------------------------- */
 
-  return new Date(value).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+const ATTENTION_ICONS: Record<AttentionKey, typeof Users> = {
+  blocker: Ban,
+  "overdue-work": ClipboardList,
+  "missing-access": TriangleAlert,
+  "intake-incomplete": FileText,
+  "approval-overdue": CircleCheck,
+  "open-defect": Bug,
+  "report-overdue": ChartNoAxesColumn,
+  "renewal-approaching": CalendarDays,
+  "no-activity": Clock,
+  "no-next-action": Flag,
+};
+
+/** How many rows fit before the panel offers to show the rest. */
+const ATTENTION_PREVIEW = 3;
+
+function NeedsAttention({ client, now }: { client: ClientRow; now: Date }) {
+  const items = useMemo(() => attentionItems(client, now), [client, now]);
+  const [expanded, setExpanded] = useState(false);
+
+  const shown = expanded ? items : items.slice(0, ATTENTION_PREVIEW);
+
+  return (
+    <Panel
+      title="Needs Attention"
+      badge={
+        items.length > 0 ? (
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-semibold text-white">
+            {items.length}
+          </span>
+        ) : null
+      }
+      action={
+        /*
+          * Only offered when there is genuinely more to see. The panel already
+          * holds every item this account has, so "View all" reveals the rest
+          * here rather than pretending to open a page that does not exist -
+          * the Clients list keeps its filters in component state, so a link
+          * claiming to filter it would land on an unfiltered list.
+          */
+        items.length > ATTENTION_PREVIEW ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((open) => !open)}
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+          >
+            {expanded ? "Show less" : "View all"}
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        ) : null
+      }
+    >
+      {items.length === 0 ? (
+        <div className="px-4 pb-4">
+          <EmptyPanel>Nothing on this account needs attention.</EmptyPanel>
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100 border-t border-slate-100">
+          {shown.map((item) => {
+            const Icon = ATTENTION_ICONS[item.key];
+
+            return (
+              <li key={item.key} className="flex items-start gap-3 p-4">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "shrink-0 rounded-xl p-2.5",
+                    item.tone === "rose"
+                      ? "bg-rose-50 text-rose-500"
+                      : "bg-amber-50 text-amber-500",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">{item.context}</p>
+                  <p
+                    className={cn(
+                      "mt-1 text-xs",
+                      item.tone === "rose" ? "text-rose-600" : "text-amber-600",
+                    )}
+                  >
+                    {item.description}
+                  </p>
+                </div>
+
+                <TabLink
+                  tab={item.action.tab}
+                  className={cn(
+                    "shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+                    item.tone === "rose"
+                      ? "border-rose-200 text-rose-600 hover:bg-rose-50"
+                      : "border-amber-200 text-amber-600 hover:bg-amber-50",
+                  )}
+                >
+                  {item.action.label}
+                </TabLink>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
 }
 
-/**
- * One client, at a glance.
- *
- * Answers the five questions somebody opens an account to ask: where it is,
- * what happens next, what is wrong, who is responsible, and what is running.
- * Deliberately no pipeline picture - the current stage, the next stage and the
- * Move Stage button say everything a graphic would, and Journey owns the rest.
- *
- * Every milestone and every attention item here belongs to this account. They
- * are derived from the same functions the dashboard uses, given one row instead
- * of all of them.
- */
+/* -------------------------------------------------------------------------- */
+/* Account health                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Length of the semicircle the dial draws along, for the dash offset. */
+const ARC = Math.PI * 58;
+const ARC_PATH = "M 12 70 A 58 58 0 0 1 128 70";
+
+function HealthDial({ score }: { score: number | null }) {
+  const filled = score === null ? 0 : (Math.min(Math.max(score, 0), 100) / 100) * ARC;
+
+  return (
+    <div className="relative shrink-0">
+      <svg viewBox="0 0 140 82" className="h-[82px] w-[140px]" role="presentation">
+        <path
+          d={ARC_PATH}
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth="12"
+          strokeLinecap="round"
+        />
+        {score === null ? null : (
+          <path
+            d={ARC_PATH}
+            fill="none"
+            stroke={healthScoreColor(score)}
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${ARC}`}
+          />
+        )}
+      </svg>
+
+      <div className="absolute inset-x-0 bottom-1 text-center">
+        <p className="text-2xl font-semibold leading-7 text-slate-950">
+          {score === null ? "—" : score}
+        </p>
+        <p className="text-[11px] text-slate-500">
+          {score === null ? "Not scored" : healthScoreLabel(score)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AccountHealth({
+  client,
+  healthNote,
+  now,
+}: {
+  client: ClientRow;
+  healthNote: {
+    assessedAt: string;
+    assessedBy: string | null;
+    summary: string | null;
+    healthScore: number | null;
+  } | null;
+  now: Date;
+}) {
+  const health = healthFromStatus(client.healthStatus, {
+    hasBlocker: Boolean(client.currentBlocker?.trim()),
+  });
+
+  /*
+   * The dial only ever draws a score somebody recorded. An assessment can be
+   * saved without one, and inventing a number to fill the arc would make it the
+   * most confident wrong thing on the page.
+   */
+  const score = healthNote?.healthScore ?? null;
+
+  const summary =
+    healthNote?.summary?.trim()
+    || (health === "ON_TRACK"
+      ? "No open risks recorded against this account."
+      : health === "BLOCKED"
+        ? "Nothing can move on this account until the blocker clears."
+        : health === "AT_RISK"
+          ? "This account needs attention now."
+          : "No health assessment has been recorded for this account yet.");
+
+  return (
+    <Panel
+      title="Account Health"
+      action={<PanelLink tab="reports">View details</PanelLink>}
+    >
+      <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 p-4">
+        <HealthDial score={score} />
+
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "text-sm font-semibold",
+              health === "ON_TRACK" && "text-emerald-600",
+              health === "NEEDS_ATTENTION" && "text-amber-600",
+              (health === "AT_RISK" || health === "BLOCKED") && "text-rose-600",
+            )}
+          >
+            {HEALTH_LABELS[health]}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{summary}</p>
+
+          {healthNote ? (
+            <p className="mt-1 text-[11px] text-slate-400">
+              Assessed {relativeDayLabel(healthNote.assessedAt, now)}
+              {healthNote.assessedBy ? ` by ${healthNote.assessedBy}` : ""}
+            </p>
+          ) : null}
+
+          <TabLink
+            tab="reports"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            <ActivityIcon className="h-3.5 w-3.5" aria-hidden />
+            Health assessment
+          </TabLink>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Active work                                                                */
+/* -------------------------------------------------------------------------- */
 
 /** Tailwind class -> the colour the conic gradient needs. */
 const RING_COLORS: Record<string, string> = {
   "bg-emerald-500": "#10b981",
   "bg-sky-500": "#0ea5e9",
-  "bg-violet-500": "#8b5cf6",
+  "bg-rose-500": "#f43f5e",
   "bg-amber-500": "#f59e0b",
   "bg-slate-300": "#cbd5e1",
 };
@@ -136,8 +467,10 @@ const RING_COLORS: Record<string, string> = {
 /**
  * The donut, as a single conic-gradient.
  *
- * Segments are laid out in the order the buckets come back, so the ring and
- * the legend below it read the same way round.
+ * Segments follow the order the buckets come back, so the ring and the legend
+ * beside it read the same way round. A conic gradient rather than a charting
+ * library: it is five numbers, and the page should not pull a rendering
+ * dependency to draw them.
  */
 function ringGradient(work: { total: number; buckets: { count: number; color: string }[] }) {
   if (work.total === 0) return "#e2e8f0";
@@ -147,32 +480,345 @@ function ringGradient(work: { total: number; buckets: { count: number; color: st
     const start = (cursor / work.total) * 360;
     cursor += bucket.count;
     const end = (cursor / work.total) * 360;
-    const color = RING_COLORS[bucket.color] ?? "#cbd5e1";
 
-    return `${color} ${start}deg ${end}deg`;
+    return `${RING_COLORS[bucket.color] ?? "#cbd5e1"} ${start}deg ${end}deg`;
   });
 
   return `conic-gradient(${stops.join(", ")})`;
 }
 
+function ActiveWork({
+  tasks,
+  now,
+}: {
+  tasks: { status: string; dueDate: string | null }[];
+  now: Date;
+}) {
+  const work = useMemo(() => workBreakdown(tasks, now), [tasks, now]);
+
+  return (
+    <Panel title="Active Work" action={<PanelLink tab="tasks">View all tasks</PanelLink>}>
+      {work.total === 0 ? (
+        <div className="px-4 pb-4">
+          <EmptyPanel>No active work for this client.</EmptyPanel>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 p-4">
+          <div
+            className="relative h-[104px] w-[104px] shrink-0 rounded-full"
+            style={{ background: ringGradient(work) }}
+            role="img"
+            aria-label={`${work.total} tasks: ${work.buckets
+              .map((bucket) => `${bucket.count} ${bucket.label.toLowerCase()}`)
+              .join(", ")}`}
+          >
+            <div className="absolute inset-[14px] flex flex-col items-center justify-center rounded-full bg-white">
+              <span className="text-xl font-semibold leading-6 text-slate-950">
+                {work.total}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {work.total === 1 ? "Task" : "Tasks"}
+              </span>
+            </div>
+          </div>
+
+          <ul className="min-w-0 flex-1 space-y-2">
+            {work.buckets.map((bucket) => (
+              <li key={bucket.key} className="flex items-center gap-2 text-xs">
+                <span
+                  aria-hidden
+                  className={cn("h-2 w-2 shrink-0 rounded-full", bucket.color)}
+                />
+                <span className="min-w-0 flex-1 truncate text-slate-600">{bucket.label}</span>
+                <span className="shrink-0 text-slate-500">
+                  {bucket.count} ({Math.round((bucket.count / work.total) * 100)}%)
+                </span>
+              </li>
+            ))}
+            {work.overdue > 0 ? (
+              <li className="flex items-center gap-1.5 border-t border-slate-100 pt-2 text-[11px] text-rose-600">
+                <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {work.overdue} still open past its due date
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The rest of the bottom row                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** Where the timeline dot takes its colour from, by what the entry says. */
+function activityTone(action: string) {
+  const text = action.toLowerCase();
+
+  if (text.includes("complete") || text.includes("approv") || text.includes("received")) {
+    return "bg-emerald-500";
+  }
+  if (text.includes("moved") || text.includes("stage")) return "bg-violet-500";
+  if (text.includes("overdue") || text.includes("blocked")) return "bg-rose-500";
+
+  return "bg-sky-500";
+}
+
+function RecentActivity({
+  activity,
+  now,
+}: {
+  activity: OverviewActivity[];
+  now: Date;
+}) {
+  const shown = activity.slice(0, 4);
+
+  return (
+    <Panel
+      title="Recent Activity"
+      action={<PanelLink tab="activity">View all activity</PanelLink>}
+    >
+      {shown.length === 0 ? (
+        <div className="px-4 pb-4">
+          <EmptyPanel>Nothing recorded on this account yet.</EmptyPanel>
+        </div>
+      ) : (
+        <ol className="relative border-t border-slate-100 p-4">
+          {/* The rail behind the dots. Stops at the last one rather than
+              running past it into empty space. */}
+          <span
+            aria-hidden
+            className="absolute bottom-9 left-[21px] top-7 w-px bg-slate-200"
+          />
+
+          {shown.map((entry) => (
+            <li key={entry.id} className="relative flex items-start gap-3 pb-4 last:pb-0">
+              <span
+                aria-hidden
+                className={cn(
+                  "relative z-10 mt-1.5 h-2 w-2 shrink-0 rounded-full ring-4 ring-white",
+                  activityTone(entry.action),
+                )}
+              />
+              <Monogram name={entry.actorName} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs leading-5 text-slate-800">{entry.action}</span>
+                <span className="mt-0.5 block text-[11px] text-slate-400">
+                  {activityStamp(entry.createdAt, now)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Panel>
+  );
+}
+
+function ActiveServices({
+  services,
+  client,
+  canSeeFinance,
+}: {
+  services: OverviewService[];
+  client: ClientRow;
+  canSeeFinance: boolean;
+}) {
+  return (
+    <Panel
+      title="Active Services"
+      action={<PanelLink tab="services">Manage services</PanelLink>}
+      className="justify-between"
+    >
+      {services.length === 0 ? (
+        <div className="px-4 pb-4">
+          <EmptyPanel>
+            No delivery projects yet. Each service the agency runs for this account is a
+            project.
+          </EmptyPanel>
+        </div>
+      ) : (
+        <>
+          <ul className="divide-y divide-slate-100 border-t border-slate-100">
+            {services.slice(0, 3).map((service) => (
+              <li key={service.id} className="flex items-center gap-3 p-4">
+                <span
+                  aria-hidden
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[10px] font-semibold text-slate-500"
+                >
+                  {service.name.slice(0, 2).toUpperCase()}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-slate-900">
+                    {service.name}
+                  </p>
+                  {/*
+                    * The service type and who runs it, not a price. Projects
+                    * carry no monetary value in this application - only the
+                    * account does - so a per-service figure here would be a
+                    * number nobody entered.
+                    */}
+                  <p className="truncate text-[11px] text-slate-500">
+                    {formatEnumLabel(service.serviceType)}
+                    {service.ownerName ? ` · ${service.ownerName}` : ""}
+                  </p>
+                </div>
+
+                <Badge tone={service.status === "ACTIVE" ? "emerald" : "slate"}>
+                  {formatEnumLabel(service.status)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
+            <PanelLink tab="services">View all services ({services.length})</PanelLink>
+            {canSeeFinance && client.monthlyValue !== null ? (
+              <span className="text-[11px] text-slate-400">
+                {money(client.monthlyValue)} / month on the account
+              </span>
+            ) : null}
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function KeyContact({
+  contacts,
+  client,
+}: {
+  contacts: OverviewContact[];
+  client: ClientRow;
+}) {
+  /*
+   * Falls back to the account's own contact fields.
+   *
+   * Most accounts have no ClientContact rows at all - the primary contact is
+   * the name, email and phone on the client record, which is what the header
+   * prints. Showing "no contacts recorded" beside a header displaying that
+   * person's email would be the page contradicting itself.
+   */
+  const fallback: OverviewContact | null = client.clientName
+    ? {
+        id: "account-primary",
+        name: client.clientName,
+        role: null,
+        email: client.contactEmail,
+        phone: client.contactPhone,
+        isPrimary: true,
+        isDecisionMaker: false,
+        isApprover: false,
+      }
+    : null;
+
+  const primary = contacts.find((contact) => contact.isPrimary) ?? contacts[0] ?? fallback;
+  const approver = contacts.find((contact) => contact.isApprover) ?? null;
+
+  return (
+    <Panel
+      title="Key Contact"
+      action={<PanelLink tab="contacts">Manage contacts</PanelLink>}
+      className="justify-between"
+    >
+      {!primary ? (
+        <div className="px-4 pb-4">
+          <EmptyPanel>
+            No contacts recorded. Add the people who approve and pay.
+          </EmptyPanel>
+        </div>
+      ) : (
+        <div className="border-t border-slate-100 p-4">
+          <div className="flex items-start gap-3">
+            <Monogram name={primary.name} size="lg" />
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="truncate text-sm font-semibold text-slate-900">{primary.name}</p>
+                {primary.isPrimary ? <Badge tone="violet">Primary Contact</Badge> : null}
+              </div>
+
+              {primary.email ? (
+                <a
+                  href={`mailto:${primary.email}`}
+                  className="mt-1 flex min-w-0 items-center gap-1 text-[11px] text-slate-500 hover:text-sky-700"
+                >
+                  <Mail className="h-3 w-3 shrink-0" aria-hidden />
+                  <span className="truncate">{primary.email}</span>
+                </a>
+              ) : null}
+              {primary.phone ? (
+                <a
+                  href={`tel:${primary.phone}`}
+                  className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500 hover:text-emerald-700"
+                >
+                  <Phone className="h-3 w-3 shrink-0" aria-hidden />
+                  {primary.phone}
+                </a>
+              ) : null}
+            </div>
+          </div>
+
+          {/*
+            * Opens the person's own mail client with the contact already
+            * addressed. This application deliberately sends no client-facing
+            * mail of its own - the intake link is copied out by hand - so a
+            * button claiming to send from here would be the only thing on the
+            * page that does not do what it says.
+            */}
+          {primary.email ? (
+            <a
+              href={`mailto:${primary.email}`}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+              Send message
+            </a>
+          ) : null}
+
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Authorized Approver
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="min-w-0 truncate text-xs font-medium text-slate-800">
+                {approver?.name ?? "Nobody assigned"}
+              </p>
+              <Badge tone={approver ? "emerald" : "slate"}>
+                {approver ? "Confirmed" : "Not assigned"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The page                                                                   */
+/* -------------------------------------------------------------------------- */
+
 export function ClientOverview({
   client,
-  nextStageName,
+  clients,
   services,
   contacts,
   activity,
-  teamNames,
   tasks,
   healthNote,
   canSeeFinance,
   serverNow,
 }: {
   client: ClientRow;
-  nextStageName: string | null;
+  /** Every account this person may see, for the portfolio row at the top. */
+  clients: ClientRow[];
   services: OverviewService[];
   contacts: OverviewContact[];
   activity: OverviewActivity[];
-  teamNames: string[];
   tasks: { status: string; dueDate: string | null }[];
   healthNote: {
     assessedAt: string;
@@ -184,625 +830,72 @@ export function ClientOverview({
   serverNow: string;
 }) {
   const now = useMemo(() => new Date(serverNow), [serverNow]);
-  const reasons = useMemo(() => attentionReasons(client, now), [client, now]);
   const next = useMemo(() => nextMilestone(client, now), [client, now]);
-
-  const upcoming = useMemo(
-    () =>
-      [...client.milestones]
-        .filter((milestone) => new Date(milestone.dueAt) >= new Date(now.toDateString()))
-        .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
-        .slice(0, 8),
-    [client.milestones, now],
-  );
-
-  const health = healthFromStatus(client.healthStatus, {
-    hasBlocker: Boolean(client.currentBlocker?.trim()),
-  });
-
-  const cards = overviewCards(client, now);
-  const work = workBreakdown(tasks, now);
 
   return (
     <div className="space-y-4">
-      {/*
-        * The summary row, about this client rather than the agency.
-        *
-        * The reference design carries the Clients-list row here - active
-        * clients, on track, at risk - but inside one account those answer a
-        * question nobody opened the page to ask. Same shape, client-specific
-        * content: where they are, how they are, what is open, what is next,
-        * and when the contract ends.
-        *
-        * Each card is a link to the tab that owns the number, so the figure and
-        * the place you act on it are one click apart.
-        */}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {cards.map((card) => (
-          <Link
-            key={card.key}
-            href={overviewCardHref(card, client.id)}
-            className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              {card.label}
-            </p>
-            <p
-              className={cn(
-                "mt-1.5 truncate text-xl font-semibold",
-                card.tone === "good" && "text-emerald-700",
-                card.tone === "warn" && "text-amber-700",
-                card.tone === "bad" && "text-rose-700",
-                card.tone === "neutral" && "text-slate-950",
-              )}
-              title={card.value}
-            >
-              {card.value}
-            </p>
-            <p className="mt-0.5 truncate text-[11px] text-slate-500" title={card.detail}>
-              {card.detail}
-            </p>
-          </Link>
-        ))}
-      </div>
-
+      <MetricRow clients={clients} now={now} />
 
       {/*
-        * The band the reference puts under the header: what is coming, and how
-        * the account is doing. Both read existing data - the milestone from the
-        * same nextMilestone the cards use, the health from the latest recorded
-        * assessment - so neither can disagree with the row above it.
+        * The reference splits this band 55/45: everything wrong with the
+        * account on the left, what is coming and how it is doing on the right.
+        * minmax(0,…) rather than bare fr, or a long blocker string sets the
+        * left column's minimum width and squeezes the right one off the grid.
         */}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white">
-          <header className="flex items-center justify-between border-b border-slate-100 p-4">
-            <h2 className="text-sm font-semibold text-slate-950">Upcoming Milestone</h2>
-            <TabLink
-              tab="journey"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
-            >
-              View journey
-              <ArrowRight className="h-3 w-3" aria-hidden />
-            </TabLink>
-          </header>
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,55fr)_minmax(0,45fr)]">
+        <NeedsAttention client={client} now={now} />
 
-          {next ? (
-            <div className="flex items-start gap-3 p-4">
-              <span
-                aria-hidden
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600"
-              >
-                <Flag className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-950">{next.name}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  {formatEnumLabel(next.source)} milestone for {client.companyName}.
-                </p>
-                <p className="mt-2 text-xs text-slate-600">
-                  <span className="text-slate-400">Target: </span>
-                  {new Date(next.dueAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                  <span className="ml-1 text-slate-400">
-                    ({relativeDayLabel(next.dueAt, now)})
-                  </span>
-                </p>
-              </div>
-            </div>
-          ) : (
-            <EmptyPanel>No upcoming milestone.</EmptyPanel>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white">
-          <header className="flex items-center justify-between border-b border-slate-100 p-4">
-            <h2 className="text-sm font-semibold text-slate-950">Account Health</h2>
-            <TabLink
-              tab="reports"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
-            >
-              View details
-              <ArrowRight className="h-3 w-3" aria-hidden />
-            </TabLink>
-          </header>
-
-          <div className="flex flex-wrap items-start gap-4 p-4">
-            {/*
-              * The score is shown only when one was actually recorded. The
-              * reference has a 72/100 dial; assessments carry an optional
-              * healthScore, and inventing a number for the accounts that have
-              * none would make the dial the most confident wrong thing on the
-              * page.
-              */}
-            {healthNote?.healthScore !== null && healthNote?.healthScore !== undefined ? (
-              <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-full border-4 border-slate-100">
-                <span className="text-xl font-semibold text-slate-950">
-                  {healthNote.healthScore}
-                </span>
-                <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                  of 100
-                </span>
-              </div>
-            ) : null}
-
-            <div className="min-w-0 flex-1">
-              <HealthBadge client={client} />
-              <p className="mt-2 text-xs leading-5 text-slate-600">
-                {healthNote?.summary
-                  ?? "No assessment has been recorded for this account yet."}
-              </p>
-              {healthNote ? (
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Assessed {relativeDayLabel(healthNote.assessedAt, now)}
-                  {healthNote.assessedBy ? ` by ${healthNote.assessedBy}` : ""}
-                </p>
-              ) : null}
-
-              <TabLink
-                tab="reports"
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <ActivityIcon className="h-3.5 w-3.5" aria-hidden />
-                Health assessment
-              </TabLink>
-            </div>
-          </div>
-        </section>
-      </div>
-
-
-      {/*
-        * Work at a glance: one ring, one number, and the buckets that make it
-        * up. A stacked bar of ten task statuses is a worse answer to "how is
-        * this account doing" than five groups and a total.
-        */}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white">
-          <header className="flex items-center justify-between border-b border-slate-100 p-4">
-            <h2 className="text-sm font-semibold text-slate-950">Active Work</h2>
-            <TabLink
-              tab="tasks"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
-            >
-              View all tasks
-              <ArrowRight className="h-3 w-3" aria-hidden />
-            </TabLink>
-          </header>
-
-          {work.total === 0 ? (
-            <EmptyPanel>No active work for this client.</EmptyPanel>
-          ) : (
-            <div className="flex flex-wrap items-center gap-5 p-4">
-              {/*
-                * The ring is a conic gradient rather than a chart library: it
-                * is five numbers, and the page should not pull a rendering
-                * dependency to draw them.
-                */}
-              <div
-                className="relative h-24 w-24 shrink-0 rounded-full"
-                style={{ background: ringGradient(work) }}
-                role="img"
-                aria-label={`${work.total} tasks: ${work.buckets
-                  .map((bucket) => `${bucket.count} ${bucket.label.toLowerCase()}`)
-                  .join(", ")}`}
-              >
-                <div className="absolute inset-[10px] flex flex-col items-center justify-center rounded-full bg-white">
-                  <span className="text-lg font-semibold text-slate-950">{work.total}</span>
-                  <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                    {work.total === 1 ? "Task" : "Tasks"}
-                  </span>
-                </div>
-              </div>
-
-              <ul className="min-w-0 flex-1 space-y-1.5">
-                {work.buckets.map((bucket) => (
-                  <li key={bucket.key} className="flex items-center gap-2 text-xs">
-                    <span
-                      aria-hidden
-                      className={cn("h-2 w-2 shrink-0 rounded-full", bucket.color)}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-slate-600">
-                      {bucket.label}
-                    </span>
-                    <span className="font-semibold text-slate-900">{bucket.count}</span>
-                    <span className="w-10 text-right text-slate-400">
-                      {Math.round((bucket.count / work.total) * 100)}%
-                    </span>
-                  </li>
-                ))}
-                {work.overdue > 0 ? (
-                  <li className="flex items-center gap-2 border-t border-slate-100 pt-1.5 text-xs text-rose-700">
-                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    {work.overdue} still open past its due date
-                  </li>
-                ) : null}
-              </ul>
-            </div>
-          )}
-        </section>
-      </div>
-
-    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
-      {/* Account summary */}
-      <section className="rounded-2xl border border-slate-200 bg-white xl:row-span-1">
-        <header className="border-b border-slate-100 p-4">
-          <h2 className="text-sm font-semibold text-slate-950">Account Summary</h2>
-        </header>
-
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 p-4 sm:grid-cols-3">
-          <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Progress
-            </p>
-            <Field label="Current stage">
-              <span className="font-semibold text-violet-700">{client.stageName}</span>
-            </Field>
-            <Field label="Next stage">
-              <span className="flex items-center gap-1">
-                {nextStageName ?? "End of the journey"}
-                {nextStageName ? <ArrowRight className="h-3 w-3 text-slate-400" /> : null}
-              </span>
-            </Field>
-            <Field label="Next milestone">
-              <MilestoneText milestone={next} now={now} />
-            </Field>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Next action
-            </p>
-            <Field label="Action">
-              {client.nextAction?.trim() ? (
-                client.nextAction
-              ) : (
-                <span className="text-amber-600">Not set</span>
-              )}
-            </Field>
-            <Field label="Owner">{client.ownerName ?? "Unassigned"}</Field>
-            <Field label="Due">{day(client.nextActionDueAt)}</Field>
-            {/*
-              Linked to the account's work rather than creating a task record to
-              represent the next action - the two would drift immediately.
-            */}
-            <TabLink tab="tasks" className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-slate-800">
-              Open work
-              <ArrowRight className="h-3 w-3" />
-            </TabLink>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Ownership &amp; account
-            </p>
-            <Field label="Account owner">
-              <span className="flex items-center gap-1.5">
-                <Monogram name={client.ownerName} />
-                {client.ownerName ?? "Unassigned"}
-              </span>
-            </Field>
-            <Field label="Assigned team">
-              {teamNames.length ? (
-                <span className="flex flex-wrap items-center gap-1">
-                  {teamNames.slice(0, 4).map((name) => (
-                    <Monogram key={name} name={name} />
-                  ))}
-                  {teamNames.length > 4 ? (
-                    <span className="text-[11px] text-slate-400">+{teamNames.length - 4}</span>
-                  ) : null}
-                </span>
-              ) : (
-                <span className="text-slate-400">Nobody assigned yet</span>
-              )}
-            </Field>
-            <Field label="Active services">{services.length || "None"}</Field>
-            <Field label="Contract start">{day(client.contractStartDate)}</Field>
-            <Field label="Renewal date">{day(client.renewalDate)}</Field>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 px-4 py-3 text-[11px]">
-          <span className="flex items-center gap-1.5 text-slate-600">
-            <CircleCheck className="h-3.5 w-3.5 text-slate-400" />
-            Open work <span className="font-semibold text-slate-900">{client.openTaskCount}</span>
-          </span>
-          <span
-            className={`flex items-center gap-1.5 ${
-              client.overdueTaskCount > 0 ? "text-rose-600" : "text-slate-600"
-            }`}
+        <div className="space-y-4">
+          <Panel
+            title="Upcoming Milestone"
+            action={<PanelLink tab="journey">View journey</PanelLink>}
           >
-            <TriangleAlert className="h-3.5 w-3.5" />
-            Overdue <span className="font-semibold">{client.overdueTaskCount}</span>
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-slate-600">
-            <Clock className="h-3.5 w-3.5 text-slate-400" />
-            Current blocker{" "}
-            <span className="truncate font-semibold text-slate-900">
-              {client.currentBlocker?.trim() || "None"}
-            </span>
-          </span>
-          <span
-            className="flex items-center gap-1.5 text-slate-600"
-            title={
-              healthNote
-                ? `Last assessed ${day(healthNote.assessedAt)}${
-                    healthNote.assessedBy ? ` by ${healthNote.assessedBy}` : ""
-                  }${healthNote.summary ? ` — ${healthNote.summary}` : ""}`
-                : "No health assessment recorded yet"
-            }
-          >
-            Account health <HealthBadge client={client} />
-            {isWaitingOnClient(client) ? <WaitingBadge /> : null}
-          </span>
-        </div>
-      </section>
-
-      {/* Needs attention, for this account only. */}
-      <Panel
-        title="Needs Attention"
-        action={
-          reasons.length > 0 ? (
-            <span className="text-[11px] text-slate-400">{reasons.length} to deal with</span>
-          ) : null
-        }
-      >
-        {reasons.length === 0 ? (
-          <div className="p-4">
-            <EmptyPanel>Nothing on this account needs attention.</EmptyPanel>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {reasons.map((reason) => (
-              <li key={reason.key} className="flex items-start gap-2.5 p-3">
-                <span className="mt-0.5 shrink-0 rounded-lg bg-amber-50 p-1.5 text-amber-600">
-                  <TriangleAlert className="h-3.5 w-3.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium text-slate-800">
-                    {reason.label}
+            {next ? (
+              <div className="px-4 pb-4">
+                <div className="flex items-start gap-3 rounded-xl bg-sky-50/70 p-4">
+                  <span
+                    aria-hidden
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-600"
+                  >
+                    <Flag className="h-5 w-5" />
                   </span>
-                  <span className="block truncate text-[11px] text-slate-500">
-                    {reason.detail}
-                  </span>
-                </span>
-                <TabLink tab={reason.tab} className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
-                  {reason.key === "renewal-approaching" ? "Review" : "Open"}
-                </TabLink>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
 
-      {/* This client's milestones. Nobody else's. */}
-      <Panel title="Upcoming Milestones">
-        {upcoming.length === 0 ? (
-          <div className="p-4">
-            <EmptyPanel>Nothing scheduled on this account.</EmptyPanel>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {upcoming.map((milestone) => {
-              const at = new Date(milestone.dueAt);
-
-              return (
-                <li key={`${milestone.source}-${milestone.id}`}>
-                  <TabLink tab={milestone.tab} className="flex items-start gap-3 p-3 transition hover:bg-slate-50">
-                    <span className="w-14 shrink-0 text-[11px] font-semibold uppercase text-slate-500">
-                      {milestoneDayLabel(milestone.dueAt, now)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-slate-800">
-                        <CalendarDays className="h-3 w-3 shrink-0 text-slate-400" />
-                        <span className="truncate">{milestone.name}</span>
-                      </span>
-                      {milestone.status ? (
-                        <span className="text-[11px] text-slate-400">
-                          {formatEnumLabel(milestone.status)}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-slate-400">
-                      {milestone.hasTime
-                        ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-                        : "All day"}
-                    </span>
-                  </TabLink>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Panel>
-
-      {/* Recent activity */}
-      <Panel
-        title="Recent Activity"
-        action={
-          <TabLink tab="activity" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700">
-            View all activity
-            <ArrowRight className="h-3.5 w-3.5" />
-          </TabLink>
-        }
-      >
-        {activity.length === 0 ? (
-          <div className="p-4">
-            <EmptyPanel>Nothing recorded on this account yet.</EmptyPanel>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {activity.slice(0, 6).map((entry) => (
-              <li key={entry.id} className="flex items-start gap-2.5 p-3">
-                <Monogram name={entry.actorName} />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs text-slate-800">{entry.action}</span>
-                  <span className="block text-[11px] text-slate-400">
-                    {entry.actorName ? `${entry.actorName} · ` : ""}
-                    {relativeTime(entry.createdAt, now)}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      {/* Active services */}
-      <Panel
-        title="Active Services"
-        action={
-          <TabLink tab="services" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700">
-            Manage services
-            <ArrowRight className="h-3.5 w-3.5" />
-          </TabLink>
-        }
-      >
-        {services.length === 0 ? (
-          <div className="p-4">
-            <EmptyPanel>
-              No delivery projects yet. Each service the agency runs for this account is a
-              project.
-            </EmptyPanel>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {services.map((service) => (
-              <li key={service.id} className="space-y-1.5 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="min-w-0 truncate text-xs font-semibold text-slate-900">
-                    {service.name}
-                  </p>
-                  <Badge tone={service.status === "ACTIVE" ? "emerald" : "slate"}>
-                    {formatEnumLabel(service.status)}
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  {formatEnumLabel(service.serviceType)}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
-                  <span className="flex items-center gap-1.5">
-                    <Monogram name={service.ownerName} />
-                    {service.ownerName ?? "Unassigned"}
-                  </span>
-                  <span>Started {day(service.startDate)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {canSeeFinance && client.monthlyValue ? (
-          <p className="border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">
-            Account value{" "}
-            <span className="font-semibold text-slate-800">{money(client.monthlyValue)}</span> a
-            month. Per-service figures are not tracked separately.
-          </p>
-        ) : null}
-      </Panel>
-
-      {/* Key contacts */}
-      <Panel
-        title="Key Contacts"
-        action={
-          <TabLink tab="contacts" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700">
-            Manage contacts
-            <ArrowRight className="h-3.5 w-3.5" />
-          </TabLink>
-        }
-      >
-        {contacts.length === 0 ? (
-          <div className="p-4">
-            <EmptyPanel>
-              Only the primary contact on the account record. Add the people who approve and
-              pay.
-            </EmptyPanel>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {contacts.slice(0, 5).map((contact) => (
-              <li key={contact.id} className="flex items-start gap-2.5 p-3">
-                <Monogram name={contact.name} size="md" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="truncate text-xs font-semibold text-slate-900">
-                      {contact.name}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-950">{next.name}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      {formatEnumLabel(next.source)} milestone for {client.companyName}.
                     </p>
-                    {contact.isPrimary ? <Badge tone="sky">Primary</Badge> : null}
-                    {contact.isDecisionMaker ? <Badge tone="violet">Decision Maker</Badge> : null}
-                    {contact.isApprover ? <Badge tone="emerald">Approver</Badge> : null}
-                  </div>
-                  <p className="truncate text-[11px] text-slate-500">
-                    {contact.role ?? "No role recorded"}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500">
-                    {contact.email ? (
-                      <a
-                        href={`mailto:${contact.email}`}
-                        className="flex min-w-0 items-center gap-1 hover:text-sky-700"
-                      >
-                        <Mail className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{contact.email}</span>
-                      </a>
-                    ) : null}
-                    {contact.phone ? (
-                      <a
-                        href={`tel:${contact.phone}`}
-                        className="flex items-center gap-1 hover:text-emerald-700"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {contact.phone}
-                      </a>
-                    ) : null}
+                    <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-slate-600">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                      <span className="text-slate-400">Target:</span>
+                      {new Date(next.dueAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                      <span className="text-slate-400">
+                        ({relativeDayLabel(next.dueAt, now)})
+                      </span>
+                    </p>
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+              </div>
+            ) : (
+              <div className="px-4 pb-4">
+                <EmptyPanel>No upcoming milestone on this account.</EmptyPanel>
+              </div>
+            )}
+          </Panel>
 
-      {/* Health detail, where the assessment system already has something to say. */}
-      <Panel title="Account Health">
-        <div className="space-y-2 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <HealthBadge client={client} />
-            <span className="text-xs text-slate-600">{HEALTH_LABELS[health]}</span>
-          </div>
-
-          {healthNote ? (
-            <>
-              {healthNote.summary ? (
-                <p className="whitespace-pre-wrap text-xs text-slate-700">{healthNote.summary}</p>
-              ) : null}
-              <p className="text-[11px] text-slate-400">
-                Last assessed {day(healthNote.assessedAt)}
-                {healthNote.assessedBy ? ` by ${healthNote.assessedBy}` : ""}
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-slate-500">
-              No health assessment recorded yet. Health falls back to the account status until
-              somebody assesses it.
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <TabLink tab="reports" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50">
-              <Users className="h-3 w-3" />
-              Reports &amp; health
-            </TabLink>
-            <TabLink
-              tab="journey"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Move stage
-            </TabLink>
-          </div>
+          <AccountHealth client={client} healthNote={healthNote} now={now} />
         </div>
-      </Panel>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ActiveWork tasks={tasks} now={now} />
+        <RecentActivity activity={activity} now={now} />
+        <ActiveServices services={services} client={client} canSeeFinance={canSeeFinance} />
+        <KeyContact contacts={contacts} client={client} />
       </div>
 
       <ClientOverviewFooter loadedAt={serverNow} />

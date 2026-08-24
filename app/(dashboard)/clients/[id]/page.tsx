@@ -39,7 +39,7 @@ import {
 } from "@/lib/data/queries";
 import { loadAuthContext } from "@/lib/authz";
 import type { ClientTab } from "@/lib/clients/client-workspace";
-import { getClientRow } from "@/lib/data/clients-dashboard-query";
+import { getClientsDashboard } from "@/lib/data/clients-dashboard-query";
 import { prisma } from "@/lib/prisma";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
 import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
@@ -166,11 +166,19 @@ export default async function ClientDetailPage({
     canAccessAssignedRecord(user.role, user.id, client.assignedUserId);
 
   /*
-   * The same derived row the directory shows, through the same query and the
+   * The same derived rows the directory shows, through the same query and the
    * same mapper - so an account reading "2 overdue, waiting on client" on the
    * dashboard reads exactly that here.
+   *
+   * The whole visible book rather than this one account, because the Overview
+   * opens with the portfolio row: how many clients are live, on track, waiting,
+   * at risk. Counting those from the same rows the Clients list counts is what
+   * stops the two pages disagreeing about what "at risk" means. Visibility is
+   * applied inside the query, so this is only ever the accounts this person is
+   * already allowed to see.
    */
-  const row = await getClientRow(actor, id);
+  const workspace = await getClientsDashboard(actor);
+  const row = workspace.clients.find((candidate) => candidate.id === id) ?? null;
 
   const activity = await prisma.activityLog.findMany({
     where: { entityType: "CLIENT", entityId: id },
@@ -186,10 +194,6 @@ export default async function ClientDetailPage({
 
   const requested = typeof query.tab === "string" ? (query.tab as ClientTab) : "overview";
   const initialTab = TAB_KEYS.includes(requested) ? requested : "overview";
-
-  // The stage after this one, read from the journey the workspace already has.
-  const stageIndex = options.stages.findIndex((stage) => stage.id === client.currentStageId);
-  const nextStage = stageIndex >= 0 ? (options.stages[stageIndex + 1] ?? null) : null;
 
   const assessment = client.healthAssessments[0] ?? null;
 
@@ -209,6 +213,9 @@ export default async function ClientDetailPage({
           healthStatus: client.healthStatus,
           currentBlocker: client.currentBlocker,
           ownerName: client.assignedUser?.name ?? null,
+          ownerRole: client.assignedUser
+            ? teamRoleLabels[client.assignedUser.teamRole]
+            : null,
           monthlyValue: client.monthlyValue === null ? null : Number(client.monthlyValue),
         }}
         canManage={canManageClient}
@@ -241,7 +248,7 @@ export default async function ClientDetailPage({
           overview: row ? (
             <ClientOverview
               client={row}
-              nextStageName={nextStage?.name ?? null}
+              clients={workspace.clients}
               services={client.projects.map((project) => ({
                 id: project.id,
                 name: project.name,
@@ -266,9 +273,6 @@ export default async function ClientDetailPage({
                 actorName: entry.actor?.name ?? null,
                 createdAt: entry.createdAt.toISOString(),
               }))}
-              teamNames={client.workstreams
-                .map((stream) => stream.owner?.name)
-                .filter((name): name is string => Boolean(name))}
               tasks={client.agencyTasks.map((task) => ({
                 status: task.status as string,
                 dueDate: task.dueDate?.toISOString() ?? null,

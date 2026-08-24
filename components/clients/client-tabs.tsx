@@ -44,17 +44,25 @@ export function useClientTab(): TabController | null {
   return useContext(TabContext);
 }
 
+/*
+ * One word per tab.
+ *
+ * These read "Contacts & Account", "Services & Strategy" and so on, which is
+ * accurate and too long: seven ampersands across a tab strip is what pushed
+ * Reports into the overflow menu in the first place. Single words fit, and
+ * Reports comes back out where people expect to find it.
+ */
 const PRIMARY: { key: ClientTab; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "contacts", label: "Contacts & Account" },
-  { key: "services", label: "Services & Strategy" },
-  { key: "tasks", label: "Tasks & Delivery" },
+  { key: "contacts", label: "Account" },
+  { key: "services", label: "Strategy" },
+  { key: "tasks", label: "Work" },
   { key: "journey", label: "Journey" },
-  { key: "quality", label: "QA & Approvals" },
+  { key: "quality", label: "Approvals" },
+  { key: "reports", label: "Reports" },
 ];
 
 const SECONDARY: { key: ClientTab; label: string }[] = [
-  { key: "reports", label: "Reports & Health" },
   { key: "files", label: "Files & Access" },
   { key: "activity", label: "Activity & Notes" },
   { key: "integrations", label: "Integrations" },
@@ -76,9 +84,11 @@ function TabButton({
       type="button"
       onClick={onSelect}
       aria-current={isActive ? "page" : undefined}
-      className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-medium transition ${
+      className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
         isActive
-          ? "border-slate-950 text-slate-950"
+          // Blue, not near-black: the underline is the only thing marking the
+          // open tab, and a slate rule under slate text barely registers.
+          ? "border-sky-600 text-sky-700"
           : "border-transparent text-slate-500 hover:text-slate-800"
       }`}
     >

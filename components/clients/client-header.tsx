@@ -30,6 +30,8 @@ export interface HeaderClient {
   healthStatus: string;
   currentBlocker: string | null;
   ownerName: string | null;
+  /** The seat they hold, so "Mark Angelo Yakit" reads as a role not a name. */
+  ownerRole: string | null;
   monthlyValue: number | null;
 }
 
@@ -231,10 +233,14 @@ export function ClientHeader({
               ) : null}
             </div>
 
+            {/* What they buy, whether they are live, and where they are -
+                in that order, which is how somebody reads the account. */}
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <Badge tone="violet">{client.stageName}</Badge>
-              <Badge tone="sky">{formatEnumLabel(client.serviceType)}</Badge>
-              <Badge tone="slate">{formatEnumLabel(client.status)}</Badge>
+              <Badge tone="violet">{formatEnumLabel(client.serviceType)}</Badge>
+              <Badge tone={client.status === "ACTIVE" ? "emerald" : "slate"}>
+                {formatEnumLabel(client.status)}
+              </Badge>
+              <Badge tone="amber">{client.stageName}</Badge>
               {/* Health, and only health. Stage and status sit beside it. */}
               <HealthBadge client={healthShape} />
             </div>
@@ -250,10 +256,17 @@ export function ClientHeader({
         <div className="flex w-full flex-col gap-3 divide-y divide-slate-200 sm:w-auto sm:flex-row sm:flex-wrap sm:items-start sm:gap-6 sm:divide-y-0">
           <div className="pt-3 first:pt-0 sm:pt-0">
             <p className="text-[11px] uppercase tracking-wide text-slate-400">Account owner</p>
-            <p className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-900">
+            <div className="mt-1 flex items-center gap-2">
               <Monogram name={client.ownerName} size="md" />
-              {client.ownerName ?? "Unassigned"}
-            </p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {client.ownerName ?? "Unassigned"}
+                </p>
+                {client.ownerRole ? (
+                  <p className="truncate text-[11px] text-slate-400">{client.ownerRole}</p>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           {canViewFinance ? (
