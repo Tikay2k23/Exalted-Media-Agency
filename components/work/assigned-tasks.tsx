@@ -395,7 +395,17 @@ export function AssignedTasks({
             {exportOpen ? (
               <div
                 ref={exportRef}
-                className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+                /*
+                  * Anchored to the button's left edge, not its right.
+                  *
+                  * This button sits at the left of the header, so hanging a
+                  * 16rem menu off its right edge put most of the menu past the
+                  * left of a phone screen - the options were unreadable and
+                  * partly unclickable. The width is capped at the viewport too,
+                  * so it cannot overhang the other way on a narrow screen
+                  * either.
+                  */
+                className="absolute left-0 z-40 mt-1 w-[min(16rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
               >
                 <button
                   type="button"
