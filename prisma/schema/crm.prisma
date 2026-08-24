@@ -514,6 +514,7 @@ model Client {
   strategyValueProp      StrategyValueProp?
   roadmapPhases          StrategyRoadmapPhase[]
   clientNotes            ClientNote[]
+  a2pProfile             A2PProfile?
 
   @@index([assignedUserId])
   @@index([status])
@@ -545,6 +546,7 @@ model ClientContact {
 
   client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   deactivatedBy User?        @relation("ContactDeactivator", fields: [deactivatedById], references: [id], onDelete: SetNull)
+  a2pProfiles  A2PProfile[]  @relation("A2PRepresentative")
   reviewCycles ReviewCycle[] @relation("ReviewApprover")
   approvals    Approval[]    @relation("ApprovalContact")
 

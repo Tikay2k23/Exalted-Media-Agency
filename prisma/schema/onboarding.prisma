@@ -64,6 +64,15 @@ enum AccessMethod {
 }
 
 enum AssetType {
+  /// A2P registration evidence. These reuse AssetRecord so compliance
+  /// documents live in the same store, with the same permissions, as every
+  /// other file the agency holds for a client.
+  BUSINESS_REGISTRATION
+  EIN_CONFIRMATION
+  OPT_IN_SCREENSHOT
+  PRIVACY_POLICY_EVIDENCE
+  TERMS_EVIDENCE
+
   LOGO
   BRAND_GUIDELINES
   IMAGERY

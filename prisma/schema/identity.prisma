@@ -165,6 +165,8 @@ model User {
   strategyGoalsOwned       StrategyGoal[]         @relation("StrategyGoalOwner")
   roadmapPhasesOwned       StrategyRoadmapPhase[] @relation("RoadmapPhaseOwner")
   clientNotesAuthored      ClientNote[]           @relation("ClientNoteAuthor")
+  a2pProfilesReviewed      A2PProfile[]           @relation("A2PReviewer")
+  a2pSubmissions           A2PSubmission[]        @relation("A2PSubmitter")
   stageChanges           ClientStageHistory[]     @relation("StageChangedBy")
   assignedAgencyTasks    EmployeeTask[]           @relation("EmployeeTaskAssignee")
   createdAgencyTasks     EmployeeTask[]           @relation("EmployeeTaskCreator")

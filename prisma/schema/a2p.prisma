@@ -1,0 +1,263 @@
+/// A2P registration: the information a carrier wants before a business may
+/// send application-to-person SMS.
+///
+/// Two things shape this file.
+///
+/// The first is that the client's own answers and the agency's reviewed values
+/// are different data. An intake submission is a historical record of what
+/// somebody typed on a Tuesday; the registration profile is what the agency
+/// would actually submit, after somebody has read it, corrected the legal name
+/// and rewritten the campaign description into the shape a carrier expects.
+/// Overwriting the first with the second loses the evidence of what was asked
+/// and answered, so the profile holds both: `client*` fields are the
+/// submission, the plain fields are the reviewed values.
+///
+/// The second is that nothing here decides anything. Readiness means the
+/// agency has collected what it needs, and a carrier's answer is a separate
+/// event that arrives later and can be no.
+
+/// Where a registration has got to. Deliberately separate from the intake
+/// form's own status: a client can have submitted a complete intake and still
+/// be nowhere near ready to register.
+enum A2PStatus {
+  NOT_REQUIRED
+  INFORMATION_NEEDED
+  UNDER_INTERNAL_REVIEW
+  NEEDS_CLIENT_CHANGES
+  READY_TO_SUBMIT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_RESUBMISSION
+}
+
+enum A2PEntityType {
+  SOLE_PROPRIETOR
+  LLC
+  CORPORATION
+  PARTNERSHIP
+  NONPROFIT
+  GOVERNMENT
+  OTHER
+}
+
+/// Whether somebody has read a section and what they concluded. Internal only -
+/// it is never shown to the client and never implies a carrier will agree.
+enum A2PReviewStatus {
+  NOT_REVIEWED
+  NEEDS_CHANGES
+  READY_FOR_REVIEW
+  APPROVED_INTERNALLY
+}
+
+/// What the client says the messages are for, in their words rather than a
+/// carrier's vocabulary. The mapping to a carrier use-case happens internally.
+enum A2PUseCase {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_REMINDER
+  LEAD_FOLLOW_UP
+  QUOTE_FOLLOW_UP
+  CUSTOMER_SUPPORT
+  SERVICE_NOTIFICATION
+  ORDER_STATUS
+  ACCOUNT_NOTIFICATION
+  MARKETING_PROMOTION
+  REACTIVATION
+  TWO_FACTOR
+  MISSED_CALL_TEXT_BACK
+  OTHER
+}
+
+/// How a customer agreed to be texted. More than one is normal and each needs
+/// its own evidence.
+enum A2POptInMethod {
+  WEBSITE_FORM
+  CONTACT_FORM
+  LANDING_PAGE
+  BOOKING_FORM
+  CHECKOUT
+  PAPER_FORM
+  IN_PERSON
+  VERBAL
+  TEXT_TO_JOIN
+  EXISTING_CUSTOMER
+  OTHER
+}
+
+enum A2PSampleCategory {
+  TRANSACTIONAL
+  LEAD_FOLLOW_UP
+  MARKETING
+  OTHER
+}
+
+model A2PProfile {
+  id       String    @id @default(cuid())
+  clientId String    @unique
+  status   A2PStatus @default(INFORMATION_NEEDED)
+
+  // --- business identity ---------------------------------------------------
+  /// The registered entity name, which is often not the name on the website.
+  /// Account holds the authoritative company record; this is the value that
+  /// would go on a registration, kept separately so a correction made for the
+  /// carrier does not silently rewrite the account.
+  legalName             String?
+  dbaName               String?
+  entityType            A2PEntityType?
+  countryOfRegistration String?
+  taxId                 String?
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  stateRegion           String?
+  postalCode            String?
+  country               String?
+  businessPhone         String?
+  businessEmail         String?
+  websiteUrl            String?
+  socialUrls            String[]
+
+  // --- authorised representative ------------------------------------------
+  /// A real person who can answer for the business. Linked to a ClientContact
+  /// where one exists, rather than a second copy of somebody already recorded.
+  representativeContactId String?
+  representativeName      String?
+  representativeTitle     String?
+  representativeEmail     String?
+  representativePhone     String?
+  representativeRelation  String?
+  /// Set only when somebody confirms they are authorised to act. Never
+  /// defaulted true.
+  authorisationConfirmedAt DateTime?
+
+  // --- what the messages are for -------------------------------------------
+  useCases            A2PUseCase[]
+  useCaseOther        String?
+  /// The internal carrier category, filled in by whoever prepares the
+  /// submission. Clients are never asked for it.
+  internalUseCase     String?
+  /// Exactly what the client wrote, kept whatever anybody does to it later.
+  clientCampaignDescription   String?
+  /// The version that would be submitted.
+  reviewedCampaignDescription String?
+
+  // --- consent -------------------------------------------------------------
+  optInMethods       A2POptInMethod[]
+  optInMethodOther   String?
+  optInPageUrl       String?
+  optInFormUrl       String?
+  optInCheckboxText  String?
+  consentLanguage    String?
+  /// Both matter to a reviewer: consent has to be optional and unticked.
+  checkboxIsOptional Boolean?
+  checkboxUncheckedByDefault Boolean?
+  privacyPolicyUrl   String?
+  termsUrl           String?
+  smsTermsUrl        String?
+
+  // --- keywords and automatic replies --------------------------------------
+  optInKeywords        String?
+  optOutKeywords       String?
+  helpKeywords         String?
+  optInConfirmation    String?
+  optOutConfirmation   String?
+  helpResponse         String?
+
+  // --- message content -----------------------------------------------------
+  messagesContainLinks        Boolean?
+  linkDomains                 String?
+  messagesContainPhoneNumbers Boolean?
+
+  // --- expected usage ------------------------------------------------------
+  monthlyVolume     String?
+  monthlyLeads      String?
+  trafficMix        String?
+  isTwoWay          Boolean?
+  businessHours     String?
+  repliesHandledBy  String?
+  needsMissedCallTextBack Boolean?
+  needsAppointmentReminders Boolean?
+  needsLeadNurture  Boolean?
+  needsReactivation Boolean?
+
+  // --- phone and platform setup --------------------------------------------
+  existingPhoneNumber   String?
+  keepExistingNumber    Boolean?
+  needsNewNumber        Boolean?
+  preferredAreaCode     String?
+  forwardingNumber      String?
+  inboundCallRecipient  String?
+  voicemailRequired     Boolean?
+  smsInboxUsers         String?
+  primarySmsResponder   String?
+  afterHoursBehaviour   String?
+
+  // --- internal review -----------------------------------------------------
+  identityReview   A2PReviewStatus @default(NOT_REVIEWED)
+  consentReview    A2PReviewStatus @default(NOT_REVIEWED)
+  campaignReview   A2PReviewStatus @default(NOT_REVIEWED)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  internalNotes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewedBy  User?               @relation("A2PReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  representative ClientContact?   @relation("A2PRepresentative", fields: [representativeContactId], references: [id], onDelete: SetNull)
+  samples     A2PSampleMessage[]
+  submissions A2PSubmission[]
+
+  @@index([status])
+}
+
+/// A message the client says they would actually send.
+///
+/// Kept as rows rather than four columns because a reviewer annotates them
+/// individually, and because "how many marketing samples are there" is a
+/// question the readiness calculation asks.
+model A2PSampleMessage {
+  id        String            @id @default(cuid())
+  profileId String
+  category  A2PSampleCategory @default(TRANSACTIONAL)
+  body      String
+  /// A reviewer's note on this specific message.
+  reviewNote String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile A2PProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+}
+
+/// One attempt at registering, and what came back.
+///
+/// A history rather than a status field, because a rejection and its reason are
+/// the most useful thing on the page when somebody is fixing a resubmission -
+/// and the previous attempt should not be overwritten by the next one.
+model A2PSubmission {
+  id        String    @id @default(cuid())
+  profileId String
+
+  provider       String
+  brandId        String?
+  campaignId     String?
+  /// What the provider said, in their words.
+  providerStatus String?
+  response       String?
+  rejectedReason String?
+
+  submittedById String?
+  submittedAt   DateTime  @default(now())
+  decidedAt     DateTime?
+
+  profile     A2PProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  submittedBy User?      @relation("A2PSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+
+  @@index([profileId])
+  @@index([submittedAt])
+}
