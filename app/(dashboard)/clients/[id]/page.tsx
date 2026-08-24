@@ -29,7 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getClientDetail, getSharedOptions } from "@/lib/data/queries";
+import {
+  getClientDetail,
+  getSharedOptions,
+  serviceTypeOptions,
+} from "@/lib/data/queries";
 import { loadAuthContext } from "@/lib/authz";
 import type { ClientTab } from "@/lib/clients/client-workspace";
 import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
@@ -240,6 +244,25 @@ export default async function ClientDetailPage({
            cannot offer a move this person would be refused for. */
         canMoveStage={can(actor, "journey.move")}
         canOverrideStage={can(actor, "journey.override")}
+        canDelete={can(actor, "clients.delete")}
+        record={{
+          values: {
+            clientName: client.clientName,
+            companyName: client.companyName,
+            contactEmail: client.contactEmail,
+            contactPhone: client.contactPhone ?? "",
+            serviceType: client.serviceType,
+          },
+          /* Carried through unchanged: the endpoint takes the whole form, and
+             each of these is set somewhere else on this page. */
+          passthrough: {
+            assignedUserId: client.assignedUserId,
+            status: client.status,
+            currentStageId: client.currentStageId,
+            notes: client.notes,
+          },
+          serviceTypes: serviceTypeOptions,
+        }}
         canViewFinance={canViewFinance}
         canAssignWork={can(actor, "workItems.assign")}
         assignees={options.users.map((member) => ({ id: member.id, name: member.name }))}

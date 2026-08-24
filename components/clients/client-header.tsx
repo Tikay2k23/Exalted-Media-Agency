@@ -6,6 +6,11 @@ import { useState } from "react";
 
 import { AddTaskDialog } from "@/components/clients/add-task-dialog";
 import {
+  ClientRecordDialog,
+  DeleteClientDialog,
+  type ClientRecordValues,
+} from "@/components/clients/client-record-editors";
+import {
   StageMoveDialog,
   type StageOption,
 } from "@/components/journey/stage-move-dialog";
@@ -53,6 +58,8 @@ export function ClientHeader({
   stages,
   canMoveStage,
   canOverrideStage,
+  record,
+  canDelete,
 }: {
   client: HeaderClient;
   canManage: boolean;
@@ -64,10 +71,24 @@ export function ClientHeader({
   stages: StageOption[];
   canMoveStage: boolean;
   canOverrideStage: boolean;
+  /** Everything the client-record editor needs but does not itself edit. */
+  record: {
+    values: ClientRecordValues;
+    passthrough: {
+      assignedUserId: string | null;
+      status: string;
+      currentStageId: string;
+      notes: string | null;
+    };
+    serviceTypes: string[];
+  };
+  canDelete: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // HealthBadge reads a full row; this is the part of one it actually uses.
   const healthShape = {
@@ -85,6 +106,24 @@ export function ClientHeader({
           stages={stages}
           canOverride={canOverrideStage}
           onClose={() => setStageOpen(false)}
+        />
+      ) : null}
+
+      {recordOpen ? (
+        <ClientRecordDialog
+          clientId={client.id}
+          values={record.values}
+          passthrough={record.passthrough}
+          serviceTypes={record.serviceTypes}
+          onClose={() => setRecordOpen(false)}
+        />
+      ) : null}
+
+      {deleteOpen ? (
+        <DeleteClientDialog
+          clientId={client.id}
+          companyName={client.companyName}
+          onClose={() => setDeleteOpen(false)}
         />
       ) : null}
 
@@ -172,10 +211,30 @@ export function ClientHeader({
                     greyed out - a disabled button is an invitation to click
                     something that will fail.
                   */}
+                  {/*
+                    * The two that open a dialog rather than a tab.
+                    *
+                    * The client record and deleting the account had no home
+                    * after the Account tab was rebuilt to cards - the form and
+                    * the danger zone that held them were dropped. This menu is
+                    * where rarely-used account actions belong.
+                    */}
+                  {canManage ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        setRecordOpen(true);
+                      }}
+                      className="block w-full rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Edit client record
+                    </button>
+                  ) : null}
+
                   {[
                     ...(canManage
                       ? [
-                          { label: "Edit account", tab: "contacts" as const },
                           { label: "Add contact", tab: "contacts" as const },
                           { label: "Change owner", tab: "contacts" as const },
                           { label: "Add service", tab: "services" as const },
@@ -197,6 +256,22 @@ export function ClientHeader({
                       {item.label}
                     </TabLink>
                   ))}
+
+                  {canDelete ? (
+                    <>
+                      <span className="my-1 block border-t border-slate-100" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoreOpen(false);
+                          setDeleteOpen(true);
+                        }}
+                        className="block w-full rounded-lg px-2.5 py-2 text-left text-xs text-rose-600 transition hover:bg-rose-50"
+                      >
+                        Delete client
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </>
             ) : null}
