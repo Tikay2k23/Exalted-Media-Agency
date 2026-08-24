@@ -39,7 +39,8 @@ import {
 } from "@/lib/data/queries";
 import { loadAuthContext } from "@/lib/authz";
 import type { ClientTab } from "@/lib/clients/client-workspace";
-import { getClientsDashboard } from "@/lib/data/clients-dashboard-query";
+import { getAgencyMetricCounts } from "@/lib/data/client-metrics-query";
+import { getClientRow } from "@/lib/data/clients-dashboard-query";
 import { prisma } from "@/lib/prisma";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
 import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
@@ -166,19 +167,18 @@ export default async function ClientDetailPage({
     canAccessAssignedRecord(user.role, user.id, client.assignedUserId);
 
   /*
-   * The same derived rows the directory shows, through the same query and the
+   * The same derived row the directory shows, through the same query and the
    * same mapper - so an account reading "2 overdue, waiting on client" on the
    * dashboard reads exactly that here.
    *
-   * The whole visible book rather than this one account, because the Overview
-   * opens with the portfolio row: how many clients are live, on track, waiting,
-   * at risk. Counting those from the same rows the Clients list counts is what
-   * stops the two pages disagreeing about what "at risk" means. Visibility is
-   * applied inside the query, so this is only ever the accounts this person is
-   * already allowed to see.
+   * The portfolio row at the top of the Overview is six integers counted in the
+   * database beside it, rather than the whole client book loaded and counted
+   * here. Same numbers, one statement.
    */
-  const workspace = await getClientsDashboard(actor);
-  const row = workspace.clients.find((candidate) => candidate.id === id) ?? null;
+  const [row, metricCounts] = await Promise.all([
+    getClientRow(actor, id),
+    getAgencyMetricCounts(actor, new Date()),
+  ]);
 
   const activity = await prisma.activityLog.findMany({
     where: { entityType: "CLIENT", entityId: id },
@@ -248,7 +248,7 @@ export default async function ClientDetailPage({
           overview: row ? (
             <ClientOverview
               client={row}
-              clients={workspace.clients}
+              metricCounts={metricCounts}
               services={client.projects.map((project) => ({
                 id: project.id,
                 name: project.name,

@@ -21,7 +21,7 @@
  * agency waiting on itself. It still counts as something to attend to, which
  * is a different question and answered separately.
  */
-const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED"];
+export const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED"];
 
 /** Intake states that mean the form is done. */
 const INTAKE_DONE = ["SUBMITTED", "REVIEWED"];

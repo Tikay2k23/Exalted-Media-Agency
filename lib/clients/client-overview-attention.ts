@@ -1,4 +1,5 @@
 import {
+  INTAKE_WITH_CLIENT,
   type AttentionKey,
   type ClientRow,
   type ClientTab,
@@ -41,11 +42,14 @@ export interface AttentionItem {
 const plural = (count: number, one: string, many: string) =>
   `${count} ${count === 1 ? one : many}`;
 
-/** Intake states where the form is out and the client has not finished it. */
-const INTAKE_SENT = ["SENT", "VIEWED", "IN_PROGRESS", "PARTIAL"];
-
 function intakeItem(client: ClientRow, tone: "rose" | "amber"): AttentionItem {
-  const sent = client.intakeStatus !== null && INTAKE_SENT.includes(client.intakeStatus);
+  /*
+   * The shared list, not a second copy. The copy that used to live here listed
+   * two statuses the IntakeStatus enum does not have and omitted
+   * PARTIALLY_COMPLETED, which it does - so a client halfway through the form
+   * was told nobody had sent it one.
+   */
+  const sent = client.intakeStatus !== null && INTAKE_WITH_CLIENT.includes(client.intakeStatus);
 
   return {
     key: "intake-incomplete",

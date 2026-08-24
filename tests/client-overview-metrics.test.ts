@@ -5,6 +5,7 @@ import { attentionItems } from "@/lib/clients/client-overview-attention";
 import {
   LAUNCH_HORIZON_DAYS,
   agencyMetrics,
+  countMetrics,
   healthScoreLabel,
   isLaunchingSoon,
 } from "@/lib/clients/client-overview-metrics";
@@ -68,8 +69,9 @@ function launch(daysAway: number): ClientMilestone {
   };
 }
 
+/** Counted from rows the way the integration test compares SQL against. */
 const metric = (rows: ClientRow[], key: string) =>
-  agencyMetrics(rows, NOW).find((card) => card.key === key)!;
+  agencyMetrics(countMetrics(rows, NOW)).find((card) => card.key === key)!;
 
 /**
  * The portfolio row across the top of a client's Overview.
@@ -81,7 +83,7 @@ const metric = (rows: ClientRow[], key: string) =>
 describe("agency metrics", () => {
   it("shows the six cards the design calls for, in order", () => {
     assert.deepEqual(
-      agencyMetrics([client()], NOW).map((card) => card.key),
+      agencyMetrics(countMetrics([client()], NOW)).map((card) => card.key),
       ["active", "on-track", "waiting", "at-risk", "launching", "renewals"],
     );
   });
@@ -134,7 +136,7 @@ describe("agency metrics", () => {
   });
 
   it("links only the card that has somewhere real to go", () => {
-    const linked = agencyMetrics([client()], NOW).filter((card) => card.href);
+    const linked = agencyMetrics(countMetrics([client()], NOW)).filter((card) => card.href);
 
     assert.deepEqual(linked.map((card) => card.key), ["active"]);
     assert.equal(linked[0].href, "/clients");
@@ -201,7 +203,9 @@ describe("attention items", () => {
   });
 
   it("sends a half-finished intake to Strategy too", () => {
-    const [item] = attentionItems(client({ intakeStatus: "IN_PROGRESS" }), NOW);
+    // A real IntakeStatus value. The first version of this checked a status the
+    // enum does not have, so it passed while PARTIALLY_COMPLETED was mislabelled.
+    const [item] = attentionItems(client({ intakeStatus: "PARTIALLY_COMPLETED" }), NOW);
 
     assert.equal(item.title, "Onboarding Form Incomplete");
     assert.equal(item.action.label, "Open Intake Setup");

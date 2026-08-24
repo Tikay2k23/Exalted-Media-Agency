@@ -101,8 +101,42 @@ export function isLaunchingSoon(client: ClientRow, now: Date) {
   });
 }
 
-export function agencyMetrics(clients: ClientRow[], now: Date): AgencyMetric[] {
-  const active = clients.filter(isActive).length;
+export interface AgencyMetricCounts {
+  active: number;
+  onTrack: number;
+  waiting: number;
+  atRisk: number;
+  launching: number;
+  renewals: number;
+}
+
+/**
+ * The six figures, counted in TypeScript from rows already in memory.
+ *
+ * The page does not use this - it reads the same six numbers straight out of
+ * the database in one statement, because loading the whole client book to
+ * produce six integers was too much traffic for a page about one account.
+ *
+ * This stays as the reference definition: it is written in terms of the same
+ * predicates the Clients list uses, and the integration test counts a real
+ * workspace both ways and asserts the SQL agrees with it. That is what keeps
+ * the two implementations honest about what "at risk" means.
+ */
+export function countMetrics(clients: ClientRow[], now: Date): AgencyMetricCounts {
+  return {
+    active: clients.filter(isActive).length,
+    onTrack: clients.filter(isOnTrack).length,
+    waiting: clients.filter(isWaitingOrBlocked).length,
+    atRisk: clients.filter(isAtRisk).length,
+    launching: clients.filter((client) => isLaunchingSoon(client, now)).length,
+    renewals: clients.filter(
+      (client) => isActive(client) && isRenewalDueSoon(client, now),
+    ).length,
+  };
+}
+
+export function agencyMetrics(counts: AgencyMetricCounts): AgencyMetric[] {
+  const { active, onTrack, waiting, atRisk, launching, renewals } = counts;
 
   /*
    * Percentages are of the active book, not of every row ever created. An
@@ -111,14 +145,6 @@ export function agencyMetrics(clients: ClientRow[], now: Date): AgencyMetric[] {
    */
   const share = (count: number) =>
     active === 0 ? "No active clients" : `${Math.round((count / active) * 100)}% of clients`;
-
-  const onTrack = clients.filter(isOnTrack).length;
-  const waiting = clients.filter(isWaitingOrBlocked).length;
-  const atRisk = clients.filter(isAtRisk).length;
-  const launching = clients.filter((client) => isLaunchingSoon(client, now)).length;
-  const renewals = clients.filter(
-    (client) => isActive(client) && isRenewalDueSoon(client, now),
-  ).length;
 
   return [
     {

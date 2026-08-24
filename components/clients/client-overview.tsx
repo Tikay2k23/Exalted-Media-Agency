@@ -34,6 +34,7 @@ import {
 } from "@/lib/clients/client-overview-cards";
 import { attentionItems } from "@/lib/clients/client-overview-attention";
 import {
+  type AgencyMetricCounts,
   type MetricKey,
   type MetricTone,
   agencyMetrics,
@@ -175,8 +176,8 @@ const METRIC_TONES: Record<MetricTone, string> = {
   indigo: "bg-indigo-50 text-indigo-600",
 };
 
-function MetricRow({ clients, now }: { clients: ClientRow[]; now: Date }) {
-  const metrics = useMemo(() => agencyMetrics(clients, now), [clients, now]);
+function MetricRow({ counts }: { counts: AgencyMetricCounts }) {
+  const metrics = useMemo(() => agencyMetrics(counts), [counts]);
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -804,7 +805,7 @@ function KeyContact({
 
 export function ClientOverview({
   client,
-  clients,
+  metricCounts,
   services,
   contacts,
   activity,
@@ -814,8 +815,8 @@ export function ClientOverview({
   serverNow,
 }: {
   client: ClientRow;
-  /** Every account this person may see, for the portfolio row at the top. */
-  clients: ClientRow[];
+  /** The portfolio row at the top, counted in the database. */
+  metricCounts: AgencyMetricCounts;
   services: OverviewService[];
   contacts: OverviewContact[];
   activity: OverviewActivity[];
@@ -834,7 +835,7 @@ export function ClientOverview({
 
   return (
     <div className="space-y-4">
-      <MetricRow clients={clients} now={now} />
+      <MetricRow counts={metricCounts} />
 
       {/*
         * The reference splits this band 55/45: everything wrong with the
