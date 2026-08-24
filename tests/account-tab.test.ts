@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  CADENCE_MONTHS,
+  monthsAway,
+  nextInvoiceDate,
+  type AccountContract,
+} from "@/components/clients/client-account";
+import {
   clientCompanySchema,
   clientInternalNoteSchema,
   clientOwnershipSchema,
@@ -129,5 +135,74 @@ describe("internal account note", () => {
       clientInternalNoteSchema.safeParse({ notes: "x".repeat(2001) }).success,
       false,
     );
+  });
+});
+
+/**
+ * The dates the Contract & Commercials card prints.
+ *
+ * Worth testing rather than eyeballing: the next-invoice figure walks forward
+ * from the contract start in cadence-sized steps, and a cadence with no month
+ * count - ONE_TIME - would spin that loop forever if it were ever let through.
+ */
+describe("contract dates", () => {
+  const contract = (over: Partial<AccountContract> = {}): AccountContract => ({
+    id: "k1",
+    title: "Retainer",
+    agreementStatus: "SIGNED",
+    recurringFee: 1800,
+    contractValue: null,
+    billingCadence: "MONTHLY",
+    startDate: "2026-08-15T00:00:00.000Z",
+    endDate: "2027-08-15T00:00:00.000Z",
+    renewalDate: "2027-08-15T00:00:00.000Z",
+    paymentTerms: "Due on the 15th of each month",
+    autoRenew: true,
+    documentUrl: null,
+    ...over,
+  });
+
+  const now = new Date("2026-08-22T12:00:00.000Z");
+
+  it("says how far off the renewal is, the way the design prints it", () => {
+    assert.equal(monthsAway("2027-08-15T00:00:00.000Z", now), "in 12 months");
+    assert.equal(monthsAway("2026-09-15T00:00:00.000Z", now), "in 1 month");
+    assert.equal(monthsAway("2026-08-30T00:00:00.000Z", now), "this month");
+  });
+
+  it("does not describe a renewal that has already passed as upcoming", () => {
+    assert.equal(monthsAway("2026-02-15T00:00:00.000Z", now), "6 months ago");
+  });
+
+  it("finds the next invoice after today, not the first one ever raised", () => {
+    const next = nextInvoiceDate(contract(), now);
+
+    assert.ok(next);
+    assert.equal(new Date(next).toISOString().slice(0, 10), "2026-09-15");
+  });
+
+  it("steps by the cadence rather than always by a month", () => {
+    const next = nextInvoiceDate(contract({ billingCadence: "QUARTERLY" }), now);
+
+    assert.equal(new Date(next!).toISOString().slice(0, 10), "2026-11-15");
+  });
+
+  it("walks forward from a start date years in the past", () => {
+    const next = nextInvoiceDate(
+      contract({ startDate: "2021-03-05T00:00:00.000Z" }),
+      now,
+    );
+
+    assert.ok(new Date(next!) > now, "the next invoice must be ahead of today");
+    assert.equal(new Date(next!).getUTCDate(), 5, "it keeps the billing day");
+  });
+
+  it("returns nothing for a cadence with no repeat, rather than looping", () => {
+    assert.equal(nextInvoiceDate(contract({ billingCadence: "ONE_TIME" }), now), null);
+    assert.equal(CADENCE_MONTHS.ONE_TIME, undefined);
+  });
+
+  it("returns nothing when no start date was ever recorded", () => {
+    assert.equal(nextInvoiceDate(contract({ startDate: null }), now), null);
   });
 });

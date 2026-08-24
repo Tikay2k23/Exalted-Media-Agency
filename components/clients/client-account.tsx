@@ -149,7 +149,7 @@ function Row({
   );
 }
 
-const CADENCE_MONTHS: Record<string, number> = {
+export const CADENCE_MONTHS: Record<string, number> = {
   MONTHLY: 1,
   QUARTERLY: 3,
   SEMI_ANNUAL: 6,
@@ -167,7 +167,7 @@ function shortDate(value: string | null) {
 }
 
 /** "in 12 months", the helper the reference prints beside the renewal date. */
-function monthsAway(value: string | null, now: Date) {
+export function monthsAway(value: string | null, now: Date) {
   if (!value) return null;
 
   const target = new Date(value);
@@ -585,8 +585,14 @@ export function ClientAccount({
           }
         >
           {!canSeeFinance ? (
+            /*
+              * Names the seat, not a vague tier. This read "account owners and
+              * managers", which a project manager reasonably takes to include
+              * them - and they are the seat most likely to be looking. Only
+              * AGENCY_OWNER holds finance.view.
+              */
             <p className="border-t border-slate-100 px-5 py-4 text-xs text-slate-500">
-              Commercial terms are visible to account owners and managers.
+              Commercial terms are visible to the agency owner.
             </p>
           ) : (
             <div className="divide-y divide-slate-50 border-t border-slate-100 py-2">
@@ -977,7 +983,7 @@ function SeatValue({ name }: { name: string | null }) {
 }
 
 /** Next invoice on the cadence, counting forward from the contract start. */
-function nextInvoiceDate(contract: AccountContract, now: Date) {
+export function nextInvoiceDate(contract: AccountContract, now: Date) {
   const step = CADENCE_MONTHS[contract.billingCadence];
 
   if (!contract.startDate || !step) return null;
