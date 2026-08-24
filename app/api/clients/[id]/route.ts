@@ -5,11 +5,29 @@ import { getServerAuthSession } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { clientFormSchema, clientStatusUpdateSchema } from "@/lib/validators";
-import { FULFILLMENT_PIPELINE_ID } from "@/lib/workspace-defaults";
+import { clientStatusUpdateSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
 
+/**
+ * An account's status, and nothing else.
+ *
+ * This used to take the whole client as well - name, owner, status, service,
+ * stage and note in one payload. Two things were wrong with that.
+ *
+ * It wrote every field on every save, so the editor that used it sent back
+ * whatever the page had been rendered with: a stage moved from the Journey
+ * board while somebody had the form open was silently reverted when they saved
+ * a phone number. The fields now have narrow routes of their own - /record,
+ * /company, /ownership, /commercials, /next-step, /internal-note - each writing
+ * only the columns it owns.
+ *
+ * It also set currentStageId directly and wrote its own history row, which is a
+ * way around the stage gate. Moving an account is supposed to go through the
+ * dialog that evaluates the stage's requirements, refuses on blocking ones and
+ * records an override reason. A second path that skips all of that is worse
+ * than no path.
+ */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -22,134 +40,62 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const client = await prisma.client.findUnique({
-      where: { id },
-    });
+    const client = await prisma.client.findUnique({ where: { id } });
 
     if (!client) {
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
+    // The account's own people may set its status; managing every client is
+    // not required for it.
     if (
-      !canManageClients(session.user.role) &&
-      !canAccessAssignedRecord(
-        session.user.role,
-        session.user.id,
-        client.assignedUserId,
-      )
+      !canManageClients(session.user.role)
+      && !canAccessAssignedRecord(session.user.role, session.user.id, client.assignedUserId)
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const payload = await request.json();
-    const isObjectPayload = typeof payload === "object" && payload !== null;
-    const isStatusOnlyPayload =
-      isObjectPayload &&
-      Object.keys(payload).length === 1 &&
-      "status" in payload;
-
-    if (isStatusOnlyPayload) {
-      const parsed = clientStatusUpdateSchema.safeParse(payload);
-
-      if (!parsed.success) {
-        return NextResponse.json({ error: "Invalid status payload" }, { status: 400 });
-      }
-
-      const updatedClient = await prisma.client.update({
-        where: { id },
-        data: {
-          status: parsed.data.status,
-        },
-      });
-
-      await logActivity({
-        actorId: session.user.id,
-        action: `Updated ${updatedClient.companyName} status to ${parsed.data.status.replaceAll("_", " ")}`,
-        entityType: ActivityEntityType.CLIENT,
-        entityId: updatedClient.id,
-      });
-
-      return NextResponse.json(updatedClient);
-    }
-
-    if (!canManageClients(session.user.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const parsed = clientFormSchema.safeParse(payload);
+    /*
+     * Strict, so anything beyond the status is an error rather than quietly
+     * dropped. A caller still sending the old whole-client payload has a bug,
+     * and a 200 that silently ignored eight of its nine fields would hide it -
+     * which is precisely how the reverted-stage problem went unnoticed.
+     */
+    const parsed = clientStatusUpdateSchema.strict().safeParse(await request.json());
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid client payload" }, { status: 400 });
-    }
-
-    const [stage, assignee] = await Promise.all([
-      // Restricted to the client journey for the same reason as creation: an
-      // account parked on a sales stage cannot be moved back by the journey.
-      prisma.pipelineStage.findFirst({
-        where: {
-          id: parsed.data.currentStageId,
-          pipelineId: FULFILLMENT_PIPELINE_ID,
-          isDeprecated: false,
-        },
-        select: { id: true },
-      }),
-      parsed.data.assignedUserId
-        ? prisma.user.findUnique({
-            where: { id: parsed.data.assignedUserId },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
-    ]);
-
-    if (!stage) {
       return NextResponse.json(
-        { error: "That stage is not a current client journey stage." },
+        {
+          error:
+            "This endpoint only sets the account status. The other fields have their own routes.",
+        },
         { status: 400 },
       );
     }
 
-    if (parsed.data.assignedUserId && !assignee) {
-      return NextResponse.json({ error: "Assigned teammate not found" }, { status: 404 });
+    if (client.status === parsed.data.status) {
+      return NextResponse.json({ ...client, unchanged: true });
     }
 
     const updatedClient = await prisma.client.update({
       where: { id },
-      data: {
-        clientName: parsed.data.clientName,
-        companyName: parsed.data.companyName,
-        contactEmail: parsed.data.contactEmail.toLowerCase(),
-        contactPhone: parsed.data.contactPhone || null,
-        assignedUserId: parsed.data.assignedUserId || null,
-        status: parsed.data.status,
-        serviceType: parsed.data.serviceType,
-        currentStageId: parsed.data.currentStageId,
-        notes: parsed.data.notes || null,
-      },
+      data: { status: parsed.data.status },
     });
-
-    if (client.currentStageId !== parsed.data.currentStageId) {
-      await prisma.clientStageHistory.create({
-        data: {
-          clientId: updatedClient.id,
-          fromStageId: client.currentStageId,
-          toStageId: parsed.data.currentStageId,
-          changedById: session.user.id,
-          note: "Client stage updated from the client profile.",
-        },
-      });
-    }
 
     await logActivity({
       actorId: session.user.id,
-      action: `Updated client ${updatedClient.companyName}`,
+      action: `Updated ${updatedClient.companyName} status to ${parsed.data.status.replaceAll("_", " ")}`,
       entityType: ActivityEntityType.CLIENT,
       entityId: updatedClient.id,
     });
 
     return NextResponse.json(updatedClient);
   } catch (error) {
-    console.error("[api/clients/:id] Failed to update client.", error);
-    return NextResponse.json({ error: "Unable to update this client right now." }, { status: 500 });
+    console.error("[api/clients/:id] Failed to update client status.", error);
+    return NextResponse.json(
+      { error: "Unable to update this client right now." },
+      { status: 500 },
+    );
   }
 }
 
