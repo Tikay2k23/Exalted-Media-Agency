@@ -33,27 +33,11 @@ export interface ClientRecordValues {
 
 export function ClientRecordDialog({
   clientId,
-  passthrough,
   values,
   serviceTypes,
   onClose,
 }: {
   clientId: string;
-  /**
-   * Fields this dialog does not edit but the endpoint insists on.
-   *
-   * The client PATCH takes the whole form, so these ride along unchanged
-   * rather than being blanked. The same values the page rendered with, which
-   * means a stage moved in another tab while this sat open would be written
-   * back - the window is small, and it is the behaviour the form this replaces
-   * already had.
-   */
-  passthrough: {
-    assignedUserId: string | null;
-    status: string;
-    currentStageId: string;
-    notes: string | null;
-  };
   values: ClientRecordValues;
   serviceTypes: string[];
   onClose: () => void;
@@ -74,16 +58,17 @@ export function ClientRecordDialog({
 
     void (async () => {
       try {
-        const response = await fetch(`/api/clients/${clientId}`, {
+        /*
+         * The narrow route, which writes only these five columns.
+         *
+         * Posting the whole client here would mean sending back the owner,
+         * status, stage and note this page was rendered with - and reverting
+         * whatever had moved in the meantime.
+         */
+        const response = await fetch(`/api/clients/${clientId}/record`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...form,
-            assignedUserId: passthrough.assignedUserId ?? "",
-            status: passthrough.status,
-            currentStageId: passthrough.currentStageId,
-            notes: passthrough.notes ?? "",
-          }),
+          body: JSON.stringify(form),
         });
 
         if (!response.ok) {
@@ -174,8 +159,8 @@ export function ClientRecordDialog({
         </DialogField>
 
         <p className="text-[11px] text-slate-400 sm:col-span-2">
-          The account owner, status, stage and internal note are set elsewhere on this page,
-          so they are not repeated here.
+          The account owner, status, stage and internal note are set elsewhere on this page.
+          Saving here leaves them exactly as they are.
         </p>
       </div>
     </AccountDialog>

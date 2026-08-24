@@ -285,6 +285,23 @@ export const clientCommercialsSchema = z.object({
 });
 
 /**
+ * The client record's own identifying fields.
+ *
+ * Deliberately narrow. clientFormSchema takes the whole account - owner,
+ * status, stage, note - which is right for the create wizard and wrong for an
+ * editor that changes five fields: submitting the whole form means writing back
+ * whatever the page was rendered with, so a stage moved in another tab while
+ * the dialog sat open would be quietly reverted on save.
+ */
+export const clientRecordSchema = z.object({
+  clientName: z.string().trim().min(2).max(80),
+  companyName: z.string().trim().min(2).max(120),
+  contactEmail: z.string().trim().email(),
+  contactPhone: accountText(40),
+  serviceType: z.nativeEnum(ServiceType),
+});
+
+/**
  * What is stopping this account, and what happens next.
  *
  * Operational rather than commercial, and read by the journey health

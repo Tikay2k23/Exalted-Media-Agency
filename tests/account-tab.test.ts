@@ -11,6 +11,7 @@ import {
   clientCompanySchema,
   clientInternalNoteSchema,
   clientOwnershipSchema,
+  clientRecordSchema,
 } from "@/lib/validators";
 
 /**
@@ -204,5 +205,62 @@ describe("contract dates", () => {
 
   it("returns nothing when no start date was ever recorded", () => {
     assert.equal(nextInvoiceDate(contract({ startDate: null }), now), null);
+  });
+});
+
+/**
+ * The client record editor's payload.
+ *
+ * The point of this schema is what it refuses to carry. The editor used to
+ * submit the whole client - owner, status, stage, note - because that is the
+ * shape the create-and-update endpoint takes, which meant saving a phone number
+ * wrote back whatever stage the page happened to be rendered with. A stage
+ * moved from the Journey board in the meantime was silently reverted.
+ *
+ * If any of those four ever reappear here, that bug comes back with them.
+ */
+describe("client record payload", () => {
+  const valid = {
+    clientName: "Dr. Omar Haddad",
+    companyName: "Riverbend Orthodontics",
+    contactEmail: "haddad@riverbendortho.test",
+    contactPhone: "(555) 111 1077",
+    serviceType: "PAID_ADVERTISING",
+  };
+
+  it("accepts the five fields the editor owns", () => {
+    assert.equal(clientRecordSchema.safeParse(valid).success, true);
+  });
+
+  it("carries nothing that belongs to another control", () => {
+    const parsed = clientRecordSchema.parse({
+      ...valid,
+      currentStageId: "stage-the-page-was-rendered-with",
+      status: "ON_HOLD",
+      assignedUserId: "someone-else",
+      notes: "a note from elsewhere",
+    });
+
+    assert.deepEqual(
+      Object.keys(parsed).sort(),
+      ["clientName", "companyName", "contactEmail", "contactPhone", "serviceType"],
+      "a field that reaches the update is a field that can be reverted by it",
+    );
+  });
+
+  it("lets the phone be cleared but not the name", () => {
+    assert.equal(clientRecordSchema.safeParse({ ...valid, contactPhone: "" }).success, true);
+    assert.equal(clientRecordSchema.safeParse({ ...valid, clientName: "" }).success, false);
+  });
+
+  it("refuses an address that is not one", () => {
+    assert.equal(clientRecordSchema.safeParse({ ...valid, contactEmail: "haddad@" }).success, false);
+  });
+
+  it("refuses a service the application does not offer", () => {
+    assert.equal(
+      clientRecordSchema.safeParse({ ...valid, serviceType: "SKYWRITING" }).success,
+      false,
+    );
   });
 });

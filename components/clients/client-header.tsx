@@ -71,15 +71,9 @@ export function ClientHeader({
   stages: StageOption[];
   canMoveStage: boolean;
   canOverrideStage: boolean;
-  /** Everything the client-record editor needs but does not itself edit. */
+  /** The five identifying fields the record editor owns, and the options for one. */
   record: {
     values: ClientRecordValues;
-    passthrough: {
-      assignedUserId: string | null;
-      status: string;
-      currentStageId: string;
-      notes: string | null;
-    };
     serviceTypes: string[];
   };
   canDelete: boolean;
@@ -113,7 +107,6 @@ export function ClientHeader({
         <ClientRecordDialog
           clientId={client.id}
           values={record.values}
-          passthrough={record.passthrough}
           serviceTypes={record.serviceTypes}
           onClose={() => setRecordOpen(false)}
         />

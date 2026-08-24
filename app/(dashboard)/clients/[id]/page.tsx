@@ -253,14 +253,6 @@ export default async function ClientDetailPage({
             contactPhone: client.contactPhone ?? "",
             serviceType: client.serviceType,
           },
-          /* Carried through unchanged: the endpoint takes the whole form, and
-             each of these is set somewhere else on this page. */
-          passthrough: {
-            assignedUserId: client.assignedUserId,
-            status: client.status,
-            currentStageId: client.currentStageId,
-            notes: client.notes,
-          },
           serviceTypes: serviceTypeOptions,
         }}
         canViewFinance={canViewFinance}
