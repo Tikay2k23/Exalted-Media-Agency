@@ -1,153 +1,63 @@
 import { type AuthContext } from "@/lib/authz";
-import type { AgencyMetricCounts } from "@/lib/clients/client-overview-metrics";
-import { LAUNCH_HORIZON_DAYS } from "@/lib/clients/client-overview-metrics";
-import { RENEWAL_HORIZON_DAYS } from "@/lib/clients/client-workspace";
-import { can, canViewAllAgencyData } from "@/lib/permissions";
+import { summaryCards } from "@/lib/journey/journey-board";
+import type { SummaryCard } from "@/lib/journey/journey-board";
+import { buildJourneyAccount, journeyAccountSelect } from "@/lib/data/journey-queries";
+import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 /**
- * The six portfolio figures on a client's Overview, counted in the database.
+ * The six portfolio figures across the top of a client's Overview.
  *
- * This used to load the whole visible client book - the same five-hundred-row
- * read with eight relation sub-selects the Clients list does - and then count
- * rows in TypeScript. That is a lot of traffic to produce six integers on a
- * page about one account, and it was doing it on every client page view.
+ * These are the Journey board's cards, and they have to be *the same numbers*.
+ * The board already owns those six words - Active, On Track, Waiting / Blocked,
+ * At Risk, Launching Soon, Renewals Due - and it derives them operationally:
+ * time in stage against the stage's target, overdue work, overdue milestones,
+ * blockers. Not from the stored health assessment.
  *
- * So: one round trip, six numbers. Conditional aggregates over a single scan
- * rather than six separate counts, because six counts is six round trips - and
- * against a database with a fifty-connection ceiling, the number of statements
- * matters as much as the size of the result.
+ * The first version of this counted them from the Clients list's predicates
+ * instead, which read the recorded assessment. Same six labels, contradictory
+ * answers: the Journey board said nine accounts at risk and none on track, the
+ * Overview said none at risk and five on track, on the same eleven clients at
+ * the same moment. Two pages using one vocabulary for two different questions
+ * is worse than either answer alone.
  *
- * The cost of moving the predicates into SQL is that they now exist twice: once
- * here, once in client-overview-metrics as the TypeScript the Clients list
- * shares. That is a genuine drift risk and the reason for the integration test
- * beside this file, which counts the same workspace both ways and asserts the
- * two agree. If somebody renames a column or changes what "at risk" means, that
- * test fails rather than the two pages quietly disagreeing.
+ * So this reuses the board's own code rather than restating it: the same select,
+ * the same mapper, the same summaryCards. What it skips is the work the summary
+ * does not read - the requirements are never evaluated, because passing an empty
+ * rules map makes buildJourneyAccount return no evaluations, and the stage list
+ * is not fetched because nothing here asks what stage comes next.
+ *
+ * That leaves one query where the workspace runs several, and no second
+ * definition of health to keep in step.
  */
 
-const ZERO: AgencyMetricCounts = {
-  active: 0,
-  onTrack: 0,
-  waiting: 0,
-  atRisk: 0,
-  launching: 0,
-  renewals: 0,
-};
-
-/** Midnight local, the way startOfDay in client-workspace computes it. */
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-/**
- * Calendar arithmetic, not milliseconds.
- *
- * Adding days as 86_400_000ms drifts an hour either side of a daylight-saving
- * change and lands the boundary off midnight, which moves accounts in and out
- * of the window twice a year.
- */
-function addDays(date: Date, days: number) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
-interface CountRow {
-  active: bigint;
-  on_track: bigint;
-  waiting: bigint;
-  at_risk: bigint;
-  launching: bigint;
-  renewals: bigint;
-}
-
-export async function getAgencyMetricCounts(
+export async function getJourneySummaryCards(
   actor: AuthContext,
   now: Date,
-): Promise<AgencyMetricCounts> {
+): Promise<SummaryCard[]> {
   if (!can(actor, "clients.view.all") && !can(actor, "clients.view.assigned")) {
-    return ZERO;
+    return summaryCards([], now);
   }
 
-  // Null means "every account". The parameter is compared with IS NULL in the
-  // statement rather than branching the SQL, so there is one query to read.
-  const scopeUserId = canViewAllAgencyData(actor.role) ? null : actor.id;
-
-  const today = startOfDay(now);
-  const launchUntil = addDays(today, LAUNCH_HORIZON_DAYS);
+  const clients = await prisma.client.findMany({
+    // The same scope the Journey board applies: a team member only ever sees
+    // the accounts assigned to them.
+    where: {
+      deletedAt: null,
+      ...(can(actor, "clients.view.all") ? {} : { assignedUserId: actor.id }),
+    },
+    select: journeyAccountSelect,
+  });
 
   /*
-   * daysBetween compares start-of-day to start-of-day, so "within 45 days"
-   * means the renewal's own midnight is at or before today + 45. Against a raw
-   * timestamp that is exactly "earlier than today + 46", which needs no
-   * truncation in SQL and so cannot disagree about which timezone midnight
-   * falls in.
+   * No requirements, no stage list.
+   *
+   * buildJourneyAccount returns an empty evaluation for any stage with no rules,
+   * so an empty map skips the requirement engine entirely. nextStage comes from
+   * the stage list and goes unread here, so that stays empty too. Every field
+   * the six cards actually look at is on the row itself.
    */
-  const renewalBefore = addDays(today, RENEWAL_HORIZON_DAYS + 1);
+  const accounts = clients.map((client) => buildJourneyAccount(client, new Map(), []));
 
-  const [row] = await prisma.$queryRaw<CountRow[]>`
-    WITH base AS (
-      SELECT
-        c.status IN ('ACTIVE', 'AT_RISK') AS is_active,
-        COALESCE(btrim(c."currentBlocker"), '') <> '' AS has_blocker,
-        c."healthStatus"::text AS health,
-        COALESCE(c."renewalDate", c."contractEndDate") AS renews_at,
-        EXISTS (
-          SELECT 1 FROM "EmployeeTask" t
-          WHERE t."clientId" = c.id
-            AND t."deletedAt" IS NULL
-            AND t.status = 'WAITING_CLIENT'
-        ) AS waiting_task,
-        EXISTS (
-          SELECT 1 FROM "AccessRecord" a
-          WHERE a."clientId" = c.id
-            AND a."isCritical"
-            AND a.status NOT IN ('GRANTED', 'TESTED', 'NOT_APPLICABLE')
-        ) AS missing_access,
-        EXISTS (
-          SELECT 1 FROM "IntakeForm" f
-          WHERE f."clientId" = c.id
-            AND f.status IN ('SENT', 'VIEWED', 'PARTIALLY_COMPLETED')
-        ) AS intake_with_client,
-        EXISTS (
-          SELECT 1 FROM "Launch" l
-          WHERE l."clientId" = c.id
-            AND l."completedAt" IS NULL
-            AND l."scheduledFor" >= ${today}
-            AND l."scheduledFor" <= ${launchUntil}
-        ) AS launching
-      FROM "Client" c
-      WHERE c."deletedAt" IS NULL
-        AND (${scopeUserId}::text IS NULL OR c."assignedUserId" = ${scopeUserId})
-    )
-    SELECT
-      COUNT(*) FILTER (WHERE is_active) AS active,
-      COUNT(*) FILTER (
-        WHERE is_active AND NOT has_blocker AND health = 'GREEN'
-      ) AS on_track,
-      COUNT(*) FILTER (
-        WHERE is_active
-          AND (has_blocker OR waiting_task OR missing_access OR intake_with_client)
-      ) AS waiting,
-      COUNT(*) FILTER (
-        WHERE is_active AND NOT has_blocker AND health = 'RED'
-      ) AS at_risk,
-      COUNT(*) FILTER (WHERE launching) AS launching,
-      COUNT(*) FILTER (
-        WHERE is_active AND renews_at IS NOT NULL AND renews_at < ${renewalBefore}
-      ) AS renewals
-    FROM base
-  `;
-
-  if (!row) return ZERO;
-
-  // Postgres counts come back as bigint, which does not survive serialisation
-  // into a client component.
-  return {
-    active: Number(row.active),
-    onTrack: Number(row.on_track),
-    waiting: Number(row.waiting),
-    atRisk: Number(row.at_risk),
-    launching: Number(row.launching),
-    renewals: Number(row.renewals),
-  };
+  return summaryCards(accounts, now);
 }

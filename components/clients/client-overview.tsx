@@ -34,13 +34,13 @@ import {
 } from "@/lib/clients/client-overview-cards";
 import { attentionItems } from "@/lib/clients/client-overview-attention";
 import {
-  type AgencyMetricCounts,
-  type MetricKey,
+  METRIC_TONE,
   type MetricTone,
-  agencyMetrics,
   healthScoreColor,
   healthScoreLabel,
+  metricHref,
 } from "@/lib/clients/client-overview-metrics";
+import type { SummaryCard, SummaryKey } from "@/lib/journey/journey-board";
 import {
   HEALTH_LABELS,
   type AttentionKey,
@@ -158,13 +158,13 @@ function PanelLink({
 /* The six figures across the top                                             */
 /* -------------------------------------------------------------------------- */
 
-const METRIC_ICONS: Record<MetricKey, typeof Users> = {
+const METRIC_ICONS: Record<SummaryKey, typeof Users> = {
   active: Users,
   "on-track": CircleCheck,
   waiting: Clock,
   "at-risk": TriangleAlert,
-  launching: Rocket,
-  renewals: CalendarClock,
+  "launching-soon": Rocket,
+  "renewals-due": CalendarClock,
 };
 
 const METRIC_TONES: Record<MetricTone, string> = {
@@ -176,40 +176,45 @@ const METRIC_TONES: Record<MetricTone, string> = {
   indigo: "bg-indigo-50 text-indigo-600",
 };
 
-function MetricRow({ counts }: { counts: AgencyMetricCounts }) {
-  const metrics = useMemo(() => agencyMetrics(counts), [counts]);
-
+/**
+ * The Journey board's own six cards, drawn here.
+ *
+ * The values arrive already counted by the board's summaryCards, so this page
+ * cannot disagree with Journey about how many accounts are at risk.
+ */
+function MetricRow({ cards }: { cards: SummaryCard[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {metrics.map((metric) => {
-        const Icon = METRIC_ICONS[metric.key];
+      {cards.map((card) => {
+        const Icon = METRIC_ICONS[card.key];
+        const href = metricHref(card.key);
 
         return (
           <div
-            key={metric.key}
+            key={card.key}
             className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4"
           >
             <span
               aria-hidden
-              className={cn("shrink-0 rounded-xl p-2.5", METRIC_TONES[metric.tone])}
+              className={cn("shrink-0 rounded-xl p-2.5", METRIC_TONES[METRIC_TONE[card.key]])}
             >
               <Icon className="h-4 w-4" />
             </span>
 
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-slate-600">{metric.label}</p>
+              <p className="truncate text-xs font-medium text-slate-600">{card.label}</p>
               <p className="mt-0.5 text-2xl font-semibold leading-8 text-slate-950">
-                {metric.value}
+                {card.value}
               </p>
-              {metric.href ? (
+              {href ? (
                 <Link
-                  href={metric.href}
+                  href={href}
                   className="text-[11px] font-medium text-sky-600 transition hover:text-sky-700"
                 >
-                  {metric.detail}
+                  {card.caption}
                 </Link>
               ) : (
-                <p className="truncate text-[11px] text-slate-400">{metric.detail}</p>
+                <p className="truncate text-[11px] text-slate-400">{card.caption}</p>
               )}
             </div>
           </div>
@@ -805,7 +810,7 @@ function KeyContact({
 
 export function ClientOverview({
   client,
-  metricCounts,
+  metricCards,
   services,
   contacts,
   activity,
@@ -815,8 +820,8 @@ export function ClientOverview({
   serverNow,
 }: {
   client: ClientRow;
-  /** The portfolio row at the top, counted in the database. */
-  metricCounts: AgencyMetricCounts;
+  /** The Journey board's six summary cards, already counted. */
+  metricCards: SummaryCard[];
   services: OverviewService[];
   contacts: OverviewContact[];
   activity: OverviewActivity[];
@@ -835,7 +840,7 @@ export function ClientOverview({
 
   return (
     <div className="space-y-4">
-      <MetricRow counts={metricCounts} />
+      <MetricRow cards={metricCards} />
 
       {/*
         * The reference splits this band 55/45: everything wrong with the

@@ -1,186 +1,34 @@
-import {
-  RENEWAL_HORIZON_DAYS,
-  type ClientRow,
-  healthFromStatus,
-  isActive,
-  isRenewalDueSoon,
-  isWaitingOnClient,
-} from "@/lib/clients/client-workspace";
+import type { SummaryKey } from "@/lib/journey/journey-board";
 
 /**
- * The six figures across the top of a client's Overview.
+ * How the Overview draws the Journey board's six summary cards.
  *
- * These are agency-wide, not about the client whose page you are on. That is
- * deliberate and it is what the design asks for: the row is the same portfolio
- * summary the Clients list carries, so the account you have open is read
- * against the book it belongs to rather than in isolation.
- *
- * Every count runs through the predicate that already defines it elsewhere -
- * isActive, healthFromStatus, isWaitingOnClient, isRenewalDueSoon - so this row
- * and the Clients list cannot report different numbers for the same word. The
- * one figure with no existing predicate is Launching Soon, which reads the
- * launch milestones the dashboard query already assembles.
+ * Presentation only. The numbers and the words are the board's - it owns what
+ * "At Risk" means, and the Overview showing the same six labels with its own
+ * definitions is how the two pages came to contradict each other. Everything
+ * here is colour, icon and destination.
  */
-
-/** How far ahead a launch counts as "soon". */
-export const LAUNCH_HORIZON_DAYS = 14;
-
-export type MetricKey =
-  | "active"
-  | "on-track"
-  | "waiting"
-  | "at-risk"
-  | "launching"
-  | "renewals";
 
 export type MetricTone = "violet" | "emerald" | "amber" | "rose" | "sky" | "indigo";
 
-export interface AgencyMetric {
-  key: MetricKey;
-  label: string;
-  value: number;
-  /** The small line under the number. */
-  detail: string;
-  tone: MetricTone;
-  /**
-   * Where the card goes, when it goes anywhere.
-   *
-   * Only the first card carries a link. The Clients list holds its filter in
-   * component state rather than in the URL, so a card claiming to filter it
-   * would land on an unfiltered list - a link that lies is worse than a figure
-   * that simply reports.
-   */
-  href?: string;
-}
-
-const DAY = 86_400_000;
-
-function startOfDay(now: Date) {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
-
-function healthOf(client: ClientRow) {
-  return healthFromStatus(client.healthStatus, {
-    hasBlocker: Boolean(client.currentBlocker?.trim()),
-  });
-}
-
-export function isOnTrack(client: ClientRow) {
-  return isActive(client) && healthOf(client) === "ON_TRACK";
-}
+export const METRIC_TONE: Record<SummaryKey, MetricTone> = {
+  active: "violet",
+  "on-track": "emerald",
+  waiting: "amber",
+  "at-risk": "rose",
+  "launching-soon": "sky",
+  "renewals-due": "indigo",
+};
 
 /**
- * Waiting on the client, or stopped by something recorded.
+ * Where a card goes, when it goes anywhere.
  *
- * Two states the reference prints as one card, and they belong together: from
- * the agency's side both mean the account is not moving and the next move is
- * not ours to make.
+ * Only the first one links. The Clients list holds its filter in component
+ * state rather than in the URL, so a card claiming to filter it would land on
+ * an unfiltered list - a link that lies is worse than a figure that reports.
  */
-export function isWaitingOrBlocked(client: ClientRow) {
-  return (
-    isActive(client)
-    && (isWaitingOnClient(client) || Boolean(client.currentBlocker?.trim()))
-  );
-}
-
-export function isAtRisk(client: ClientRow) {
-  return isActive(client) && healthOf(client) === "AT_RISK";
-}
-
-/** A launch date already on the account, inside the horizon. */
-export function isLaunchingSoon(client: ClientRow, now: Date) {
-  const from = startOfDay(now).getTime();
-  const until = from + LAUNCH_HORIZON_DAYS * DAY;
-
-  return client.milestones.some((milestone) => {
-    if (milestone.source !== "launch") return false;
-
-    const at = new Date(milestone.dueAt).getTime();
-
-    return at >= from && at <= until;
-  });
-}
-
-export interface AgencyMetricCounts {
-  active: number;
-  onTrack: number;
-  waiting: number;
-  atRisk: number;
-  launching: number;
-  renewals: number;
-}
-
-/**
- * The six figures, counted in TypeScript from rows already in memory.
- *
- * The page does not use this - it reads the same six numbers straight out of
- * the database in one statement, because loading the whole client book to
- * produce six integers was too much traffic for a page about one account.
- *
- * This stays as the reference definition: it is written in terms of the same
- * predicates the Clients list uses, and the integration test counts a real
- * workspace both ways and asserts the SQL agrees with it. That is what keeps
- * the two implementations honest about what "at risk" means.
- */
-export function countMetrics(clients: ClientRow[], now: Date): AgencyMetricCounts {
-  return {
-    active: clients.filter(isActive).length,
-    onTrack: clients.filter(isOnTrack).length,
-    waiting: clients.filter(isWaitingOrBlocked).length,
-    atRisk: clients.filter(isAtRisk).length,
-    launching: clients.filter((client) => isLaunchingSoon(client, now)).length,
-    renewals: clients.filter(
-      (client) => isActive(client) && isRenewalDueSoon(client, now),
-    ).length,
-  };
-}
-
-export function agencyMetrics(counts: AgencyMetricCounts): AgencyMetric[] {
-  const { active, onTrack, waiting, atRisk, launching, renewals } = counts;
-
-  /*
-   * Percentages are of the active book, not of every row ever created. An
-   * agency with 28 live accounts and 200 archived ones would otherwise read as
-   * "6% on track" and look like a business in trouble.
-   */
-  const share = (count: number) =>
-    active === 0 ? "No active clients" : `${Math.round((count / active) * 100)}% of clients`;
-
-  return [
-    {
-      key: "active",
-      label: "Active Clients",
-      value: active,
-      detail: "View all",
-      tone: "violet",
-      href: "/clients",
-    },
-    { key: "on-track", label: "On Track", value: onTrack, detail: share(onTrack), tone: "emerald" },
-    {
-      key: "waiting",
-      label: "Waiting / Blocked",
-      value: waiting,
-      detail: share(waiting),
-      tone: "amber",
-    },
-    { key: "at-risk", label: "At Risk", value: atRisk, detail: share(atRisk), tone: "rose" },
-    {
-      key: "launching",
-      label: "Launching Soon",
-      value: launching,
-      detail: `Next ${LAUNCH_HORIZON_DAYS} days`,
-      tone: "sky",
-    },
-    {
-      key: "renewals",
-      label: "Renewals Due",
-      value: renewals,
-      // The horizon the rest of the application already treats as "due soon",
-      // rather than a second number that disagrees with the Clients list.
-      detail: `Next ${RENEWAL_HORIZON_DAYS} days`,
-      tone: "indigo",
-    },
-  ];
+export function metricHref(key: SummaryKey): string | null {
+  return key === "active" ? "/clients" : null;
 }
 
 /* -------------------------------------------------------------------------- */

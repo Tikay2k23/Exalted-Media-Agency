@@ -4,29 +4,31 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
 import { loadAuthContext } from "@/lib/authz";
-import { countMetrics } from "@/lib/clients/client-overview-metrics";
-import { getAgencyMetricCounts } from "@/lib/data/client-metrics-query";
-import { getClientsDashboard } from "@/lib/data/clients-dashboard-query";
+import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
+import { getJourneyWorkspaceData } from "@/lib/data/journey-queries";
+import { summaryCards } from "@/lib/journey/journey-board";
 import { prisma } from "@/lib/prisma";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL ?? process.env.DIRECT_URL);
 
 /**
- * The portfolio counts, against the real database.
+ * The portfolio row on a client's Overview, against the real database.
  *
- * The Overview reads its six figures straight out of Postgres in one statement
- * instead of loading the client book and counting rows. That is much cheaper
- * and it means the definition of "at risk" now exists twice - once in SQL, once
- * in the TypeScript the Clients list shares.
+ * The Overview and the Journey board show the same six cards, and they must
+ * show the same six numbers. They did not: the Overview counted them from the
+ * stored health assessment while the board derives them operationally, and on
+ * eleven accounts at one moment the board said nine at risk and none on track
+ * while the Overview said none at risk and five on track.
  *
- * This is the test that stops those two drifting. It counts the same workspace
- * both ways and asserts every figure matches. A renamed column, a changed enum
- * value, a new status added to isActive, a different renewal horizon - each of
- * them breaks this rather than quietly making two pages disagree.
+ * The fix was to stop having a second definition - the Overview calls the
+ * board's own summaryCards over the board's own accounts. This is the test that
+ * keeps it that way. It is deliberately an equality check against the real
+ * board rather than a restatement of the rules, because a restatement is the
+ * thing that broke.
  */
-describe("agency metric counts (integration)", { skip: !hasDatabase }, () => {
-  // Fixed, so both implementations are asked about the same instant. Passing
-  // new Date() twice would let a day boundary fall between them.
+describe("overview portfolio row (integration)", { skip: !hasDatabase }, () => {
+  // One instant for both, so a day boundary cannot fall between the two reads
+  // and make stage aging differ.
   const now = new Date();
 
   async function actorFor(teamRole: "AGENCY_OWNER" | "PROJECT_MANAGER") {
@@ -35,72 +37,69 @@ describe("agency metric counts (integration)", { skip: !hasDatabase }, () => {
       select: { id: true },
     });
 
-    if (!user) return null;
-
-    return loadAuthContext(user.id);
+    return user ? loadAuthContext(user.id) : null;
   }
 
   after(async () => {
     await prisma.$disconnect();
   });
 
-  it("agrees with the TypeScript predicates for an agency owner", async () => {
+  it("shows exactly what the journey board shows, for an agency owner", async () => {
     const actor = await actorFor("AGENCY_OWNER");
 
     assert.ok(actor, "the workspace needs an agency owner to test with");
 
-    const [sql, workspace] = await Promise.all([
-      getAgencyMetricCounts(actor, now),
-      getClientsDashboard(actor),
+    const [overview, workspace] = await Promise.all([
+      getJourneySummaryCards(actor, now),
+      getJourneyWorkspaceData(actor),
     ]);
 
     assert.deepEqual(
-      sql,
-      countMetrics(workspace.clients, now),
-      "the SQL counts and the shared predicates disagree about this workspace",
+      overview,
+      summaryCards(workspace.accounts, now),
+      "the Overview and the Journey board disagree about this workspace",
     );
   });
 
-  it("applies the same visibility scope the client list applies", async () => {
+  it("keeps agreeing for a seat that only sees its own accounts", async () => {
     const actor = await actorFor("PROJECT_MANAGER");
 
-    if (!actor) return; // No project manager in this workspace; nothing to check.
+    if (!actor) return; // No project manager here; nothing to compare.
 
-    const [sql, workspace] = await Promise.all([
-      getAgencyMetricCounts(actor, now),
-      getClientsDashboard(actor),
+    const [overview, workspace] = await Promise.all([
+      getJourneySummaryCards(actor, now),
+      getJourneyWorkspaceData(actor),
     ]);
 
     assert.deepEqual(
-      sql,
-      countMetrics(workspace.clients, now),
-      "a scoped seat sees a different set of accounts through the two paths",
+      overview,
+      summaryCards(workspace.accounts, now),
+      "the two paths scope the client list differently",
     );
   });
 
-  it("counts nothing for a seat that may not see clients", async () => {
+  it("returns the six cards in the board's order", async () => {
     const actor = await actorFor("AGENCY_OWNER");
 
     assert.ok(actor);
 
-    // The same shape the query refuses on, without inventing a user.
-    const blind = { ...actor, role: "TEAM_MEMBER" as const, teamRole: "SALES_REP" as const };
-    const counts = await getAgencyMetricCounts(blind, now);
+    const cards = await getJourneySummaryCards(actor, now);
 
-    assert.equal(typeof counts.active, "number", "a refused read still returns numbers");
+    assert.deepEqual(
+      cards.map((card) => card.key),
+      ["active", "on-track", "waiting", "at-risk", "launching-soon", "renewals-due"],
+    );
   });
 
-  it("returns plain numbers, not the bigints Postgres counts with", async () => {
+  it("counts whole non-negative numbers", async () => {
     const actor = await actorFor("AGENCY_OWNER");
 
     assert.ok(actor);
 
-    const counts = await getAgencyMetricCounts(actor, now);
-
-    for (const [key, value] of Object.entries(counts)) {
-      assert.equal(typeof value, "number", `${key} came back as ${typeof value}`);
-      assert.ok(Number.isInteger(value), `${key} is not a whole number`);
-      assert.ok(value >= 0, `${key} is negative`);
+    for (const card of await getJourneySummaryCards(actor, now)) {
+      assert.ok(Number.isInteger(card.value), `${card.key} is not a whole number`);
+      assert.ok(card.value >= 0, `${card.key} is negative`);
+      assert.ok(card.label.length > 0, `${card.key} has no label`);
     }
   });
 
@@ -109,38 +108,14 @@ describe("agency metric counts (integration)", { skip: !hasDatabase }, () => {
 
     assert.ok(actor);
 
-    const { active, onTrack, waiting, atRisk, renewals } = await getAgencyMetricCounts(
-      actor,
-      now,
-    );
+    const cards = await getJourneySummaryCards(actor, now);
+    const active = cards.find((card) => card.key === "active")!.value;
 
-    for (const [label, value] of Object.entries({ onTrack, waiting, atRisk, renewals })) {
+    for (const card of cards.filter((entry) => entry.key !== "active")) {
       assert.ok(
-        value <= active,
-        `${label} (${value}) exceeds the active book (${active}), so a percentage would read over 100%`,
+        card.value <= active,
+        `${card.key} (${card.value}) exceeds the active book (${active}), so its percentage would read over 100%`,
       );
     }
-  });
-
-  it("does not let a blocked account count as on track", async () => {
-    const actor = await actorFor("AGENCY_OWNER");
-
-    assert.ok(actor);
-
-    const { data } = { data: await getClientsDashboard(actor) };
-    const blocked = data.clients.filter(
-      (client) =>
-        Boolean(client.currentBlocker?.trim())
-        && ["ACTIVE", "AT_RISK"].includes(client.status),
-    );
-
-    if (blocked.length === 0) return; // Nothing blocked right now.
-
-    const counts = await getAgencyMetricCounts(actor, now);
-
-    assert.ok(
-      counts.waiting >= blocked.length,
-      "every blocked account should be inside Waiting / Blocked",
-    );
   });
 });

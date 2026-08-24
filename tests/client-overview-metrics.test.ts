@@ -3,13 +3,11 @@ import { describe, it } from "node:test";
 
 import { attentionItems } from "@/lib/clients/client-overview-attention";
 import {
-  LAUNCH_HORIZON_DAYS,
-  agencyMetrics,
-  countMetrics,
+  METRIC_TONE,
   healthScoreLabel,
-  isLaunchingSoon,
+  metricHref,
 } from "@/lib/clients/client-overview-metrics";
-import type { ClientMilestone, ClientRow } from "@/lib/clients/client-workspace";
+import type { ClientRow } from "@/lib/clients/client-workspace";
 
 const NOW = new Date("2026-08-22T12:00:00.000Z");
 const DAY = 86_400_000;
@@ -55,121 +53,42 @@ function client(overrides: Partial<ClientRow> = {}): ClientRow {
   } as ClientRow;
 }
 
-function launch(daysAway: number): ClientMilestone {
-  return {
-    id: "m1",
-    clientId: "c1",
-    clientName: "Cedar Ridge Landscaping",
-    name: "Go live",
-    source: "launch",
-    dueAt: new Date(NOW.getTime() + daysAway * DAY).toISOString(),
-    hasTime: false,
-    tab: "quality",
-    status: null,
-  };
-}
-
-/** Counted from rows the way the integration test compares SQL against. */
-const metric = (rows: ClientRow[], key: string) =>
-  agencyMetrics(countMetrics(rows, NOW)).find((card) => card.key === key)!;
-
 /**
- * The portfolio row across the top of a client's Overview.
+ * How the Overview dresses the Journey board's six cards.
  *
- * These are agency-wide by design. What has to hold is that every count runs
- * through the predicate that already defines the same word on the Clients list,
- * so the two pages cannot report different numbers for "at risk".
+ * The numbers and the words are the board's. What is checked here is that every
+ * key it can hand over has a colour and an icon slot, and that no card claims to
+ * go somewhere it cannot.
  */
-describe("agency metrics", () => {
-  it("shows the six cards the design calls for, in order", () => {
-    assert.deepEqual(
-      agencyMetrics(countMetrics([client()], NOW)).map((card) => card.key),
-      ["active", "on-track", "waiting", "at-risk", "launching", "renewals"],
-    );
-  });
+describe("metric presentation", () => {
+  const KEYS = [
+    "active",
+    "on-track",
+    "waiting",
+    "at-risk",
+    "launching-soon",
+    "renewals-due",
+  ] as const;
 
-  it("counts an at-risk account as active, because it still is one", () => {
-    const rows = [client({ status: "ACTIVE" }), client({ id: "c2", status: "AT_RISK" })];
-
-    assert.equal(metric(rows, "active").value, 2);
-  });
-
-  it("leaves churned and paused accounts out of the book", () => {
-    const rows = [client(), client({ id: "c2", status: "CHURNED" })];
-
-    assert.equal(metric(rows, "active").value, 1);
-  });
-
-  it("does not let a green assessment outrank a recorded blocker", () => {
-    const rows = [client({ healthStatus: "GREEN", currentBlocker: "Waiting on DNS" })];
-
-    assert.equal(metric(rows, "on-track").value, 0, "a blocked account is not on track");
-    assert.equal(metric(rows, "waiting").value, 1);
-  });
-
-  it("counts waiting on the client and blocked as one figure", () => {
-    const rows = [
-      client({ waitingTaskCount: 2 }),
-      client({ id: "c2", currentBlocker: "No access" }),
-      client({ id: "c3", criticalAccessMissing: 1 }),
-    ];
-
-    assert.equal(metric(rows, "waiting").value, 3);
-  });
-
-  it("takes percentages of the active book, not of every row ever created", () => {
-    const rows = [
-      client({ healthStatus: "GREEN" }),
-      client({ id: "c2", healthStatus: "RED" }),
-      client({ id: "c3", status: "CHURNED", healthStatus: "GREEN" }),
-    ];
-
-    // One of the two active accounts is on track.
-    assert.equal(metric(rows, "on-track").detail, "50% of clients");
-  });
-
-  it("does not divide by zero when nothing is live", () => {
-    const rows = [client({ status: "CHURNED" })];
-
-    assert.equal(metric(rows, "on-track").value, 0);
-    assert.equal(metric(rows, "on-track").detail, "No active clients");
+  it("gives every card the board produces a tone", () => {
+    for (const key of KEYS) {
+      assert.ok(METRIC_TONE[key], `${key} would render without a colour`);
+    }
   });
 
   it("links only the card that has somewhere real to go", () => {
-    const linked = agencyMetrics(countMetrics([client()], NOW)).filter((card) => card.href);
+    const linked = KEYS.filter((key) => metricHref(key) !== null);
 
-    assert.deepEqual(linked.map((card) => card.key), ["active"]);
-    assert.equal(linked[0].href, "/clients");
+    assert.deepEqual(linked, ["active"]);
+    assert.equal(metricHref("active"), "/clients");
   });
 
-  it("reads Launching Soon from launch dates inside the horizon", () => {
-    assert.equal(isLaunchingSoon(client({ milestones: [launch(3)] }), NOW), true);
-    assert.equal(
-      isLaunchingSoon(client({ milestones: [launch(LAUNCH_HORIZON_DAYS + 5)] }), NOW),
-      false,
-      "a launch beyond the horizon is not soon",
-    );
-    assert.equal(
-      isLaunchingSoon(client({ milestones: [launch(-3)] }), NOW),
-      false,
-      "a launch that already happened is not upcoming",
-    );
-  });
-
-  it("ignores dated records that are not launches", () => {
-    const renewal = { ...launch(3), source: "renewal" as const };
-
-    assert.equal(isLaunchingSoon(client({ milestones: [renewal] }), NOW), false);
-  });
-
-  it("counts a renewal inside the horizon, including one already past", () => {
-    const rows = [
-      client({ renewalDate: new Date(NOW.getTime() + 20 * DAY).toISOString() }),
-      client({ id: "c2", renewalDate: new Date(NOW.getTime() - 5 * DAY).toISOString() }),
-      client({ id: "c3", renewalDate: new Date(NOW.getTime() + 300 * DAY).toISOString() }),
-    ];
-
-    assert.equal(metric(rows, "renewals").value, 2);
+  it("does not pretend the other cards filter the clients list", () => {
+    // The list holds its filter in component state, not the URL, so a link
+    // would land on an unfiltered page.
+    for (const key of KEYS.filter((entry) => entry !== "active")) {
+      assert.equal(metricHref(key), null, `${key} offers a link that cannot filter`);
+    }
   });
 });
 

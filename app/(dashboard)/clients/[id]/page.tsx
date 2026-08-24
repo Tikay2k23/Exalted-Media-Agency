@@ -39,7 +39,7 @@ import {
 } from "@/lib/data/queries";
 import { loadAuthContext } from "@/lib/authz";
 import type { ClientTab } from "@/lib/clients/client-workspace";
-import { getAgencyMetricCounts } from "@/lib/data/client-metrics-query";
+import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
 import { getClientRow } from "@/lib/data/clients-dashboard-query";
 import { prisma } from "@/lib/prisma";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
@@ -171,13 +171,14 @@ export default async function ClientDetailPage({
    * same mapper - so an account reading "2 overdue, waiting on client" on the
    * dashboard reads exactly that here.
    *
-   * The portfolio row at the top of the Overview is six integers counted in the
-   * database beside it, rather than the whole client book loaded and counted
-   * here. Same numbers, one statement.
+   * The portfolio row at the top of the Overview is the Journey board's own six
+   * cards, counted by the board's own code. Those six words belong to Journey,
+   * and an Overview that answered them differently made the two pages
+   * contradict each other on the same eleven accounts.
    */
-  const [row, metricCounts] = await Promise.all([
+  const [row, metricCards] = await Promise.all([
     getClientRow(actor, id),
-    getAgencyMetricCounts(actor, new Date()),
+    getJourneySummaryCards(actor, new Date()),
   ]);
 
   const activity = await prisma.activityLog.findMany({
@@ -248,7 +249,7 @@ export default async function ClientDetailPage({
           overview: row ? (
             <ClientOverview
               client={row}
-              metricCounts={metricCounts}
+              metricCards={metricCards}
               services={client.projects.map((project) => ({
                 id: project.id,
                 name: project.name,
