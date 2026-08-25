@@ -62,9 +62,20 @@ function completeAnswers(service: "CRM_AUTOMATION") {
   const answers: Record<string, string> = {};
 
   for (const question of questionsForService(service)) {
-    if (question.required) {
-      answers[question.id] = `An answer for ${question.label}.`;
-    }
+    if (!question.required) continue;
+
+    /*
+     * A question offering a fixed set of answers gets a real one, and a yes/no
+     * question gets a yes. Generic prose is filtered out on the way into the
+     * profile's enum and boolean columns, which left those fields empty on a
+     * form that was supposedly answered in full, and any test reading them back
+     * passing for the wrong reason.
+     */
+    answers[question.id] = question.options?.length
+      ? question.options[0].value
+      : question.kind === "boolean"
+        ? "yes"
+        : `An answer for ${question.label}.`;
   }
 
   return answers;
@@ -341,6 +352,42 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
 
     assert.ok(address);
     assert.equal(address.complete, true);
+  });
+
+  /*
+   * Every item in this section is answered by the client. None of it is the
+   * agency's own work, which starts at the representative's authorisation, so a
+   * form answered in full has to complete the section outright.
+   *
+   * Where it does not, the checklist is asking for something the form never
+   * collects - the shape of every gap found here so far, and the reason this
+   * asserts the whole section rather than the fields added most recently.
+   */
+  it("completes the business identity section from a full submission", async () => {
+    const profile = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: {
+        legalName: true,
+        entityType: true,
+        countryOfRegistration: true,
+        taxId: true,
+        addressLine1: true,
+        city: true,
+        postalCode: true,
+        businessPhone: true,
+        businessEmail: true,
+        websiteUrl: true,
+        useCases: true,
+        optInMethods: true,
+        samples: { select: { category: true, body: true } },
+      },
+    });
+
+    const outstanding = a2pChecklist(profile)
+      .filter((item) => item.section === "BUSINESS_IDENTITY" && !item.complete)
+      .map((item) => item.label);
+
+    assert.deepEqual(outstanding, []);
   });
 
   it("tells the project manager it arrived", async () => {

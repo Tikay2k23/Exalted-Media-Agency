@@ -101,6 +101,7 @@ const FIELD_MAP: { answer: string; field: string; kind: "text" | "bool" }[] = [
   { answer: "website", field: "websiteUrl", kind: "text" },
 
   { answer: "a2pLegalName", field: "legalName", kind: "text" },
+  { answer: "a2pCountryOfRegistration", field: "countryOfRegistration", kind: "text" },
   { answer: "a2pTaxId", field: "taxId", kind: "text" },
   { answer: "a2pRepName", field: "representativeName", kind: "text" },
   { answer: "a2pRepTitle", field: "representativeTitle", kind: "text" },

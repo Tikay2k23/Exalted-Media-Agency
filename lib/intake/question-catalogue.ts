@@ -252,6 +252,24 @@ const A2P_QUESTIONS: IntakeSection = {
       ],
     },
     {
+      /*
+       * Asked rather than inferred from the trading address.
+       *
+       * A business can trade in one country and be registered in another, and the
+       * registration is the one a carrier checks. Reading it off the address in
+       * the general section would be right most of the time, which is the wrong
+       * standard for a field somebody submits to a carrier on the client's behalf.
+       *
+       * It sits above the tax ID because that question asks for the equivalent
+       * number wherever they are, which only makes sense once this is answered.
+       */
+      id: "a2pCountryOfRegistration",
+      label: "Which country is the business registered in?",
+      kind: "short",
+      required: true,
+      help: "Where the paperwork was filed, which is not always where you trade from.",
+    },
+    {
       id: "a2pTaxId",
       label: "Business tax ID or registration number",
       kind: "short",
