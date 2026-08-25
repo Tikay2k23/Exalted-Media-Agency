@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import {
   a2pApplies,
+  a2pInPlay,
+  a2pRequested,
   a2pChecklist,
   a2pReadiness,
   sampleMessageWarnings,
@@ -55,19 +57,44 @@ const complete: A2PProfileShape = {
   documents: ["EIN_CONFIRMATION"],
 };
 
-describe("who needs A2P at all", () => {
-  it("applies to a CRM or retainer account", () => {
-    assert.equal(a2pApplies(["CRM_AUTOMATION"]), true);
-    assert.equal(a2pApplies(["FULL_SERVICE_RETAINER"]), true);
+/**
+ * Who gets asked, and who gets a registration.
+ *
+ * These used to be the same question, answered by service type. They are not:
+ * every client is asked whether they want text messaging, and their answer -
+ * not which of ten labels sits on their record - decides whether there is
+ * anything to register. A roofer on paid ads who wants missed-call text back
+ * was invisible under the old rule.
+ */
+describe("who gets asked about A2P", () => {
+  it("asks every client, whatever they bought", () => {
+    for (const service of ["CRM_AUTOMATION", "WEBSITE_SUPPORT", "SEO", "BRAND_STRATEGY"] as const) {
+      assert.equal(a2pApplies([service]), true, `${service} should still be asked`);
+    }
+  });
+});
+
+describe("who actually needs a registration", () => {
+  it("nobody, until they say so", () => {
+    assert.equal(a2pRequested(null), false);
+    assert.equal(a2pRequested({}), false);
+    assert.equal(a2pRequested({ a2pWantsSms: "no" }), false);
   });
 
-  it("does not apply to somebody who only bought a website", () => {
-    assert.equal(a2pApplies(["WEBSITE_SUPPORT"]), false);
-    assert.equal(a2pApplies(["SEO", "BRAND_STRATEGY"]), false);
+  it("the client who asked for it", () => {
+    assert.equal(a2pRequested({ a2pWantsSms: "yes" }), true);
   });
 
-  it("applies when any one of several services needs it", () => {
-    assert.equal(a2pApplies(["WEBSITE_SUPPORT", "CRM_AUTOMATION"]), true);
+  it("and anyone whose profile somebody already started", () => {
+    // Started before the form came back: it must not vanish because the
+    // answer is still blank.
+    assert.equal(a2pInPlay(null, true), true);
+    assert.equal(a2pInPlay({ a2pWantsSms: "no" }, true), true);
+  });
+
+  it("but not a client with neither", () => {
+    assert.equal(a2pInPlay(null, false), false);
+    assert.equal(a2pInPlay({ a2pWantsSms: "no" }, false), false);
   });
 });
 

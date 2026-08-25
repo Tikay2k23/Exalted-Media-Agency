@@ -43,11 +43,14 @@ export interface IntakeQuestion {
   /** For choice and multi. Value is what gets stored; label is what is asked. */
   options?: { value: string; label: string }[];
   /**
-   * Only shown when another answer has one of these values. Keeps the form
-   * from asking a business that takes consent on paper to describe a website
-   * checkbox it does not have.
+   * Only shown when every condition holds.
+   *
+   * A list rather than one rule because most of these have two: the client has
+   * to have asked for text messaging at all, and then their own earlier answer
+   * has to make the question relevant. A business that takes consent on paper
+   * is never asked to describe a website checkbox it does not have.
    */
-  showWhen?: { questionId: string; hasAnyOf: string[] };
+  showWhen?: { questionId: string; hasAnyOf: string[] }[];
 }
 
 export interface IntakeSection {
@@ -194,12 +197,19 @@ const BY_SEAT: Record<TeamRole, IntakeSection | null> = {
  * Nothing here asks for a password. Platform access is requested and tracked in
  * Files & Access, which is the only place credentials are ever handled.
  */
-export const A2P_SECTION: IntakeSection = {
+const A2P_QUESTIONS: IntakeSection = {
   id: "a2p",
   title: "Text messaging",
   description:
-    "Before a phone carrier will let us text your customers, they need to know who you are and what you will send. These answers go straight into that registration.",
+    "If you want to text your customers, a phone carrier has to approve your business first. Tell us whether you want that and we will ask for what they need.",
   questions: [
+    {
+      id: "a2pWantsSms",
+      label: "Do you want to send text messages to your customers?",
+      kind: "boolean",
+      required: true,
+      help: "Appointment reminders, follow-ups, replies to missed calls - anything that arrives on a customer's phone. Answer no and the rest of this section disappears.",
+    },
     {
       id: "a2pLegalName",
       label: "Your registered legal business name",
@@ -296,30 +306,36 @@ export const A2P_SECTION: IntakeSection = {
       id: "a2pOptInPageUrl",
       label: "Where is that form?",
       kind: "url",
-      showWhen: {
-        questionId: "a2pOptInMethods",
-        hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
-      },
+      showWhen: [
+        {
+          questionId: "a2pOptInMethods",
+          hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
+        },
+      ],
       help: "A link to the page with the form on it.",
     },
     {
       id: "a2pCheckboxOptional",
       label: "Is ticking the text-message box optional?",
       kind: "boolean",
-      showWhen: {
-        questionId: "a2pOptInMethods",
-        hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
-      },
+      showWhen: [
+        {
+          questionId: "a2pOptInMethods",
+          hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
+        },
+      ],
       help: "Customers should be able to submit the form without agreeing to texts.",
     },
     {
       id: "a2pCheckboxUnticked",
       label: "Is that box unticked when the page loads?",
       kind: "boolean",
-      showWhen: {
-        questionId: "a2pOptInMethods",
-        hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
-      },
+      showWhen: [
+        {
+          questionId: "a2pOptInMethods",
+          hasAnyOf: ["WEBSITE_FORM", "CONTACT_FORM", "LANDING_PAGE", "BOOKING_FORM", "CHECKOUT"],
+        },
+      ],
     },
     {
       id: "a2pPrivacyPolicyUrl",
@@ -339,7 +355,9 @@ export const A2P_SECTION: IntakeSection = {
       id: "a2pSampleMarketing",
       label: "Write an example of a promotional text",
       kind: "long",
-      showWhen: { questionId: "a2pUseCases", hasAnyOf: ["MARKETING_PROMOTION", "REACTIVATION"] },
+      showWhen: [
+        { questionId: "a2pUseCases", hasAnyOf: ["MARKETING_PROMOTION", "REACTIVATION"] },
+      ],
       help: "Only needed because you said you would send offers.",
     },
     {
@@ -375,6 +393,26 @@ export const A2P_SECTION: IntakeSection = {
   ],
 };
 
+/** The answer that opens the rest of the section. */
+const A2P_GATE = { questionId: "a2pWantsSms", hasAnyOf: ["yes"] };
+
+/**
+ * The A2P section, with every question after the first hanging off the gate.
+ *
+ * Applied here rather than written onto each question, so a question added
+ * later cannot be missed and end up visible to a client who said they do not
+ * want text messaging. Questions that already carry a condition keep it - both
+ * have to hold.
+ */
+export const A2P_SECTION: IntakeSection = {
+  ...A2P_QUESTIONS,
+  questions: A2P_QUESTIONS.questions.map((question) =>
+    question.id === "a2pWantsSms"
+      ? question
+      : { ...question, showWhen: [A2P_GATE, ...(question.showWhen ?? [])] },
+  ),
+};
+
 /** The sections this client should actually see. */
 export function sectionsForService(service: ServiceType): IntakeSection[] {
   const extra = specialistsForService(service)
@@ -403,12 +441,19 @@ export function questionApplies(
   question: IntakeQuestion,
   answers: Record<string, unknown> | null,
 ): boolean {
-  if (!question.showWhen) return true;
+  if (!question.showWhen || question.showWhen.length === 0) return true;
 
-  const raw = answers?.[question.showWhen.questionId];
-  const given = typeof raw === "string" ? raw.split(",").map((value) => value.trim()) : [];
+  /*
+   * Every condition, not any. A question that needs both the gate and its own
+   * parent answer must satisfy both - otherwise turning the gate off would
+   * leave orphaned follow-ups on screen.
+   */
+  return question.showWhen.every((condition) => {
+    const raw = answers?.[condition.questionId];
+    const given = typeof raw === "string" ? raw.split(",").map((value) => value.trim()) : [];
 
-  return question.showWhen.hasAnyOf.some((value) => given.includes(value));
+    return condition.hasAnyOf.some((value) => given.includes(value));
+  });
 }
 
 export function questionsForService(service: ServiceType): IntakeQuestion[] {

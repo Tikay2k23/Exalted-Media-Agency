@@ -81,7 +81,7 @@ import {
   isOffboardingComplete,
   outstandingOffboardingSteps,
 } from "@/lib/success/offboarding-service";
-import { a2pApplies, a2pReadiness } from "@/lib/a2p/a2p-readiness";
+import { a2pInPlay, a2pReadiness } from "@/lib/a2p/a2p-readiness";
 import { deriveBriefCompleteness } from "@/lib/strategy/brief-service";
 import {
   STRATEGY_SECTIONS,
@@ -470,12 +470,14 @@ export default async function ClientDetailPage({
             const upcoming = row ? nextMilestone(row, new Date()) : null;
 
             /*
-             * A2P applies only to clients who bought something that sends SMS.
-             * The readiness figure is calculated here from the profile and the
-             * evidence already on file, so the card cannot claim a number the
-             * profile page would disagree with.
+             * The A2P line appears when the client asked for text messaging on
+             * their intake form, or when somebody has already started a profile
+             * - not because of which service label sits on the account. The
+             * readiness figure is calculated here from the profile and the
+             * evidence on file, so the card cannot claim a number the profile
+             * page would disagree with.
              */
-            const a2pSummary = a2pApplies(services)
+            const a2pSummary = a2pInPlay(answers, client.a2pProfile !== null)
               ? (() => {
                   const readiness = a2pReadiness({
                     ...(client.a2pProfile ?? {}),

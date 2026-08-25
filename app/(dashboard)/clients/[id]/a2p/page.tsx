@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { A2PProfileWorkspace } from "@/components/clients/a2p-profile";
-import { a2pApplies, a2pReadiness, sampleMessageWarnings } from "@/lib/a2p/a2p-readiness";
+import { a2pInPlay, a2pReadiness, sampleMessageWarnings } from "@/lib/a2p/a2p-readiness";
 import { loadAuthContext } from "@/lib/authz";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -38,6 +38,7 @@ export default async function A2PPage({ params }: { params: Promise<{ id: string
       companyName: true,
       serviceType: true,
       projects: { select: { serviceType: true } },
+      intakeForm: { select: { answers: true } },
       assets: {
         where: { status: { in: ["RECEIVED", "APPROVED"] } },
         select: { type: true },
@@ -56,13 +57,14 @@ export default async function A2PPage({ params }: { params: Promise<{ id: string
 
   if (!client) notFound();
 
-  const services = [client.serviceType, ...client.projects.map((project) => project.serviceType)];
+  const answers = (client.intakeForm?.answers as Record<string, unknown> | null) ?? null;
 
   /*
-   * A client who bought nothing that sends SMS has nothing to register. Saying
-   * so plainly beats showing them an empty sixty-field form.
+   * A client who has not asked for text messaging has nothing to register.
+   * Saying so plainly beats showing them an empty sixty-field form - and the
+   * moment they answer yes on their intake, this page fills in.
    */
-  if (!a2pApplies(services) && !client.a2pProfile) {
+  if (!a2pInPlay(answers, client.a2pProfile !== null)) {
     return (
       <div className="mx-auto max-w-2xl space-y-4">
         <Link
@@ -76,8 +78,9 @@ export default async function A2PPage({ params }: { params: Promise<{ id: string
             A2P registration is not required
           </h1>
           <p className="mt-1.5 text-sm leading-6 text-slate-600">
-            {client.companyName} has not bought anything that sends SMS, so there is nothing to
-            register. If that changes, the services on the account are what decides it.
+            {client.companyName} has not asked for text messaging on their intake form, so
+            there is nothing to register yet. This page fills in the moment they say they
+            want it.
           </p>
         </div>
       </div>

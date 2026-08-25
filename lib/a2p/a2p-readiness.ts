@@ -38,20 +38,48 @@ export const A2P_SECTION_LABELS: Record<A2PSectionKey, string> = {
 };
 
 /**
- * Whether this client needs an A2P registration at all.
+ * Whether the intake form should ask about text messaging at all.
  *
- * Driven by what they bought. Sending SMS from a CRM is the case that requires
- * it; a client who only has a website built has nothing to register, and asking
- * them twenty carrier questions would be the form wasting their time.
+ * Every client, including ones added from now on. This used to be decided by
+ * service type - CRM, email marketing and retainers - which covered four
+ * accounts of twelve and missed the obvious cases: a roofer on paid ads who
+ * wants missed-call text back, a dental practice sending appointment
+ * reminders. Which of ten labels sits on a record turned out to be a poor
+ * proxy for whether a business will ever text a customer.
+ *
+ * So everybody is asked one question, and their answer decides the rest. The
+ * argument is kept so the decision has somewhere to live if it ever needs
+ * narrowing again.
  */
-const A2P_SERVICES: ServiceType[] = [
-  "CRM_AUTOMATION",
-  "EMAIL_MARKETING",
-  "FULL_SERVICE_RETAINER",
-];
-
 export function a2pApplies(services: ServiceType[]) {
-  return services.some((service) => A2P_SERVICES.includes(service));
+  // Every service, for now. The parameter stays so the decision has a
+  // home if it ever needs narrowing again.
+  return services.length >= 0;
+}
+
+/**
+ * Whether the client said they want text messaging.
+ *
+ * The gate question on the intake form, and the only thing that opens the
+ * twenty questions behind it. A client who has not answered yet has not said
+ * yes, so nothing appears until they do.
+ */
+export function a2pRequested(answers: Record<string, unknown> | null | undefined) {
+  return answers?.a2pWantsSms === "yes";
+}
+
+/**
+ * Whether the agency should be looking at an A2P registration for this client.
+ *
+ * The client asking for it, or a profile that already exists - somebody may
+ * have started one before the form came back, and it should not vanish because
+ * the answer is still blank.
+ */
+export function a2pInPlay(
+  answers: Record<string, unknown> | null | undefined,
+  hasProfile: boolean,
+) {
+  return a2pRequested(answers) || hasProfile;
 }
 
 /** The shape the readiness calculation reads. Everything is optional. */
