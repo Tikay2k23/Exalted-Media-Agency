@@ -1,4 +1,4 @@
-import type { TaskCategory, TaskPriority, TeamRole } from "@prisma/client";
+import type { ServiceType, TaskCategory, TaskPriority, TeamRole } from "@prisma/client";
 
 /**
  * Stage automation.
@@ -300,6 +300,262 @@ export const STAGE_TASK_TEMPLATES: Record<string, TaskTemplate[]> = {
     },
   ],
 };
+
+/**
+ * The build work each service actually involves.
+ *
+ * Stage templates cover the process every client goes through - collect the
+ * access, write the strategy, run the QA. They cannot cover what is being
+ * built, because that depends on what was bought: a website client needs
+ * service pages and form testing, a CRM client needs pipelines and workflows,
+ * and generating both for both would bury each of them in the other's work.
+ *
+ * Added to the production stage only. Before that there is nothing to build,
+ * and after it the work exists already.
+ */
+export const SERVICE_TASK_TEMPLATES: Partial<Record<ServiceType, TaskTemplate[]>> = {
+  WEBSITE_SUPPORT: [
+    {
+      title: "Build the homepage",
+      note: "Structure, copy blocks and the primary call to action.",
+      category: "WEBSITE_UPDATES",
+      priority: "HIGH",
+      estimatedHours: 8,
+      dueInDays: 10,
+      assignTo: "CREATIVE_SPECIALIST",
+      requiresQa: true,
+    },
+    {
+      title: "Build the service pages",
+      note: "One page per service the client sells, from the approved strategy.",
+      category: "WEBSITE_UPDATES",
+      priority: "HIGH",
+      estimatedHours: 10,
+      dueInDays: 14,
+      assignTo: "CREATIVE_SPECIALIST",
+      requiresQa: true,
+    },
+    {
+      title: "Test the site on mobile",
+      note: "Every page at phone width: layout, tap targets, and load time.",
+      category: "WEBSITE_UPDATES",
+      priority: "MEDIUM",
+      estimatedHours: 3,
+      dueInDays: 16,
+      assignTo: "CREATIVE_SPECIALIST",
+      completionCriteria: "Checked at 375px and 768px with no horizontal scroll.",
+    },
+    {
+      title: "Test every form end to end",
+      note: "Submit each form and confirm where the lead actually arrives.",
+      category: "WEBSITE_UPDATES",
+      priority: "HIGH",
+      estimatedHours: 2,
+      dueInDays: 16,
+      assignTo: "AUTOMATION_SPECIALIST",
+      completionCriteria: "A test submission was received in the CRM and by email.",
+    },
+    {
+      title: "Add page titles and descriptions",
+      note: "Titles, meta descriptions and social preview images per page.",
+      category: "SEO",
+      priority: "MEDIUM",
+      estimatedHours: 3,
+      dueInDays: 18,
+      assignTo: "ADS_SPECIALIST",
+    },
+  ],
+
+  CRM_AUTOMATION: [
+    {
+      title: "Build the sales pipeline",
+      note: "Stages that match how this client actually sells, not a default.",
+      category: "CRM_AND_AUTOMATION",
+      priority: "HIGH",
+      estimatedHours: 4,
+      dueInDays: 7,
+      assignTo: "AUTOMATION_SPECIALIST",
+    },
+    {
+      title: "Create the custom fields",
+      note: "The fields their process needs recorded against a contact.",
+      category: "CRM_AND_AUTOMATION",
+      priority: "MEDIUM",
+      estimatedHours: 3,
+      dueInDays: 8,
+      assignTo: "AUTOMATION_SPECIALIST",
+    },
+    {
+      title: "Set up the booking calendars",
+      note: "Availability, buffers and who each booking routes to.",
+      category: "CRM_AND_AUTOMATION",
+      priority: "MEDIUM",
+      estimatedHours: 3,
+      dueInDays: 10,
+      assignTo: "AUTOMATION_SPECIALIST",
+    },
+    {
+      title: "Build the follow-up workflows",
+      note: "What happens automatically when a lead arrives and when it goes quiet.",
+      category: "CRM_AND_AUTOMATION",
+      priority: "HIGH",
+      estimatedHours: 8,
+      dueInDays: 14,
+      assignTo: "AUTOMATION_SPECIALIST",
+      requiresQa: true,
+    },
+    {
+      title: "Write the email and SMS templates",
+      note: "The messages the workflows send, in the client's voice.",
+      category: "EMAIL_AND_SMS_MARKETING",
+      priority: "MEDIUM",
+      estimatedHours: 5,
+      dueInDays: 14,
+      assignTo: "CREATIVE_SPECIALIST",
+    },
+    {
+      title: "Complete the A2P registration",
+      note: "Carrier registration has to be approved before any texting starts.",
+      category: "CRM_AND_AUTOMATION",
+      priority: "HIGH",
+      estimatedHours: 3,
+      dueInDays: 12,
+      assignTo: "AUTOMATION_SPECIALIST",
+      completionCriteria: "Submitted to the provider and the decision recorded.",
+    },
+    {
+      title: "Verify lead tracking end to end",
+      note: "A real submission reaching the pipeline, attributed to its source.",
+      category: "ANALYTICS_AND_TRACKING",
+      priority: "HIGH",
+      estimatedHours: 2,
+      dueInDays: 16,
+      assignTo: "AUTOMATION_SPECIALIST",
+    },
+  ],
+
+  PAID_ADVERTISING: [
+    {
+      title: "Install and verify the tracking pixel",
+      note: "Fired on the pages that matter, checked in the platform.",
+      category: "ANALYTICS_AND_TRACKING",
+      priority: "HIGH",
+      estimatedHours: 2,
+      dueInDays: 5,
+      assignTo: "AUTOMATION_SPECIALIST",
+    },
+    {
+      title: "Build the campaign structure",
+      note: "Campaigns, ad sets and audiences from the approved strategy.",
+      category: "PAID_MEDIA",
+      priority: "HIGH",
+      estimatedHours: 6,
+      dueInDays: 10,
+      assignTo: "ADS_SPECIALIST",
+    },
+    {
+      title: "Produce the launch creative",
+      note: "Enough variations to learn something in the first two weeks.",
+      category: "CREATIVE_DESIGN",
+      priority: "HIGH",
+      estimatedHours: 8,
+      dueInDays: 12,
+      assignTo: "CREATIVE_SPECIALIST",
+      requiresApproval: true,
+    },
+    {
+      title: "Set up conversion tracking",
+      note: "The events worth optimising towards, not just page views.",
+      category: "ANALYTICS_AND_TRACKING",
+      priority: "HIGH",
+      estimatedHours: 3,
+      dueInDays: 12,
+      assignTo: "AUTOMATION_SPECIALIST",
+    },
+    {
+      title: "Build the reporting dashboard",
+      note: "Spend, leads and cost per lead, in terms the client asked for.",
+      category: "CLIENT_REPORTING",
+      priority: "MEDIUM",
+      estimatedHours: 4,
+      dueInDays: 18,
+      assignTo: "ADS_SPECIALIST",
+    },
+  ],
+
+  SEO: [
+    {
+      title: "Run the keyword research",
+      note: "What their customers actually search, with volumes and intent.",
+      category: "SEO",
+      priority: "HIGH",
+      estimatedHours: 6,
+      dueInDays: 7,
+      assignTo: "ADS_SPECIALIST",
+    },
+    {
+      title: "Optimise the existing pages",
+      note: "Titles, headings and copy against the chosen terms.",
+      category: "SEO",
+      priority: "HIGH",
+      estimatedHours: 8,
+      dueInDays: 14,
+      assignTo: "ADS_SPECIALIST",
+    },
+    {
+      title: "Complete the technical audit",
+      note: "Crawlability, speed, structured data and broken links.",
+      category: "SEO",
+      priority: "MEDIUM",
+      estimatedHours: 5,
+      dueInDays: 12,
+      assignTo: "ADS_SPECIALIST",
+    },
+    {
+      title: "Set up the local listings",
+      note: "Business profile, categories, hours and service areas.",
+      category: "SEO",
+      priority: "MEDIUM",
+      estimatedHours: 3,
+      dueInDays: 14,
+      assignTo: "ADS_SPECIALIST",
+    },
+    {
+      title: "Set up rank and traffic reporting",
+      note: "A baseline recorded now, so later movement means something.",
+      category: "CLIENT_REPORTING",
+      priority: "MEDIUM",
+      estimatedHours: 3,
+      dueInDays: 16,
+      assignTo: "ADS_SPECIALIST",
+    },
+  ],
+};
+
+/** The service work for a client, or nothing for a service without a list. */
+export function getServiceTaskTemplates(service: ServiceType | null): TaskTemplate[] {
+  if (!service) return [];
+
+  return SERVICE_TASK_TEMPLATES[service] ?? [];
+}
+
+/**
+ * A stable name for one generated task, unique within a client.
+ *
+ * Derived from the source and the title rather than stored, so the same
+ * template always produces the same key and re-running the automation collides
+ * with what it made last time instead of duplicating it. Changing a template's
+ * title makes a new task, which is the right outcome: it is different work.
+ */
+export function templateKeyFor(source: string, title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+
+  return `${source}:${slug}`;
+}
 
 export function getStageTaskTemplates(stageKey: string | null): TaskTemplate[] {
   if (!stageKey) {

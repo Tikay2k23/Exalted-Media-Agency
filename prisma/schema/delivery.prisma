@@ -240,6 +240,15 @@ model EmployeeTask {
   archivedAt     DateTime?
   archivedById   String?
 
+  /// Which template generated this, if one did.
+  ///
+  /// Stage automation runs again every time a client re-enters a stage, and a
+  /// client moved back for a revision would otherwise collect a second copy of
+  /// every task that stage creates. Unique per client, so generating twice is
+  /// harmless. Null for anything a person typed, and many rows may be null -
+  /// Postgres does not treat nulls as equal in a unique index.
+  templateKey    String?
+
   assignedTo User                   @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
   client     Client?                @relation(fields: [clientId], references: [id])
   lead       Lead?                  @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -265,6 +274,7 @@ model EmployeeTask {
   @@index([deletedAt])
   @@index([archivedAt])
   @@index([approvedById])
+  @@unique([clientId, templateKey])
 }
 
 /// Talking about one piece of work, on the piece of work.

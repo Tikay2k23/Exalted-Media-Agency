@@ -7,7 +7,9 @@ import {
   workstreamOwners,
 } from "@/lib/workflow/workstream-service";
 import {
+  getServiceTaskTemplates,
   getStageTaskTemplates,
+  templateKeyFor,
   resolveAssignee,
 } from "@/lib/automation/stage-automation";
 import { type AuthContext } from "@/lib/authz";
@@ -178,7 +180,45 @@ export async function moveClientStage(
   }
 
   const now = new Date();
-  const templates = getStageTaskTemplates(targetStage.stageKey);
+  /*
+   * The stage's own work, plus the build work for what this client bought.
+   *
+   * Service templates land once, on the way into production: before that
+   * there is nothing to build, and after it the work already exists. Each
+   * carries where it came from, so the same template cannot arrive twice.
+   */
+  const templates = [
+    ...getStageTaskTemplates(targetStage.stageKey).map((template) => ({
+      template,
+      // Never reached with a null key - that yields no templates - but the
+      // fallback keeps the key a string rather than leaning on that.
+      source: targetStage.stageKey ?? "stage",
+    })),
+    ...(targetStage.stageKey === "in_production"
+      ? getServiceTaskTemplates(client.serviceType).map((template) => ({
+          template,
+          source: `service:${client.serviceType}`,
+        }))
+      : []),
+  ];
+
+  /*
+   * What this client already has from a template.
+   *
+   * A client moved back for revisions and forward again runs this a second
+   * time, and without the check would collect a duplicate of everything the
+   * stage creates. Cancelled and archived rows count too: the work was
+   * generated once and somebody decided about it, and generating it again
+   * would overrule them.
+   */
+  const alreadyGenerated = new Set(
+    (
+      await prisma.employeeTask.findMany({
+        where: { clientId: client.id, templateKey: { not: null } },
+        select: { templateKey: true },
+      })
+    ).map((task) => task.templateKey!),
+  );
 
   // Make sure the client has the workstreams its service calls for before any
   // task is routed at a specialist seat, or the first move into production
@@ -193,27 +233,34 @@ export async function moveClientStage(
     workstreamOwners: await workstreamOwners(client.id),
   };
 
-  const generatedTasks = templates.map((template) => {
-    const dueDate = addDays(now, template.dueInDays);
+  const generatedTasks = templates
+    .map(({ template, source }) => ({
+      template,
+      key: templateKeyFor(source, template.title),
+    }))
+    .filter(({ key }) => !alreadyGenerated.has(key))
+    .map(({ template, key }) => {
+      const dueDate = addDays(now, template.dueInDays);
 
-    return {
-      title: template.title,
-      note: template.note,
-      category: template.category,
-      priority: template.priority,
-      estimatedHours: template.estimatedHours,
-      dueDate,
-      weekStartDate: dueDate,
-      assignedToId: resolveAssignee(template.assignTo, assigneeCandidates),
-      createdById: actor.id,
-      clientId: client.id,
-      projectId: client.projects[0]?.id ?? null,
-      isClientFacing: template.isClientFacing ?? false,
-      requiresQa: template.requiresQa ?? false,
-      requiresApproval: template.requiresApproval ?? false,
-      completionCriteria: template.completionCriteria ?? null,
-    };
-  });
+      return {
+        title: template.title,
+        note: template.note,
+        category: template.category,
+        priority: template.priority,
+        estimatedHours: template.estimatedHours,
+        dueDate,
+        weekStartDate: dueDate,
+        assignedToId: resolveAssignee(template.assignTo, assigneeCandidates),
+        createdById: actor.id,
+        clientId: client.id,
+        projectId: client.projects[0]?.id ?? null,
+        isClientFacing: template.isClientFacing ?? false,
+        requiresQa: template.requiresQa ?? false,
+        requiresApproval: template.requiresApproval ?? false,
+        completionCriteria: template.completionCriteria ?? null,
+        templateKey: key,
+      };
+    });
 
   // The move, its history entry, and the work it generates land together or
   // not at all. A stage change with no follow-up work is a silent process gap.
@@ -252,7 +299,7 @@ export async function moveClientStage(
     });
 
     if (generatedTasks.length) {
-      await transaction.employeeTask.createMany({ data: generatedTasks });
+      await transaction.employeeTask.createMany({ data: generatedTasks, skipDuplicates: true });
     }
   });
 

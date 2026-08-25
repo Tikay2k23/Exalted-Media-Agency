@@ -294,6 +294,94 @@ describe("client journey stage gate (integration)", { skip: !hasDatabase }, () =
     assert.match(entry.action, /overriding/);
   });
 
+  /*
+   * Generated work.
+   *
+   * Entering a stage creates the work the SOP calls for, and entering
+   * production also creates the build work for whatever the client bought.
+   * Both carry a template key, which is what makes running it twice safe.
+   */
+  it("generates the stage work, each piece carrying where it came from", async () => {
+    const generated = await prisma.employeeTask.findMany({
+      where: { clientId: fixtures!.clientId, templateKey: { not: null } },
+      select: { templateKey: true, title: true },
+    });
+
+    assert.ok(generated.length > 0, "moving into production generated no work at all");
+
+    for (const task of generated) {
+      assert.match(
+        task.templateKey!,
+        /^[a-z_]+(:[A-Z_]+)?:[a-z0-9-]+$/,
+        `${task.title} has an unreadable template key: ${task.templateKey}`,
+      );
+    }
+  });
+
+  it("creates no second copy when the same stage is entered again", async () => {
+    const actor = await loadAuthContext(fixtures!.managerId);
+    assert.ok(actor);
+
+    const before = await prisma.employeeTask.findMany({
+      where: { clientId: fixtures!.clientId },
+      select: { id: true, templateKey: true },
+    });
+
+    /*
+     * Out and back, which is the round trip a client actually makes when work
+     * is sent back for revisions. Moving straight to the stage it is already
+     * in short-circuits, so a test that did that would pass without ever
+     * running the generation it claims to be checking.
+     */
+    const back = await moveClientStage({
+      clientId: fixtures!.clientId,
+      targetStageId: fixtures!.paymentStageId,
+      actor,
+      override: {
+        reason: "Sent back to sort out the deposit before the build continues.",
+        riskAcknowledged: true,
+      },
+    });
+
+    assert.equal(back.ok, true, "could not move the client back out of production");
+
+    const result = await moveClientStage({
+      clientId: fixtures!.clientId,
+      targetStageId: fixtures!.productionStageId,
+      actor,
+      override: {
+        reason: "Returned from revisions and moved forward again for the same build.",
+        riskAcknowledged: true,
+      },
+    });
+
+    assert.equal(result.ok, true);
+
+    const after = await prisma.employeeTask.findMany({
+      where: { clientId: fixtures!.clientId },
+      select: { id: true, templateKey: true },
+    });
+
+    /*
+     * Not a count of everything: passing back through payment_received
+     * legitimately creates that stage's own work. What must not happen is one
+     * template producing two tasks.
+     */
+    const productionKeys = (keys: (string | null)[]) =>
+      keys.filter((key): key is string => Boolean(key?.startsWith("in_production:")));
+
+    assert.deepEqual(
+      productionKeys(after.map((task) => task.templateKey)).sort(),
+      productionKeys(before.map((task) => task.templateKey)).sort(),
+      "re-entering production generated its work a second time",
+    );
+
+    // And no key appears twice, which is the thing the index guarantees.
+    const keys = after.map((task) => task.templateKey).filter(Boolean);
+
+    assert.equal(new Set(keys).size, keys.length);
+  });
+
   it("notifies oversight roles that a gate was overridden", async () => {
     const overrideNotifications = await prisma.notification.findMany({
       where: { entityId: fixtures!.clientId, type: "STAGE_OVERRIDE" },
