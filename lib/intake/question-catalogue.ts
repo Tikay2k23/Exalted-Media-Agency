@@ -352,6 +352,21 @@ const A2P_QUESTIONS: IntakeSection = {
       help: "An appointment reminder or a job update, for instance. Include your business name in it.",
     },
     {
+      /*
+       * Asked on exactly the condition the readiness checklist uses. It wanted a
+       * follow-up example from anybody chasing enquiries or quotes, while the form
+       * only ever collected a routine message and a promotional one, so the client
+       * was never given the chance to write the one thing that was missing.
+       */
+      id: "a2pSampleLeadFollowUp",
+      label: "Write an example of a follow-up text",
+      kind: "long",
+      showWhen: [
+        { questionId: "a2pUseCases", hasAnyOf: ["LEAD_FOLLOW_UP", "QUOTE_FOLLOW_UP"] },
+      ],
+      help: "What you would send somebody who enquired or asked for a quote. Include your business name in it.",
+    },
+    {
       id: "a2pSampleMarketing",
       label: "Write an example of a promotional text",
       kind: "long",

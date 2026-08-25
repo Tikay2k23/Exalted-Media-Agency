@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { a2pChecklist } from "@/lib/a2p/a2p-readiness";
 import {
   A2P_SECTION,
   questionApplies,
@@ -153,5 +154,60 @@ describe("conditional questions", () => {
 
   it("hides a conditional question when nothing has been answered yet", () => {
     assert.equal(questionApplies(checkbox, null), false);
+  });
+});
+
+/**
+ * The follow-up sample.
+ *
+ * Readiness wants a follow-up example from anybody chasing enquiries or quotes,
+ * while the form collected only a routine message and a promotional one. The
+ * item could never be satisfied by the client: it held their readiness below
+ * full and left somebody at the agency writing a message on their behalf.
+ */
+describe("the follow-up sample", () => {
+  const followUp = A2P_SECTION.questions.find((q) => q.id === "a2pSampleLeadFollowUp")!;
+  const wants = { a2pWantsSms: "yes" };
+
+  it("is asked of a business chasing enquiries or quotes", () => {
+    assert.equal(questionApplies(followUp, { ...wants, a2pUseCases: "LEAD_FOLLOW_UP" }), true);
+    assert.equal(questionApplies(followUp, { ...wants, a2pUseCases: "QUOTE_FOLLOW_UP" }), true);
+  });
+
+  it("is not asked of anybody doing neither", () => {
+    assert.equal(
+      questionApplies(followUp, { ...wants, a2pUseCases: "APPOINTMENT_REMINDER" }),
+      false,
+    );
+  });
+
+  it("is hidden from a client who does not want texting at all", () => {
+    assert.equal(
+      questionApplies(followUp, { a2pWantsSms: "no", a2pUseCases: "LEAD_FOLLOW_UP" }),
+      false,
+    );
+  });
+
+  /*
+   * The point of the whole thing: the form asks on exactly the condition the
+   * checklist requires. Let these drift apart and the checklist goes back to
+   * demanding something nobody was ever asked for.
+   */
+  it("is asked on exactly the condition readiness requires it", () => {
+    const cases = [
+      "LEAD_FOLLOW_UP",
+      "QUOTE_FOLLOW_UP",
+      "APPOINTMENT_REMINDER",
+      "MARKETING_PROMOTION",
+    ];
+
+    for (const useCase of cases) {
+      const asked = questionApplies(followUp, { ...wants, a2pUseCases: useCase });
+      const required = a2pChecklist({ useCases: [useCase], samples: [] }).some(
+        (item) => item.label === "A lead follow-up example",
+      );
+
+      assert.equal(asked, required, `${useCase}: asked=${asked} but required=${required}`);
+    }
   });
 });

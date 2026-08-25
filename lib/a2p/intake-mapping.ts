@@ -208,8 +208,12 @@ export async function applyIntakeToA2P(
   const haveCategory = new Set(profile.samples.map((sample) => sample.category));
   let samplesAdded = 0;
 
-  const candidates: { answer: string; category: "TRANSACTIONAL" | "MARKETING" }[] = [
+  const candidates: {
+    answer: string;
+    category: "TRANSACTIONAL" | "LEAD_FOLLOW_UP" | "MARKETING";
+  }[] = [
     { answer: "a2pSampleTransactional", category: "TRANSACTIONAL" },
+    { answer: "a2pSampleLeadFollowUp", category: "LEAD_FOLLOW_UP" },
     { answer: "a2pSampleMarketing", category: "MARKETING" },
   ];
 

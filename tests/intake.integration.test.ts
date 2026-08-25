@@ -249,7 +249,11 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
   it("submits once everything required is answered", async () => {
     const result = await saveIntakeAnswers({
       token,
-      answers: { ...completeAnswers("CRM_AUTOMATION"), website: "https://reyes.test" },
+      answers: {
+        ...completeAnswers("CRM_AUTOMATION"),
+        website: "https://reyes.test",
+        a2pSampleLeadFollowUp: "Reyes Plumbing: following up on the quote we sent you.",
+      },
       submit: true,
     });
 
@@ -287,6 +291,25 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
     assert.match(profile.businessPhone ?? "", /Phone number customers should use/);
     assert.match(profile.businessEmail ?? "", /Email customers should use/);
     assert.equal(profile.websiteUrl, "https://reyes.test");
+  });
+
+  /*
+   * Readiness asks for a follow-up example from anybody chasing enquiries or
+   * quotes. The form now asks for one, and it has to arrive as a sample of that
+   * category or the checklist still cannot see it.
+   */
+  it("files the follow-up example under its own category", async () => {
+    const profile = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: { samples: { select: { category: true, body: true } } },
+    });
+
+    const followUp = profile.samples.find(
+      (sample) => sample.category === "LEAD_FOLLOW_UP",
+    );
+
+    assert.ok(followUp, "the follow-up answer should be stored as a follow-up sample");
+    assert.match(followUp.body, /following up on the quote/);
   });
 
   it("tells the project manager it arrived", async () => {
