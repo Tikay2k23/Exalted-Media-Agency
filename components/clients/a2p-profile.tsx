@@ -516,6 +516,9 @@ export function A2PProfileWorkspace({
             placeholder="Street address"
           />
         </Field>
+        <Field label="Suite, unit or floor">
+          <Input value={str("addressLine2")} onChange={(e) => set({ addressLine2: e.target.value })} />
+        </Field>
         <Field label="City">
           <Input value={str("city")} onChange={(e) => set({ city: e.target.value })} />
         </Field>
@@ -524,6 +527,9 @@ export function A2PProfileWorkspace({
         </Field>
         <Field label="Postcode">
           <Input value={str("postalCode")} onChange={(e) => set({ postalCode: e.target.value })} />
+        </Field>
+        <Field label="Country" hint="Where the business trades, which the registration country may differ from.">
+          <Input value={str("country")} onChange={(e) => set({ country: e.target.value })} />
         </Field>
         <Field label="Business email">
           <Input value={str("businessEmail")} onChange={(e) => set({ businessEmail: e.target.value })} />
