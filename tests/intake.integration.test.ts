@@ -8,6 +8,7 @@ import { Role, TeamRole } from "@prisma/client";
 import { loadAuthContext } from "@/lib/authz";
 import {
   loadIntakeByToken,
+  reopenIntakeForm,
   reviewIntake,
   saveIntakeAnswers,
   sendIntakeForm,
@@ -26,6 +27,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL ?? process.env.DIRECT_URL);
 let clientId = "";
 let pmId = "";
 let specialistId = "";
+let firstSubmission: Record<string, string> = {};
 let token = "";
 
 async function cleanup() {
@@ -258,6 +260,23 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
     assert.ok((result.fields ?? []).length > 0);
   });
 
+  /*
+   * Reopening is for a form that was closed, not one still open. Asserted here
+   * rather than later because this is the only point where the form exists and
+   * has not been submitted - and a second client made only to prove it would
+   * be counted by every other test measuring the portfolio.
+   */
+  it("refuses to reopen a form that has not been submitted", async () => {
+    const pm = await loadAuthContext(pmId);
+    assert.ok(pm);
+
+    const result = await reopenIntakeForm({ actor: pm, clientId });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.code, "NOT_SUBMITTED");
+  });
+
   it("submits once everything required is answered", async () => {
     const result = await saveIntakeAnswers({
       token,
@@ -436,6 +455,116 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
     if (!result.ok) return;
     assert.equal(result.form.status, "REVIEWED");
     assert.equal(result.form.reviewedById, pmId);
+  });
+
+  /*
+   * Reopening.
+   *
+   * A submitted form is closed on purpose, and stays the record of what was
+   * sent. But the question catalogue grows, and a client who answered last
+   * month is permanently short of anything added since with no way to be asked.
+   */
+  it("refuses to reopen for somebody who cannot edit the client", async () => {
+    const specialist = await loadAuthContext(specialistId);
+    assert.ok(specialist);
+
+    const result = await reopenIntakeForm({ actor: specialist, clientId });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.code, "FORBIDDEN");
+  });
+
+  it("kept what they submitted as its own version", async () => {
+    const submissions = await prisma.intakeSubmission.findMany({
+      where: { form: { clientId } },
+      orderBy: { version: "asc" },
+      select: { version: true, answers: true },
+    });
+
+    assert.equal(submissions.length, 1);
+    assert.equal(submissions[0].version, 1);
+    assert.ok(Object.keys(submissions[0].answers as object).includes("legalName"));
+
+    // Kept, so a later test can prove this row never changed.
+    firstSubmission = submissions[0].answers as Record<string, string>;
+  });
+
+  it("reopens a submitted form and lets the client back in", async () => {
+    const pm = await loadAuthContext(pmId);
+    assert.ok(pm);
+
+    const result = await reopenIntakeForm({ actor: pm, clientId });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.form.status, "REOPENED");
+    assert.equal(result.form.submittedAt, null);
+    assert.equal(result.form.reopenedById, pmId);
+    assert.ok(result.form.reopenedAt);
+
+    // A fresh link, so a forwarded copy of the old one stops working.
+    assert.notEqual(result.form.token, token);
+    token = result.form.token;
+  });
+
+  it("clears the review, which described the previous submission", async () => {
+    const form = await prisma.intakeForm.findUniqueOrThrow({
+      where: { clientId },
+      select: { reviewedAt: true, reviewedById: true, reviewNotes: true },
+    });
+
+    assert.equal(form.reviewedAt, null);
+    assert.equal(form.reviewedById, null);
+    // Somebody wrote those, so they are kept.
+    assert.match(form.reviewNotes ?? "", /No Meta account yet/);
+  });
+
+  it("hands back the answers they already gave", async () => {
+    const form = await loadIntakeByToken(token);
+
+    assert.ok(form);
+    assert.ok(Object.keys((form.answers ?? {}) as object).includes("legalName"));
+  });
+
+  it("accepts edits again, which submission refused a moment ago", async () => {
+    const result = await saveIntakeAnswers({
+      token,
+      answers: { city: "Bristol" },
+      submit: false,
+    });
+
+    assert.equal(result.ok, true);
+  });
+
+  it("records a resubmission as a new version, leaving the first alone", async () => {
+    const result = await saveIntakeAnswers({
+      token,
+      answers: {
+        ...completeAnswers("CRM_AUTOMATION"),
+        city: "Bristol",
+      },
+      submit: true,
+    });
+
+    assert.equal(result.ok, true);
+
+    const submissions = await prisma.intakeSubmission.findMany({
+      where: { form: { clientId } },
+      orderBy: { version: "asc" },
+      select: { version: true, answers: true },
+    });
+
+    assert.equal(submissions.length, 2);
+    assert.deepEqual(submissions.map((s) => s.version), [1, 2]);
+
+    /*
+     * The point of keeping versions: the first row is exactly what it was when
+     * it was written, whatever the client has done to the form since.
+     */
+    assert.deepEqual(submissions[0].answers, firstSubmission);
+    assert.equal((submissions[1].answers as Record<string, string>).city, "Bristol");
+    assert.notEqual(firstSubmission.city, "Bristol");
   });
 });
 

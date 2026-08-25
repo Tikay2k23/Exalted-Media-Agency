@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, LoaderCircle, Send } from "lucide-react";
+import { Copy, LoaderCircle, RotateCcw, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -61,6 +61,7 @@ export function ClientIntake({
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [showAnswers, setShowAnswers] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -291,6 +292,60 @@ export function ClientIntake({
               ) : (
                 <Button type="button" size="sm" onClick={() => setReviewing(true)}>
                   I have read this
+                </Button>
+              )
+            ) : null}
+
+            {/*
+              * Reopening, for when the questions moved on rather than the answers
+              * being wrong. The client gets their own form back with what they
+              * already wrote still in it, and what they sent stays recorded.
+              */}
+            {intake.submittedAt ? (
+              reopening ? (
+                <div className="w-full space-y-2 rounded-2xl border border-slate-200 p-3">
+                  <p className="text-sm text-slate-600">
+                    This hands the form back with their answers still in it, so they can fill
+                    in anything added since. What they already sent stays recorded, and the
+                    current link stops working.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() =>
+                        post({ action: "reopen" }, (data) => {
+                          setReopening(false);
+                          if (data.token) {
+                            setLink(`${window.location.origin}/intake/${data.token}`);
+                            setCopied(false);
+                          }
+                        })
+                      }
+                    >
+                      Reopen the form
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setReopening(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="gap-2"
+                  onClick={() => setReopening(true)}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Ask for more detail
                 </Button>
               )
             ) : null}

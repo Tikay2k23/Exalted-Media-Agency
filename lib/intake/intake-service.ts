@@ -39,6 +39,7 @@ export type IntakeFailureCode =
   | "INVALID"
   | "EXPIRED"
   | "ALREADY_SUBMITTED"
+  | "NOT_SUBMITTED"
   | "CREDENTIAL_SUBMITTED";
 
 export interface IntakeFailure {
@@ -63,6 +64,8 @@ export const INTAKE_FAILURE_STATUS: Record<IntakeFailureCode, number> = {
   INVALID: 400,
   EXPIRED: 410,
   ALREADY_SUBMITTED: 409,
+  // Also a state conflict: there is nothing there to reopen.
+  NOT_SUBMITTED: 409,
   CREDENTIAL_SUBMITTED: 422,
 };
 
@@ -144,6 +147,101 @@ export async function sendIntakeForm(input: { actor: AuthContext; clientId: stri
     action: existing
       ? `Re-sent the intake form to ${client.companyName}`
       : `Sent the intake form to ${client.companyName}`,
+    entityType: "CLIENT",
+    entityId: client.id,
+    metadataJson: { intakeFormId: form.id, expiresAt: expiresAt.toISOString() },
+  });
+
+  return { ok: true as const, form };
+}
+
+/**
+ * Opens a submitted intake back up, because the questions moved on.
+ *
+ * A submitted form is closed on purpose: it is the record of what a client
+ * told us, and letting it drift afterwards would make it worthless. But the
+ * catalogue grows - a question added today leaves every client who answered
+ * last month permanently short of it, with no way to ask them short of
+ * retyping their answers on their behalf.
+ *
+ * So the record and the working document are separated. Each submission is
+ * kept as its own version, and reopening hands the client back the form they
+ * already filled in, with whatever is new on the end. What they sent before is
+ * not touched by anything they do now.
+ *
+ * They can change earlier answers, which is deliberate. A business that has
+ * moved since they filled this in should be able to say so, and the previous
+ * version still records what was true when they sent it.
+ */
+export async function reopenIntakeForm(input: { actor: AuthContext; clientId: string }) {
+  const { actor, clientId } = input;
+
+  if (!can(actor, "clients.edit")) {
+    return failure("FORBIDDEN", "You do not have permission to reopen the intake form.");
+  }
+
+  const client = await prisma.client.findFirst({
+    where: {
+      id: clientId,
+      deletedAt: null,
+      ...(can(actor, "clients.view.all") ? {} : { assignedUserId: actor.id }),
+    },
+    select: { id: true, companyName: true },
+  });
+
+  if (!client) {
+    return failure("NOT_FOUND", "Client not found.");
+  }
+
+  const existing = await prisma.intakeForm.findUnique({
+    where: { clientId: client.id },
+    select: { id: true, submittedAt: true },
+  });
+
+  if (!existing?.submittedAt) {
+    return failure(
+      "NOT_SUBMITTED",
+      "There is nothing to reopen - this client has not submitted their intake yet.",
+    );
+  }
+
+  const token = newToken();
+  const expiresAt = addDays(new Date(), INTAKE_LINK_DAYS);
+  const now = new Date();
+
+  const form = await prisma.intakeForm.update({
+    where: { id: existing.id },
+    data: {
+      // A fresh link, so the old one stops working the moment this is done.
+      token,
+      expiresAt,
+      status: IntakeStatus.REOPENED,
+      /*
+       * Clearing this is what actually lets the client back in: both the send
+       * guard and the save guard key on it. The submission it refers to is
+       * already kept as its own version, so nothing is lost by letting go of it
+       * here.
+       */
+      submittedAt: null,
+      viewedAt: null,
+      sentAt: now,
+      sentById: actor.id,
+      reopenedAt: now,
+      reopenedById: actor.id,
+      /*
+       * A review describes the submission it was written against, and there is
+       * about to be a newer one. Left set, the reviewer would never be asked to
+       * look at what comes back. The notes themselves are somebody's writing and
+       * are kept.
+       */
+      reviewedAt: null,
+      reviewedById: null,
+    },
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Reopened the intake form for ${client.companyName}`,
     entityType: "CLIENT",
     entityId: client.id,
     metadataJson: { intakeFormId: form.id, expiresAt: expiresAt.toISOString() },
@@ -324,6 +422,26 @@ export async function saveIntakeAnswers(input: {
           : { status: IntakeStatus.PARTIALLY_COMPLETED }),
       },
     });
+
+    /*
+     * The submitted answers, kept as a row of their own.
+     *
+     * The form starts being edited again the moment it is reopened, so it
+     * cannot also be the record of what was sent. Each submission is a new
+     * version rather than a replacement, and nothing here is ever updated.
+     */
+    if (submit) {
+      const previous = await tx.intakeSubmission.count({ where: { formId: form.id } });
+
+      await tx.intakeSubmission.create({
+        data: {
+          formId: form.id,
+          version: previous + 1,
+          answers: merged,
+          submittedAt: now,
+        },
+      });
+    }
 
     /*
      * Only on submit, and never for a client who said they do not want text

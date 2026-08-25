@@ -11,6 +11,7 @@ enum IntakeStatus {
   VIEWED
   PARTIALLY_COMPLETED
   SUBMITTED
+  REOPENED
   REVIEWED
 }
 
@@ -28,26 +29,55 @@ model IntakeForm {
   /// Unguessable, and the only thing standing between the public route and
   /// this client's record. Rotated every time the form is re-sent, so a link
   /// forwarded to the wrong person stops working the moment it is resent.
-  token       String    @unique
+  token     String    @unique
   /// A link that never expires is a permanent hole. Checked on every request.
-  expiresAt   DateTime?
+  expiresAt DateTime?
 
-  answers     Json?
-  sentAt      DateTime?
-  sentById    String?
-  viewedAt    DateTime?
-  lastSavedAt DateTime?
-  submittedAt DateTime?
-  reviewedAt  DateTime?
+  answers      Json?
+  sentAt       DateTime?
+  sentById     String?
+  viewedAt     DateTime?
+  lastSavedAt  DateTime?
+  submittedAt  DateTime?
+  reviewedAt   DateTime?
   reviewedById String?
-  reviewNotes String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  reviewNotes  String?
 
-  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  sentBy     User?  @relation("IntakeSender", fields: [sentById], references: [id], onDelete: SetNull)
-  reviewedBy User?  @relation("IntakeReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  /// Set when a submitted form is opened again because the questions moved on.
+  /// Cleared submittedAt is what actually lets the client back in; these two
+  /// record who decided that and when.
+  reopenedAt   DateTime?
+  reopenedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  client      Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sentBy      User?              @relation("IntakeSender", fields: [sentById], references: [id], onDelete: SetNull)
+  reviewedBy  User?              @relation("IntakeReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reopenedBy  User?              @relation("IntakeReopener", fields: [reopenedById], references: [id], onDelete: SetNull)
+  submissions IntakeSubmission[]
 
   @@index([status])
   @@index([expiresAt])
+}
+
+/// One submitted version of a client's intake.
+///
+/// The form is a working document: it gets reopened when the questions move on,
+/// and the client edits what they said last time. This is the record of what
+/// they actually sent, and a submission adds a row rather than replacing one, so
+/// reopening a form can never quietly rewrite what a client already told us.
+model IntakeSubmission {
+  id      String @id @default(cuid())
+  formId  String
+  /// 1 for the first submission, incrementing each time the form is sent back.
+  version Int
+  answers Json
+
+  submittedAt DateTime @default(now())
+
+  form IntakeForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, version])
+  @@index([formId])
 }

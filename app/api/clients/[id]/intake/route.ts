@@ -5,6 +5,7 @@ import { getServerAuthSession } from "@/lib/auth";
 import { loadAuthContext } from "@/lib/authz";
 import {
   INTAKE_FAILURE_STATUS,
+  reopenIntakeForm,
   reviewIntake,
   sendIntakeForm,
 } from "@/lib/intake/intake-service";
@@ -13,6 +14,7 @@ export const runtime = "nodejs";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("send") }),
+  z.object({ action: z.literal("reopen") }),
   z.object({
     action: z.literal("review"),
     notes: z.string().max(4000).optional().or(z.literal("")),
@@ -46,7 +48,9 @@ export async function POST(
     const result =
       parsed.data.action === "send"
         ? await sendIntakeForm({ actor, clientId: id })
-        : await reviewIntake({ actor, clientId: id, notes: parsed.data.notes });
+        : parsed.data.action === "reopen"
+          ? await reopenIntakeForm({ actor, clientId: id })
+          : await reviewIntake({ actor, clientId: id, notes: parsed.data.notes });
 
     if (!result.ok) {
       return NextResponse.json(

@@ -229,6 +229,7 @@ model User {
   journeyFlagsResolved     ClientJourneyFlag[] @relation("JourneyFlagResolver")
   intakeFormsSent     IntakeForm[]       @relation("IntakeSender")
   intakeFormsReviewed IntakeForm[]       @relation("IntakeReviewer")
+  intakeFormsReopened IntakeForm[]       @relation("IntakeReopener")
 
   // Launch
   launchesOwned             Launch[]              @relation("LaunchOwner")
