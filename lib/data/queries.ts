@@ -709,6 +709,26 @@ export async function getClientDetail(user: AppUser, clientId: string) {
         },
         agencyTasks: {
           include: {
+            /*
+             * Everything the Work tab shows about a task, read once here rather
+             * than fetched per row. These are the same records My Work reads -
+             * the tab is a different view of them, never a copy.
+             */
+            project: { select: { id: true, name: true } },
+            reviewer: { select: { id: true, name: true } },
+            createdBy: { select: { id: true, name: true } },
+            approvedBy: { select: { id: true, name: true } },
+            /* Only the newest: the column asks whether today's update landed. */
+            eodEntries: {
+              orderBy: { entryDate: "desc" },
+              take: 1,
+              select: { entryDate: true, progressPercent: true },
+            },
+            /* Prerequisites, so a row can say it is waiting on another task. */
+            blockedBy: {
+              select: { prerequisiteTask: { select: { status: true } } },
+            },
+            _count: { select: { comments: true } },
             assignedTo: {
               select: {
                 id: true,

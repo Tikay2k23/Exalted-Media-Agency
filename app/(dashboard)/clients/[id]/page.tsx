@@ -5,6 +5,7 @@ import { ClientStrategy } from "@/components/clients/client-strategy";
 import { ClientHeader } from "@/components/clients/client-header";
 import { ClientIntegrations } from "@/components/clients/client-integrations";
 import { ClientOverview } from "@/components/clients/client-overview";
+import { ClientWork } from "@/components/clients/client-work";
 import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
 import { ClientApprovals } from "@/components/clients/client-approvals";
@@ -190,6 +191,30 @@ export default async function ClientDetailPage({
       action: true,
       createdAt: true,
       actor: { select: { name: true } },
+    },
+  });
+
+  /*
+   * End-of-day updates across this account's work.
+   *
+   * Read from the same entries My Work writes - the Work tab shows them, it
+   * does not keep its own. Capped because the drawer is a recent history, not
+   * an archive.
+   */
+  const clientEod = await prisma.employeeTaskEodEntry.findMany({
+    where: { task: { clientId: id, deletedAt: null } },
+    orderBy: { entryDate: "desc" },
+    take: 40,
+    select: {
+      id: true,
+      entryDate: true,
+      summary: true,
+      blockers: true,
+      nextSteps: true,
+      hoursSpent: true,
+      createdAt: true,
+      task: { select: { id: true, title: true } },
+      author: { select: { name: true } },
     },
   });
 
@@ -691,55 +716,131 @@ export default async function ClientDetailPage({
           })(),
 
           tasks: (
-            <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Linked Delivery Work</CardTitle>
-                    <CardDescription>
-                      Internal agency tasks currently tied to this account.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Task</TableHead>
-                          <TableHead>Assignee</TableHead>
-                          <TableHead>Due date</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Priority</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {client.agencyTasks.length ? (
-                          client.agencyTasks.map((task) => (
-                            <TableRow key={task.id}>
-                              <TableCell>
-                                <div>
-                                  <p className="font-medium text-slate-950">{task.title}</p>
-                                  <p className="mt-1 text-sm text-slate-500">
-                                    {formatEnumLabel(task.category)}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell>{task.assignedTo.name}</TableCell>
-                              <TableCell>{formatDate(task.dueDate)}</TableCell>
-                              <TableCell>{formatEnumLabel(task.status)}</TableCell>
-                              <TableCell>{formatEnumLabel(task.priority)}</TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
-                              No internal delivery tasks are linked to this account yet.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-            </div>
+            <ClientWork
+              clientId={client.id}
+              companyName={client.companyName}
+              timezone={client.timezone}
+              serverNow={new Date().toISOString()}
+              viewer={{
+                id: actor.id,
+                canEdit: can(actor, "workItems.assign"),
+                canReviewAny: can(actor, "workItems.review"),
+                canArchive: can(actor, "workItems.assign"),
+                canDelete: can(actor, "clients.delete"),
+                canAssign: can(actor, "workItems.assign"),
+              }}
+              assignees={options.users.map((member) => ({
+                id: member.id,
+                name: member.name,
+              }))}
+              /*
+               * The same EmployeeTask rows My Work reads, narrowed field by
+               * field on the way to the browser. Deleted work is left out;
+               * archived work is kept so the completed counts stay honest.
+               */
+              tasks={client.agencyTasks
+                .filter((task) => !task.deletedAt)
+                .map((task) => ({
+                  id: task.id,
+                  title: task.title,
+                  status: task.status,
+                  priority: task.priority,
+                  category: task.category,
+                  platform: task.platform,
+                  recurrence: task.recurrence,
+                  dueDate: task.dueDate.toISOString(),
+                  startDate: task.startDate?.toISOString() ?? null,
+                  createdAt: task.createdAt.toISOString(),
+                  updatedAt: task.updatedAt.toISOString(),
+                  submittedAt: task.submittedAt?.toISOString() ?? null,
+                  completedAt: task.completedAt?.toISOString() ?? null,
+                  approvedAt: task.approvedAt?.toISOString() ?? null,
+                  archivedAt: task.archivedAt?.toISOString() ?? null,
+                  estimatedHours: task.estimatedHours,
+                  actualHours: task.actualHours,
+                  note: task.note,
+                  objective: task.objective,
+                  completionCriteria: task.completionCriteria,
+                  requiresApproval: task.requiresApproval,
+                  kpi: task.kpi,
+                  blocker: task.blocker,
+                  requiredAssets: task.requiredAssets,
+                  revisionNote: task.revisionNote,
+                  evidenceUrl: task.evidenceUrl,
+                  client: { id: client.id, companyName: client.companyName },
+                  project: task.project,
+                  assignedTo: task.assignedTo
+                    ? { id: task.assignedTo.id, name: task.assignedTo.name }
+                    : null,
+                  createdBy: task.createdBy,
+                  reviewer: task.reviewer,
+                  approvedBy: task.approvedBy,
+                  commentCount: task._count.comments,
+                  latestEodDate: task.eodEntries[0]?.entryDate.toISOString() ?? null,
+                  reportedProgress: task.eodEntries[0]?.progressPercent ?? null,
+                  unmetDependencies: task.blockedBy.filter(
+                    (link) =>
+                      !["DONE", "APPROVED"].includes(link.prerequisiteTask.status),
+                  ).length,
+                }))}
+              /*
+               * Progress stays the milestone figure the Projects view already
+               * shows, so the two cannot disagree. The task counts beside it
+               * are a different fact and are labelled as one.
+               */
+              projects={client.projects.map((project) => {
+                const owned = client.agencyTasks.filter(
+                  (task) => task.projectId === project.id && !task.deletedAt,
+                );
+                const progress = deriveProjectProgress(project.milestones);
+
+                return {
+                  id: project.id,
+                  name: project.name,
+                  status: project.status,
+                  ownerName: project.projectManager?.name ?? null,
+                  progress: progress.percentComplete,
+                  taskCount: owned.length,
+                  completedCount: owned.filter((task) =>
+                    ["DONE", "APPROVED"].includes(task.status),
+                  ).length,
+                  overdueCount: owned.filter(
+                    (task) =>
+                      !["DONE", "APPROVED", "CANCELLED"].includes(task.status)
+                      && task.dueDate < new Date(),
+                  ).length,
+                  blockedCount: owned.filter((task) => task.status === "BLOCKED").length,
+                  nextMilestone: progress.nextMilestone
+                    ? {
+                        // The helper names it; the date comes off the milestone.
+                        name: progress.nextMilestone,
+                        dueAt:
+                          project.milestones
+                            .find((milestone) => milestone.name === progress.nextMilestone)
+                            ?.dueDate?.toISOString() ?? null,
+                      }
+                    : null,
+                };
+              })}
+              eodEntries={clientEod.map((entry) => ({
+                id: entry.id,
+                taskId: entry.task.id,
+                taskTitle: entry.task.title,
+                userName: entry.author?.name ?? "Someone",
+                entryDate: entry.entryDate.toISOString(),
+                hoursWorked: entry.hoursSpent,
+                progressNote: entry.summary,
+                blockers: entry.blockers,
+                nextAction: entry.nextSteps,
+                createdAt: entry.createdAt.toISOString(),
+              }))}
+              activity={activity.map((entry) => ({
+                id: entry.id,
+                action: entry.action,
+                actorName: entry.actor?.name ?? null,
+                createdAt: entry.createdAt.toISOString(),
+              }))}
+            />
           ),
 
           journey: (
