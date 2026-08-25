@@ -663,9 +663,15 @@ export function ClientWork({
                               <span className="block text-xs font-medium text-slate-950 hover:text-indigo-700">
                                 {task.title}
                               </span>
-                              <span className="block text-[11px] text-slate-500">
-                                {task.project?.name ?? formatEnumLabel(task.category)}
-                              </span>
+                              {/*
+                                * Only the project. Falling back to the category
+                                * repeated the column beside it word for word.
+                                */}
+                              {task.project ? (
+                                <span className="block text-[11px] text-slate-500">
+                                  {task.project.name}
+                                </span>
+                              ) : null}
                             </button>
                           </td>
                           <td className="px-2 py-2.5 text-[11px] text-slate-600">
