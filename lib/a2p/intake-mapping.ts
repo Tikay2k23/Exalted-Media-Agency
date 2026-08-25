@@ -78,6 +78,26 @@ const choice = (answers: Answers, key: string): string | null => {
 
 /** Which intake answer feeds which profile column. */
 const FIELD_MAP: { answer: string; field: string; kind: "text" | "bool" }[] = [
+  /*
+   * Four answers that come from the general section rather than the A2P one.
+   *
+   * Every client is already asked for their address, the phone number and email
+   * customers should use, and their website, so the A2P section does not ask
+   * again. Without these the readiness checklist reported four things missing
+   * that the client had answered in the same submission, and somebody retyped
+   * them into the profile by hand.
+   *
+   * The address is carried across exactly as the client wrote it. It arrives as
+   * one free-text box while the profile wants a street, a city and a postal code
+   * separately, and guessing where to split it would put invented values on a
+   * carrier registration. A reviewer separates them, and readiness keeps asking
+   * for the city and postal code until one has.
+   */
+  { answer: "address", field: "addressLine1", kind: "text" },
+  { answer: "publicPhone", field: "businessPhone", kind: "text" },
+  { answer: "publicEmail", field: "businessEmail", kind: "text" },
+  { answer: "website", field: "websiteUrl", kind: "text" },
+
   { answer: "a2pLegalName", field: "legalName", kind: "text" },
   { answer: "a2pTaxId", field: "taxId", kind: "text" },
   { answer: "a2pRepName", field: "representativeName", kind: "text" },

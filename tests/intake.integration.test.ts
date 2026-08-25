@@ -249,7 +249,7 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
   it("submits once everything required is answered", async () => {
     const result = await saveIntakeAnswers({
       token,
-      answers: completeAnswers("CRM_AUTOMATION"),
+      answers: { ...completeAnswers("CRM_AUTOMATION"), website: "https://reyes.test" },
       submit: true,
     });
 
@@ -264,6 +264,29 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
 
     assert.equal(form.status, "SUBMITTED");
     assert.ok(form.submittedAt);
+  });
+
+  /*
+   * The A2P section does not ask for an address, a phone number, an email or a
+   * website, because the general section already did. If these are not carried
+   * over, the readiness checklist reports four things missing that the client
+   * answered in this very submission.
+   */
+  it("carries over the contact details the general section already collected", async () => {
+    const profile = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: {
+        addressLine1: true,
+        businessPhone: true,
+        businessEmail: true,
+        websiteUrl: true,
+      },
+    });
+
+    assert.match(profile.addressLine1 ?? "", /Business address/);
+    assert.match(profile.businessPhone ?? "", /Phone number customers should use/);
+    assert.match(profile.businessEmail ?? "", /Email customers should use/);
+    assert.equal(profile.websiteUrl, "https://reyes.test");
   });
 
   it("tells the project manager it arrived", async () => {
