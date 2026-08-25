@@ -70,7 +70,26 @@ const GENERAL: IntakeSection[] = [
     description: "The basics we need on everything we produce for you.",
     questions: [
       { id: "legalName", label: "Legal business name", kind: "short", required: true },
-      { id: "address", label: "Business address", kind: "long", required: true },
+      /*
+       * The address is asked in parts rather than as one box.
+       *
+       * A carrier registration keeps the street, the city and the postal code
+       * apart, and the A2P readiness checklist looks for all three. Collected as
+       * one free-text box, somebody had to split it by hand afterwards, and a
+       * parser guessing where to divide it would put invented values on a
+       * registration - worse than an empty field, because an invented one looks
+       * answered and nobody checks it again.
+       *
+       * The street keeps the original question id. Forms already sent out have an
+       * address stored under it, and the review page renders from this catalogue,
+       * so renaming it would leave what those clients wrote with nowhere to show.
+       */
+      { id: "address", label: "Street address", kind: "short", required: true },
+      { id: "addressLine2", label: "Suite, unit or floor", kind: "short" },
+      { id: "city", label: "City or town", kind: "short", required: true },
+      { id: "stateRegion", label: "State or region", kind: "short" },
+      { id: "postalCode", label: "Postal code", kind: "short", required: true },
+      { id: "country", label: "Country", kind: "short", required: true },
       { id: "publicPhone", label: "Phone number customers should use", kind: "phone", required: true },
       { id: "publicEmail", label: "Email customers should use", kind: "email", required: true },
       { id: "website", label: "Current website", kind: "url" },

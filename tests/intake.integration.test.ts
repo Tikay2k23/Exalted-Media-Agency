@@ -17,6 +17,7 @@ import {
   questionsForService,
   sectionsForService,
 } from "@/lib/intake/question-catalogue";
+import { a2pChecklist } from "@/lib/a2p/a2p-readiness";
 import { prisma } from "@/lib/prisma";
 
 const TEST_PREFIX = "zz-intake-test";
@@ -287,7 +288,7 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
       },
     });
 
-    assert.match(profile.addressLine1 ?? "", /Business address/);
+    assert.match(profile.addressLine1 ?? "", /Street address/);
     assert.match(profile.businessPhone ?? "", /Phone number customers should use/);
     assert.match(profile.businessEmail ?? "", /Email customers should use/);
     assert.equal(profile.websiteUrl, "https://reyes.test");
@@ -310,6 +311,36 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
 
     assert.ok(followUp, "the follow-up answer should be stored as a follow-up sample");
     assert.match(followUp.body, /following up on the quote/);
+  });
+
+  /*
+   * The checklist wants a street, a city and a postal code separately. The form
+   * used to collect one free-text box, so the item stayed outstanding on a form
+   * that had been answered in full until somebody split the address by hand.
+   */
+  it("collects an address the checklist accepts", async () => {
+    const profile = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: {
+        addressLine1: true,
+        city: true,
+        postalCode: true,
+        country: true,
+        useCases: true,
+        optInMethods: true,
+        samples: { select: { category: true, body: true } },
+      },
+    });
+
+    assert.ok(profile.addressLine1, "street");
+    assert.ok(profile.city, "city");
+    assert.ok(profile.postalCode, "postal code");
+    assert.ok(profile.country, "country");
+
+    const address = a2pChecklist(profile).find((item) => item.label === "Business address");
+
+    assert.ok(address);
+    assert.equal(address.complete, true);
   });
 
   it("tells the project manager it arrived", async () => {
