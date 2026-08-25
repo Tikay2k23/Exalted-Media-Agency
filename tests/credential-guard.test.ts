@@ -114,3 +114,49 @@ describe("credential guard", () => {
     );
   });
 });
+
+/**
+ * Platform identifiers.
+ *
+ * The intake form asks clients for their Meta ad account, their Google Ads
+ * account and their analytics property by ID. Those IDs are a prefix, a
+ * separator and a number, and counting the separator as a character class made
+ * the guard reject the exact answer the question had just asked for - with no
+ * way for the client to get past it.
+ */
+describe("platform identifiers", () => {
+  it("allows the account IDs the intake form asks for", () => {
+    const identifiers = [
+      "Riverbend Orthodontics Ads (act_4471902235)",
+      "act_4471902235",
+      "Google Ads 812-445-9077",
+      "GA4 property G-7QK2LMN4ZP",
+      "GTM-WXYZ7788",
+      "Container id 550e8400-e29b-41d4-a716-446655440000",
+      "campaign slug riverbend-ortho-2026-consult",
+      "https://business.facebook.com/latest/settings/ad_account?asset_id=4471902235",
+    ];
+
+    for (const value of identifiers) {
+      assert.equal(
+        checkForCredential(value).flagged,
+        false,
+        `should have allowed the identifier: ${value}`,
+      );
+    }
+  });
+
+  it("still catches a secret that happens to contain punctuation", () => {
+    for (const value of [
+      "Xk9$mQ2vLp7!zRt4Wn",
+      "Tr0ub4dor&3-Correct-Horse",
+      "aB3!kL9#qW2@zX7$mN4",
+    ]) {
+      assert.equal(checkForCredential(value).flagged, true, `should have caught: ${value}`);
+    }
+  });
+
+  it("still catches a labelled password written as an identifier", () => {
+    assert.equal(checkForCredential("meta login pwd = act_4471902235").flagged, true);
+  });
+});

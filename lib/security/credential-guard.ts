@@ -30,21 +30,53 @@ const KNOWN_KEY_SHAPES: { pattern: RegExp; label: string }[] = [
   { pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, label: "a private key" },
 ];
 
+/** Punctuation that holds the parts of an ordinary identifier together. */
+const IDENTIFIER_SEPARATORS = new Set(["_", "-", ".", "/", ":", "(", ")", "[", "]"]);
+
+/**
+ * An address, rather than anything merely containing an at sign.
+ *
+ * The exemption exists so a contact address in a notes box is not mistaken for
+ * a key. Testing for the character alone let any secret through that happened
+ * to contain one, which is a common enough thing for a generated password to
+ * do, so the shape is checked instead.
+ */
+function looksLikeEmailAddress(candidate: string): boolean {
+  const parts = candidate.split("@");
+
+  return parts.length === 2 && parts[0].length > 0 && parts[1].includes(".");
+}
+
 /**
  * A long unbroken run of mixed character classes. Deliberately conservative:
  * it needs length, no whitespace, and three of four classes, so ordinary text
  * and URLs do not trip it.
  */
 function looksLikeRandomSecret(value: string): boolean {
-  for (const token of value.split(/\s+/)) {
-    if (token.length < 14 || token.length > 200) {
+  for (const rawToken of value.split(/\s+/)) {
+    if (rawToken.length < 14 || rawToken.length > 200) {
       continue;
     }
 
     // URLs and email addresses are legitimate here.
-    if (/^https?:\/\//i.test(token) || token.includes("@")) {
+    if (/^https?:\/\//i.test(rawToken) || looksLikeEmailAddress(rawToken)) {
       continue;
     }
+
+    /*
+     * Identifier punctuation is stripped before the character classes are
+     * counted. Platform IDs are built from a prefix, a separator and a number -
+     * act_4471902235 for a Meta ad account, a UUID, a hyphenated campaign slug -
+     * and counting the separator as a class made every one of them look like a
+     * generated secret. The intake form asks for those IDs by name, so the guard
+     * was rejecting the exact answer the question had just requested.
+     *
+     * Unusual punctuation stays and still counts: a dollar sign or an
+     * exclamation mark belongs in a password, not in an account ID.
+     */
+    const token = [...rawToken]
+      .filter((character) => !IDENTIFIER_SEPARATORS.has(character))
+      .join("");
 
     const classes = [
       /[a-z]/.test(token),
