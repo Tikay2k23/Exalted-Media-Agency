@@ -325,10 +325,21 @@ export async function saveIntakeAnswers(input: {
       },
     });
 
-    // Only on submit, and only for a client whose answers include the A2P
-    // section at all. The intake row itself is never rewritten: it stays the
-    // record of exactly what was sent.
-    if (!submit || !("a2pLegalName" in merged || "a2pUseCases" in merged)) return null;
+    /*
+     * Only on submit, and never for a client who said they do not want text
+     * messaging.
+     *
+     * That last part matters because answers outlive the questions that asked
+     * them: somebody who filled in the A2P section and then changed their mind
+     * still has those answers stored, and creating a registration profile from
+     * them would hand the agency a client who has explicitly declined. The gate
+     * answer wins over anything left behind.
+     *
+     * The intake row itself is never rewritten either way: it stays the record
+     * of exactly what was sent.
+     */
+    if (!submit || merged.a2pWantsSms === "no") return null;
+    if (!("a2pLegalName" in merged || "a2pUseCases" in merged)) return null;
 
     return applyIntakeToA2P(tx, form.client.id, merged as Record<string, string>);
   });
