@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { A2PProfileWorkspace } from "@/components/clients/a2p-profile";
+import { readPendingChanges } from "@/lib/a2p/intake-mapping";
 import { a2pInPlay, a2pReadiness, sampleMessageWarnings } from "@/lib/a2p/a2p-readiness";
 import { loadAuthContext } from "@/lib/authz";
 import { can } from "@/lib/permissions";
@@ -203,6 +204,7 @@ export default async function A2PPage({ params }: { params: Promise<{ id: string
         }
         /* Saying a carrier approved a registration is not the same authority as
            editing a client, so it follows the stricter permission. */
+        pendingChanges={readPendingChanges(profile?.pendingClientChanges)}
         canRecordDecision={can(actor, "a2p.submit")}
       />
     </div>

@@ -1,4 +1,5 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 
 import { A2P_SECTION } from "@/lib/intake/question-catalogue";
 
@@ -120,10 +121,44 @@ const FIELD_MAP: { answer: string; field: string; kind: "text" | "bool" }[] = [
   { answer: "a2pMessagesContainLinks", field: "messagesContainLinks", kind: "bool" },
 ];
 
+/** One answer a client has given that disagrees with what the profile holds. */
+export interface PendingChange {
+  value: string;
+  recordedAt: string;
+}
+
+export type PendingChanges = Record<string, PendingChange>;
+
+/**
+ * The stored map, defended against anything that is not one.
+ *
+ * It is a JSON column, so it can hold whatever was written into it before the
+ * shape settled. A malformed entry is dropped rather than taken on trust.
+ */
+export function readPendingChanges(raw: unknown): PendingChanges {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+  const out: PendingChanges = {};
+
+  for (const [field, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      entry
+      && typeof entry === "object"
+      && typeof (entry as PendingChange).value === "string"
+    ) {
+      out[field] = entry as PendingChange;
+    }
+  }
+
+  return out;
+}
+
 export interface MappingResult {
   created: boolean;
   fieldsFilled: string[];
   samplesAdded: number;
+  /** Fields the client answered differently from what is held. */
+  diverged: string[];
 }
 
 /**
@@ -153,27 +188,60 @@ export async function applyIntakeToA2P(
   const data: Record<string, unknown> = {};
   const filled: string[] = [];
 
+  /*
+   * What the client has said that disagrees with what is held.
+   *
+   * Carried forward from any earlier resubmission, so a difference nobody has
+   * ruled on yet is not lost by a later submission that happens to agree.
+   */
+  const previous = readPendingChanges(profile.pendingClientChanges);
+  const pending: PendingChanges = { ...previous };
+  const diverged: string[] = [];
+  const recordedAt = new Date().toISOString();
+
+  /** One field, and the three things a resubmitted answer can mean. */
+  const consider = (field: string, current: unknown, value: string | boolean | null) => {
+    if (value === null) {
+      /*
+       * Blank now, answered before. Not treated as a correction: a client
+       * skipping a question they once answered is not asking for it to be
+       * removed from a registration.
+       */
+      return;
+    }
+
+    if (current === null || current === undefined) {
+      data[field] = value;
+      filled.push(field);
+      delete pending[field];
+      return;
+    }
+
+    if (String(current) === String(value)) {
+      // They agree, so anything raised earlier has been settled.
+      delete pending[field];
+      return;
+    }
+
+    /*
+     * Different, with something already recorded. Still not overwritten - the
+     * held value may be a correction somebody made on purpose, and this may be
+     * a client fixing a genuine mistake. The two are indistinguishable from
+     * here, so it goes in front of a reviewer instead of being guessed at.
+     */
+    pending[field] = { value: String(value), recordedAt };
+    diverged.push(field);
+  };
+
   for (const entry of FIELD_MAP) {
-    const current = (profile as unknown as Record<string, unknown>)[entry.field];
-
-    // Already answered by a person: leave it. A resubmission fills gaps, it
-    // does not undo corrections.
-    if (current !== null && current !== undefined) continue;
-
-    const value = entry.kind === "bool" ? bool(answers, entry.answer) : text(answers, entry.answer);
-
-    if (value === null) continue;
-
-    data[entry.field] = value;
-    filled.push(entry.field);
+    consider(
+      entry.field,
+      (profile as unknown as Record<string, unknown>)[entry.field],
+      entry.kind === "bool" ? bool(answers, entry.answer) : text(answers, entry.answer),
+    );
   }
 
-  const entityType = choice(answers, "a2pEntityType");
-
-  if (entityType && !profile.entityType) {
-    data.entityType = entityType;
-    filled.push("entityType");
-  }
+  consider("entityType", profile.entityType, choice(answers, "a2pEntityType"));
 
   const useCases = list(answers, "a2pUseCases");
   const optInMethods = list(answers, "a2pOptInMethods");
@@ -198,6 +266,17 @@ export async function applyIntakeToA2P(
   if (description && description !== profile.clientCampaignDescription) {
     data.clientCampaignDescription = description;
     filled.push("clientCampaignDescription");
+  }
+
+  /*
+   * Written with the rest, so what was filled and what is queued for review
+   * land together. DbNull rather than undefined when it empties: undefined
+   * leaves a JSON column alone, which would keep a difference on screen after
+   * it stopped existing.
+   */
+  if (JSON.stringify(pending) !== JSON.stringify(previous)) {
+    data.pendingClientChanges =
+      Object.keys(pending).length > 0 ? pending : Prisma.DbNull;
   }
 
   if (Object.keys(data).length > 0) {
@@ -238,5 +317,5 @@ export async function applyIntakeToA2P(
     samplesAdded += 1;
   }
 
-  return { created: !existing, fieldsFilled: filled, samplesAdded };
+  return { created: !existing, fieldsFilled: filled, samplesAdded, diverged };
 }

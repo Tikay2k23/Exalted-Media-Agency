@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { Prisma } from "@prisma/client";
+import { readPendingChanges } from "@/lib/a2p/intake-mapping";
 import { logActivity } from "@/lib/activity";
 import { a2pProfileSchema, a2pSamplesSchema } from "@/lib/a2p/a2p-validators";
 import { a2pReadiness } from "@/lib/a2p/a2p-readiness";
@@ -40,7 +42,7 @@ export async function PATCH(
       );
     }
 
-    const { authorisationConfirmed, ...fields } = parsed.data;
+    const { authorisationConfirmed, resolveClientChanges, ...fields } = parsed.data;
 
     /*
      * Only what actually arrived. An absent key means "leave it alone"; an
@@ -58,6 +60,27 @@ export async function PATCH(
       // Stamped here rather than taken from the request: a confirmation is
       // when somebody said it, not when a form claims they did.
       data.authorisationConfirmedAt = authorisationConfirmed ? new Date() : null;
+    }
+
+    /*
+     * Ruling on a difference the client raised.
+     *
+     * Accepting sends the value with the field named here, so the ordinary
+     * write above puts it in place; discarding sends the name alone. Either
+     * way the entry is removed, because both are decisions and neither should
+     * be asked again.
+     */
+    if (resolveClientChanges?.length) {
+      const held = await prisma.a2PProfile.findUnique({
+        where: { clientId: guard.client.id },
+        select: { pendingClientChanges: true },
+      });
+      const pending = readPendingChanges(held?.pendingClientChanges);
+
+      for (const field of resolveClientChanges) delete pending[field];
+
+      data.pendingClientChanges =
+        Object.keys(pending).length > 0 ? pending : Prisma.DbNull;
     }
 
     const profile = await prisma.a2PProfile.upsert({

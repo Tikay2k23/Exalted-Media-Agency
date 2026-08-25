@@ -24,6 +24,51 @@ import { cn } from "@/lib/utils";
  * somebody else has since corrected.
  */
 
+/**
+ * What to call a field when telling somebody the client disagrees with it.
+ *
+ * Only the fields an intake answer can reach need naming. Anything missing
+ * falls back to the key made readable, which is worse than a real label but
+ * better than a blank row when a mapping is added and this is forgotten.
+ */
+const FIELD_LABELS: Record<string, string> = {
+  legalName: "Legal business name",
+  entityType: "Entity type",
+  countryOfRegistration: "Country of registration",
+  taxId: "Tax ID or registration number",
+  addressLine1: "Address",
+  addressLine2: "Suite, unit or floor",
+  city: "City",
+  stateRegion: "State or region",
+  postalCode: "Postcode",
+  country: "Country",
+  businessPhone: "Business phone",
+  businessEmail: "Business email",
+  websiteUrl: "Website",
+  representativeName: "Representative name",
+  representativeTitle: "Representative title",
+  representativeEmail: "Representative email",
+  representativePhone: "Representative phone",
+  consentLanguage: "Consent wording",
+  optInPageUrl: "Opt-in page",
+  privacyPolicyUrl: "Privacy policy",
+  termsUrl: "Terms",
+  monthlyVolume: "Monthly volume",
+  existingPhoneNumber: "Existing phone number",
+  repliesHandledBy: "Who answers replies",
+  businessHours: "Business hours",
+  checkboxIsOptional: "Consent checkbox is optional",
+  checkboxUncheckedByDefault: "Consent checkbox unticked by default",
+  messagesContainLinks: "Messages contain links",
+};
+
+function fieldLabel(field: string) {
+  return (
+    FIELD_LABELS[field]
+    ?? field.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())
+  );
+}
+
 export interface A2PValues {
   [key: string]: string | boolean | string[] | null | undefined;
 }
@@ -199,6 +244,7 @@ export function A2PProfileWorkspace({
   status: initialStatus,
   warnings,
   submissions,
+  pendingChanges,
   canRecordDecision,
 }: {
   clientId: string;
@@ -219,6 +265,8 @@ export function A2PProfileWorkspace({
     submittedAt: string;
   }[];
   /** Only some seats may say a provider approved or refused a registration. */
+  /** Answers the client changed that disagree with what is held, by field. */
+  pendingChanges: Record<string, { value: string; recordedAt: string }>;
   canRecordDecision: boolean;
 }) {
   const router = useRouter();
@@ -237,6 +285,50 @@ export function A2PProfileWorkspace({
   const bool = (key: string) => form[key] as boolean | null | undefined;
 
   const webOptIn = list("optInMethods").some((method) => WEB_OPT_IN.includes(method));
+
+  /**
+   * Rules on one difference the client raised.
+   *
+   * Accepting sends the new value with the field named, so the ordinary write
+   * puts it in place. Discarding sends the name alone and the held value
+   * stands. Both remove the entry, because both are answers.
+   */
+  function resolveChange(field: string, accept: boolean) {
+    setBusy("pending");
+    setError(null);
+
+    void (async () => {
+      const next = pendingChanges[field]?.value ?? "";
+      const body: Record<string, unknown> = { resolveClientChanges: [field] };
+
+      if (accept) body[field] = next;
+
+      const response = await fetch(`/api/clients/${clientId}/a2p`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+
+        setError({
+          section: "pending",
+          message: failure?.error ?? "We could not record that decision.",
+        });
+        setBusy(null);
+        return;
+      }
+
+      if (accept) set({ [field]: next });
+
+      const data = (await response.json()) as { readiness: A2PReadiness };
+
+      setReadiness(data.readiness);
+      setBusy(null);
+      startTransition(() => router.refresh());
+    })();
+  }
 
   /** Sends only the keys this section owns, so no section overwrites another. */
   function saveSection(section: string, keys: string[]) {
@@ -449,6 +541,73 @@ export function A2PProfileWorkspace({
           ) : null}
         </div>
       </section>
+
+      {/*
+        * Differences the client has raised, above everything else because one
+        * can belong to any section below and none of them should be hunted for.
+        */}
+      {Object.keys(pendingChanges).length > 0 ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+          <h2 className="text-sm font-semibold text-amber-900">
+            The client has answered some of this differently
+          </h2>
+          <p className="mt-0.5 text-xs text-amber-800">
+            Their latest intake disagrees with what this registration holds. Nothing has
+            been changed. Keeping what is held is the safe answer where somebody corrected
+            it on purpose.
+          </p>
+
+          <ul className="mt-3 space-y-2">
+            {Object.entries(pendingChanges).map(([field, change]) => (
+              <li key={field} className="rounded-xl border border-amber-200 bg-white p-3">
+                <p className="text-xs font-semibold text-slate-900">{fieldLabel(field)}</p>
+                <dl className="mt-1.5 grid gap-1.5 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wide text-slate-400">
+                      Registration holds
+                    </dt>
+                    <dd className="break-words text-slate-700">
+                      {str(field) || <span className="text-slate-400">Nothing</span>}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wide text-slate-400">
+                      The client now says
+                    </dt>
+                    <dd className="break-words font-medium text-slate-900">{change.value}</dd>
+                  </div>
+                </dl>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy === "pending"}
+                    onClick={() => resolveChange(field, true)}
+                  >
+                    Use the client&rsquo;s answer
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy === "pending"}
+                    onClick={() => resolveChange(field, false)}
+                  >
+                    Keep what is held
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {error?.section === "pending" ? (
+            <p role="alert" className="mt-2 text-[11px] text-rose-600">
+              {error.message}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* --------------------------------------------- business identity */}
       <Section

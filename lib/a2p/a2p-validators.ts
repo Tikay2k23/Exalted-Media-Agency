@@ -158,6 +158,15 @@ export const a2pProfileSchema = z.object({
     .enum(["NOT_REVIEWED", "NEEDS_CHANGES", "READY_FOR_REVIEW", "APPROVED_INTERNALLY"])
     .optional(),
   internalNotes: text(4000),
+
+  /*
+   * Differences the reviewer has ruled on, by profile field.
+   *
+   * Sent alongside the value when the client's answer is accepted, and on its
+   * own when it is discarded, so both outcomes are the same request and end
+   * with the field no longer waiting on anybody.
+   */
+  resolveClientChanges: z.array(z.string().max(80)).max(60).optional(),
 });
 
 /**

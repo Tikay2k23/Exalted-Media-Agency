@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { a2pChecklist } from "@/lib/a2p/a2p-readiness";
+import { readPendingChanges } from "@/lib/a2p/intake-mapping";
 import {
   A2P_SECTION,
   questionApplies,
@@ -209,5 +210,45 @@ describe("the follow-up sample", () => {
 
       assert.equal(asked, required, `${useCase}: asked=${asked} but required=${required}`);
     }
+  });
+});
+
+/**
+ * Reading the pending-changes column.
+ *
+ * It is JSON, so it holds whatever was written before the shape settled. A
+ * reviewer is asked to act on what comes out of here, which is the wrong place
+ * to take a malformed row on trust.
+ */
+describe("pending client changes", () => {
+  it("reads nothing out of nothing", () => {
+    assert.deepEqual(readPendingChanges(null), {});
+    assert.deepEqual(readPendingChanges(undefined), {});
+    assert.deepEqual(readPendingChanges({}), {});
+  });
+
+  it("refuses anything that is not a map of fields", () => {
+    assert.deepEqual(readPendingChanges("city"), {});
+    assert.deepEqual(readPendingChanges(42), {});
+    assert.deepEqual(readPendingChanges([{ value: "Austin" }]), {});
+  });
+
+  it("keeps the entries that are shaped right", () => {
+    const parsed = readPendingChanges({
+      city: { value: "Round Rock", recordedAt: "2026-08-25T00:00:00.000Z" },
+    });
+
+    assert.deepEqual(Object.keys(parsed), ["city"]);
+    assert.equal(parsed.city.value, "Round Rock");
+  });
+
+  it("drops a malformed entry without losing the good ones beside it", () => {
+    const parsed = readPendingChanges({
+      city: { value: "Round Rock", recordedAt: "2026-08-25T00:00:00.000Z" },
+      postalCode: "78701",
+      legalName: null,
+    });
+
+    assert.deepEqual(Object.keys(parsed), ["city"]);
   });
 });

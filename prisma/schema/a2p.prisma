@@ -142,6 +142,15 @@ model A2PProfile {
   /// The version that would be submitted.
   reviewedCampaignDescription String?
 
+  /// What the client said on a resubmission that disagrees with what is held.
+  ///
+  /// A resubmission fills blanks and never overwrites, so a corrected answer
+  /// used to be dropped without a word: the client believed they had fixed it
+  /// and the registration kept the old value. Those answers land here instead,
+  /// keyed by profile field, for a reviewer to accept or discard. Empty is the
+  /// normal state - a key only exists while somebody still has to decide.
+  pendingClientChanges Json?
+
   // --- consent -------------------------------------------------------------
   optInMethods       A2POptInMethod[]
   optInMethodOther   String?

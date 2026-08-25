@@ -19,6 +19,7 @@ import {
   sectionsForService,
 } from "@/lib/intake/question-catalogue";
 import { a2pChecklist } from "@/lib/a2p/a2p-readiness";
+import { readPendingChanges } from "@/lib/a2p/intake-mapping";
 import { prisma } from "@/lib/prisma";
 
 const TEST_PREFIX = "zz-intake-test";
@@ -565,6 +566,87 @@ describe("client intake (integration)", { skip: !hasDatabase }, () => {
     assert.deepEqual(submissions[0].answers, firstSubmission);
     assert.equal((submissions[1].answers as Record<string, string>).city, "Bristol");
     assert.notEqual(firstSubmission.city, "Bristol");
+  });
+
+  /*
+   * A corrected answer.
+   *
+   * A resubmission fills blanks and never overwrites, which protects a
+   * correction somebody made during review. It also used to drop a client's own
+   * correction without a word: they believed they had fixed it and the
+   * registration kept the old value. Now the difference is put somewhere a
+   * person will see it.
+   */
+  it("flags an answer the client changed instead of dropping it", async () => {
+    const pm = await loadAuthContext(pmId);
+    assert.ok(pm);
+
+    const before = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: { legalName: true },
+    });
+    assert.ok(before.legalName, "the profile needs a legal name for this to be a change");
+
+    const reopened = await reopenIntakeForm({ actor: pm, clientId });
+    assert.equal(reopened.ok, true);
+    if (!reopened.ok) return;
+    token = reopened.form.token;
+
+    const result = await saveIntakeAnswers({
+      token,
+      answers: {
+        ...completeAnswers("CRM_AUTOMATION"),
+        a2pLegalName: "Reyes Plumbing Limited",
+      },
+      submit: true,
+    });
+    assert.equal(result.ok, true);
+
+    const after = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: { legalName: true, pendingClientChanges: true },
+    });
+
+    // The held value stands until somebody rules on it.
+    assert.equal(after.legalName, before.legalName);
+
+    const pending = readPendingChanges(after.pendingClientChanges);
+
+    assert.equal(pending.legalName?.value, "Reyes Plumbing Limited");
+    assert.ok(pending.legalName?.recordedAt);
+  });
+
+  it("stops flagging it once the client agrees again", async () => {
+    const pm = await loadAuthContext(pmId);
+    assert.ok(pm);
+
+    const held = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: { legalName: true },
+    });
+
+    const reopened = await reopenIntakeForm({ actor: pm, clientId });
+    assert.equal(reopened.ok, true);
+    if (!reopened.ok) return;
+    token = reopened.form.token;
+
+    // Back to what the registration holds: there is nothing left to decide.
+    const result = await saveIntakeAnswers({
+      token,
+      answers: {
+        ...completeAnswers("CRM_AUTOMATION"),
+        a2pLegalName: held.legalName!,
+      },
+      submit: true,
+    });
+    assert.equal(result.ok, true);
+
+    const after = await prisma.a2PProfile.findUniqueOrThrow({
+      where: { clientId },
+      select: { pendingClientChanges: true },
+    });
+
+    assert.deepEqual(readPendingChanges(after.pendingClientChanges), {});
   });
 });
 
