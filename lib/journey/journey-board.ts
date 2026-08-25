@@ -64,7 +64,10 @@ export const LAUNCH_HORIZON_DAYS = 14;
 export const CLIENT_QUIET_DAYS = 7;
 
 /** Intake states that mean the form is still sitting with the client. */
-export const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED"];
+/// REOPENED belongs here for the same reason as SENT: the form has been handed
+/// back, the link is live and they have not returned it. A reopened form read as
+/// nothing outstanding, which is the one thing this list exists to prevent.
+export const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED", "REOPENED"];
 
 export interface JourneyRequirement {
   key: string;

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { IntakeStatus } from "@prisma/client";
+
+import { INTAKE_WITH_CLIENT as WORKSPACE_WITH_CLIENT } from "@/lib/clients/client-workspace";
+
 import {
+  INTAKE_WITH_CLIENT as BOARD_WITH_CLIENT,
   EMPTY_JOURNEY_FILTERS,
   type JourneyAccount,
   type JourneyRequirement,
@@ -938,5 +943,53 @@ describe("board metrics", () => {
     assert.equal(metrics.avgDaysInStage, 0);
     assert.equal(metrics.onTimePercent, 0);
     assert.equal(metrics.atRiskCount, 0);
+  });
+});
+
+/**
+ * Which intake states mean the ball is in the client's court.
+ *
+ * The list is written out twice - once for the Journey board, once for the
+ * Clients pages - and a status added to the schema is in neither until somebody
+ * remembers both. REOPENED was added and forgotten, so a form handed back to a
+ * client read as nothing outstanding and nobody was going to chase it.
+ *
+ * Every status is therefore accounted for here, and the two copies are held to
+ * each other. A status added later fails this until it is deliberately sorted.
+ */
+describe("intake states that mean waiting on the client", () => {
+  /** Straight from the schema, so a new status cannot slip past unclassified. */
+  const everyStatus = Object.values(IntakeStatus) as string[];
+
+  /** The agency's move, not the client's. */
+  const withAgency = ["NOT_SENT", "SUBMITTED", "REVIEWED"];
+
+  it("classifies every status the schema allows", () => {
+    const sorted = [...BOARD_WITH_CLIENT, ...withAgency].sort();
+
+    assert.deepEqual(
+      sorted,
+      [...everyStatus].sort(),
+      "a status is either waiting on the client or it is not - this one is neither",
+    );
+  });
+
+  it("counts a reopened form as waiting on the client", () => {
+    // The form is out, the link works, and they have not sent it back.
+    assert.ok(BOARD_WITH_CLIENT.includes("REOPENED"));
+  });
+
+  it("keeps the board and the clients pages saying the same thing", () => {
+    assert.deepEqual(
+      [...BOARD_WITH_CLIENT].sort(),
+      [...WORKSPACE_WITH_CLIENT].sort(),
+      "the two copies of this list have drifted apart",
+    );
+  });
+
+  it("does not treat a submitted form as still with the client", () => {
+    for (const status of ["SUBMITTED", "REVIEWED", "NOT_SENT"]) {
+      assert.equal(BOARD_WITH_CLIENT.includes(status), false, `${status} is not the client's move`);
+    }
   });
 });

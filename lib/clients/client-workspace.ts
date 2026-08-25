@@ -21,7 +21,10 @@
  * agency waiting on itself. It still counts as something to attend to, which
  * is a different question and answered separately.
  */
-export const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED"];
+/// REOPENED belongs here for the same reason as SENT: the form has been handed
+/// back, the link is live and they have not returned it. A reopened form read as
+/// nothing outstanding, which is the one thing this list exists to prevent.
+export const INTAKE_WITH_CLIENT = ["SENT", "VIEWED", "PARTIALLY_COMPLETED", "REOPENED"];
 
 /** Intake states that mean the form is done. */
 const INTAKE_DONE = ["SUBMITTED", "REVIEWED"];
