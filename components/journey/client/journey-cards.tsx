@@ -632,11 +632,17 @@ export function WorkSummaryCard({
             <Quiet>Everything in this stage is finished.</Quiet>
           )}
 
+          {/*
+            * The client's Work tab, not My Work - the link used to name the
+            * wrong page. Not filtered to this stage either: a task carries no
+            * journey stage, so there is nothing to filter on, and a link that
+            * claimed to narrow by stage would be the same mistake again.
+            */}
           <Link
             href={`/clients/${clientId}?tab=tasks`}
             className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
           >
-            View All Tasks in My Work
+            View all work for this client
             <ArrowRight className="h-3 w-3" aria-hidden />
           </Link>
         </>
