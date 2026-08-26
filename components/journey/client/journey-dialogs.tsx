@@ -6,6 +6,9 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   FLAG_LABELS,
   type FlagKind,
@@ -646,6 +649,167 @@ export function StagePreviewDialog({
           </ul>
         </>
       )}
+    </Modal>
+  );
+}
+
+/**
+ * Starting a recovery plan from the journey.
+ *
+ * The plan itself is the one the Health tab already manages - same model, same
+ * endpoint, same service and permissions. This exists because the moment
+ * somebody realises an account is in trouble is while they are looking at the
+ * journey, and making them go and find the right tab is how a plan ends up
+ * never being written.
+ *
+ * The problem is seeded from what the health score actually said, so the plan
+ * starts from the evidence rather than a blank box.
+ */
+export function RecoveryPlanDialog({
+  clientId,
+  seedProblem,
+  owners,
+  defaultOwnerId,
+  onClose,
+  onSaved,
+}: {
+  clientId: string;
+  seedProblem: string;
+  owners: { id: string; name: string }[];
+  defaultOwnerId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [trigger, setTrigger] = useState(seedProblem);
+  const [objective, setObjective] = useState("");
+  const [actions, setActions] = useState("");
+  const [ownerId, setOwnerId] = useState(defaultOwnerId ?? "");
+  const [reviewDate, setReviewDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const ready = trigger.trim().length > 0 && objective.trim().length > 0 && actions.trim().length > 0;
+
+  async function save() {
+    if (!ready || busy) return;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/clients/${clientId}/recovery-plans`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger: trigger.trim(),
+          objective: objective.trim(),
+          actions: actions.trim(),
+          // Live from the start: a recovery plan nobody activated is a note.
+          status: "ACTIVE",
+          ownerId: ownerId || undefined,
+          reviewDate: reviewDate || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+
+        setError(failure?.error ?? "We couldn't save that plan. Nothing was changed.");
+        return;
+      }
+
+      onSaved();
+      onClose();
+    } catch {
+      setError("We couldn't reach the server. Nothing was changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      eyebrow="Recovery plan"
+      title="Get this account back on track"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void save()} disabled={!ready || busy}>
+            {busy ? "Saving…" : "Start plan"}
+          </Button>
+        </>
+      }
+    >
+      <label className="block">
+        <span className="text-[11px] font-medium text-slate-600">What went wrong</span>
+        <Textarea
+          rows={2}
+          value={trigger}
+          onChange={(event) => setTrigger(event.target.value)}
+          className="mt-1"
+        />
+      </label>
+
+      <label className="mt-3 block">
+        <span className="text-[11px] font-medium text-slate-600">
+          What good looks like when this is fixed
+        </span>
+        <Textarea
+          rows={2}
+          value={objective}
+          onChange={(event) => setObjective(event.target.value)}
+          placeholder="Access restored and the build back on its original date."
+          className="mt-1"
+        />
+      </label>
+
+      <label className="mt-3 block">
+        <span className="text-[11px] font-medium text-slate-600">What we are going to do</span>
+        <Textarea
+          rows={3}
+          value={actions}
+          onChange={(event) => setActions(event.target.value)}
+          placeholder="Call the client today, agree a date for the access, re-plan the build week."
+          className="mt-1"
+        />
+      </label>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-[11px] font-medium text-slate-600">Owner</span>
+          <Select
+            value={ownerId}
+            onChange={(event) => setOwnerId(event.target.value)}
+            className="mt-1"
+          >
+            <option value="">Unassigned</option>
+            {owners.map((owner) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+
+        <label className="block">
+          <span className="text-[11px] font-medium text-slate-600">Review on</span>
+          <Input
+            type="date"
+            value={reviewDate}
+            onChange={(event) => setReviewDate(event.target.value)}
+            className="mt-1"
+          />
+        </label>
+      </div>
+
+      {error ? (
+        <p role="alert" className="mt-3 text-[11px] text-rose-600">
+          {error}
+        </p>
+      ) : null}
     </Modal>
   );
 }

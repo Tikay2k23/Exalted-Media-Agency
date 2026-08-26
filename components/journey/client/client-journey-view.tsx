@@ -13,6 +13,7 @@ import {
   UserRound,
   MailQuestion,
   Plus,
+  LifeBuoy,
   StickyNote,
   ArrowUpRight,
 } from "lucide-react";
@@ -32,6 +33,7 @@ import {
 import {
   AdvanceStageDialog,
   HealthDialog,
+  RecoveryPlanDialog,
   StagePreviewDialog,
   JourneyFlagDialog,
 } from "@/components/journey/client/journey-dialogs";
@@ -93,6 +95,7 @@ import { cn, formatEnumLabel } from "@/lib/utils";
  */
 export function ClientJourneyView({
   detail,
+  owners = [],
   embedded = false,
   nowIso,
 }: {
@@ -105,6 +108,12 @@ export function ClientJourneyView({
    * name twice and offering a way out of a page nobody navigated to.
    */
   embedded?: boolean;
+  /**
+   * Who a recovery plan can be given to. Empty by default so the standalone
+   * journey page keeps working without it - the owner is optional on a plan,
+   * and an empty list means the field simply offers nobody.
+   */
+  owners?: { id: string; name: string }[];
 }) {
   const router = useRouter();
 
@@ -119,6 +128,7 @@ export function ClientJourneyView({
   const [showAllRequirements, setShowAllRequirements] = useState(false);
   const [showFullJourney, setShowFullJourney] = useState(false);
   const [busyCard, setBusyCard] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -213,6 +223,20 @@ export function ClientJourneyView({
       });
     }
 
+    /*
+     * Only when the journey is actually in trouble. A recovery plan offered on
+     * a healthy account is paperwork, and an action that is always there stops
+     * meaning anything when it matters.
+     */
+    if (scored.status === "AT_RISK" || scored.status === "BLOCKED") {
+      actions.push({
+        key: "recovery",
+        label: "Create recovery plan",
+        icon: LifeBuoy,
+        onSelect: () => setRecovering(true),
+      });
+    }
+
     actions.push({
       key: "note",
       label: "Add a note",
@@ -221,7 +245,7 @@ export function ClientJourneyView({
     });
 
     return actions;
-  }, [detail, account.id, account.nextStageId, account.nextStageName, router]);
+  }, [detail, account.id, account.nextStageId, account.nextStageName, router, scored.status]);
 
   const groups = useMemo(
     () => requirementGroups(account.requirements),
@@ -761,6 +785,18 @@ export function ClientJourneyView({
           color={HEALTH_COLORS[health.health]}
           reasons={health.reasons}
           onClose={() => setHealthOpen(false)}
+        />
+      ) : null}
+
+      {recovering ? (
+        <RecoveryPlanDialog
+          clientId={account.id}
+          /* Seeded from what the score actually said, not a blank box. */
+          seedProblem={scored.reasons.map((reason) => reason.text).join(" ")}
+          owners={owners}
+          defaultOwnerId={account.ownerId}
+          onClose={() => setRecovering(false)}
+          onSaved={() => router.refresh()}
         />
       ) : null}
 

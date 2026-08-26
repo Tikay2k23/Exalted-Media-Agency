@@ -859,6 +859,10 @@ export default async function ClientDetailPage({
             <ClientJourneyView
               detail={journeyDetail}
               nowIso={new Date().toISOString()}
+              owners={options.users.map((member) => ({
+                id: member.id,
+                name: member.name,
+              }))}
               embedded
             />
           ) : (
