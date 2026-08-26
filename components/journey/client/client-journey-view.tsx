@@ -46,6 +46,7 @@ import {
   nextStep,
   stageClock,
 } from "@/lib/journey/client-detail";
+import { journeyHealth } from "@/lib/journey/journey-health";
 import {
   HEALTH_COLORS,
   HEALTH_LABELS,
@@ -69,10 +70,18 @@ import { cn, formatEnumLabel } from "@/lib/utils";
  */
 export function ClientJourneyView({
   detail,
+  embedded = false,
   nowIso,
 }: {
   detail: JourneyClientDetail;
   nowIso: string;
+  /**
+   * Rendered inside the client record's Journey tab rather than on its own
+   * page. The tab already carries the client header and the tab strip, so the
+   * view drops its own header and back link rather than showing the company
+   * name twice and offering a way out of a page nobody navigated to.
+   */
+  embedded?: boolean;
 }) {
   const router = useRouter();
 
@@ -95,6 +104,37 @@ export function ClientJourneyView({
   const step = useMemo(() => nextStep(detail), [detail]);
   const cards = useMemo(() => attentionCards(detail, now), [detail, now]);
   const clock = useMemo(() => stageClock(account, now), [account, now]);
+
+  /*
+   * The score behind the health label.
+   *
+   * explainHealth already decides what to call this account, and that label
+   * is what the board and the header show - this adds how well it is going
+   * and what moved the number, so the figure can be taken apart rather than
+   * asserted. Two names for the same state would be worse than none.
+   */
+  const scored = useMemo(() => {
+    const waiting = detail.flags
+      .filter((flag) => flag.kind === "WAITING_ON_CLIENT")
+      .map((flag) => new Date(flag.raisedAt).getTime())
+      .sort((a, b) => a - b)[0];
+
+    return journeyHealth({
+      requirements: account.requirements,
+      flags: detail.flags,
+      tasks: detail.tasks.map((task) => ({
+        status: task.status,
+        dueDate: task.dueDate,
+      })),
+      dayInStage: clock.day,
+      targetDays: clock.targetDays,
+      waitingDays:
+        waiting === undefined
+          ? null
+          : Math.max(1, Math.round((now.getTime() - waiting) / 86_400_000)),
+      now,
+    });
+  }, [account.requirements, detail.flags, detail.tasks, clock, now]);
   const health = useMemo(() => explainHealth(account, now), [account, now]);
   const progress = deriveProgress(account);
   /*
@@ -174,6 +214,7 @@ export function ClientJourneyView({
 
   return (
     <div className="space-y-4">
+      {!embedded ? (
       <Link
         href="/journey"
         className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition hover:text-slate-800"
@@ -181,10 +222,12 @@ export function ClientJourneyView({
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
         Back to Journey
       </Link>
+      ) : null}
 
       {/* ---------------------------------------------------------------- */}
       {/* Header                                                            */}
       {/* ---------------------------------------------------------------- */}
+      {!embedded ? (
       <header className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -397,6 +440,7 @@ export function ClientJourneyView({
           </div>
         </div>
       </header>
+      ) : null}
 
       {/* ---------------------------------------------------------------- */}
       {/* Body                                                              */}
@@ -483,6 +527,8 @@ export function ClientJourneyView({
 
       {healthOpen ? (
         <HealthDialog
+          score={scored.score}
+          factors={scored.factors}
           label={HEALTH_LABELS[health.health]}
           color={HEALTH_COLORS[health.health]}
           reasons={health.reasons}

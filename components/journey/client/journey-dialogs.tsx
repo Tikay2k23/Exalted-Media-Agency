@@ -514,11 +514,16 @@ export function HealthDialog({
   label,
   color,
   reasons,
+  score,
+  factors,
   onClose,
 }: {
   label: string;
   color: string;
   reasons: string[];
+  /** 0-100, weighted over the factors that applied to this account. */
+  score: number;
+  factors: { key: string; label: string; score: number; weight: number; detail: string }[];
   onClose: () => void;
 }) {
   return (
@@ -540,6 +545,32 @@ export function HealthDialog({
         />
         <p className="text-sm font-semibold text-slate-900">{label}</p>
       </div>
+
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="text-3xl font-semibold tabular-nums text-slate-950">{score}</span>
+        <span className="text-xs text-slate-500">out of 100</span>
+      </div>
+
+      {factors.length > 0 ? (
+        <>
+          <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            What moved it
+          </p>
+          <ul className="mt-2 space-y-2">
+            {factors.map((factor) => (
+              <li key={factor.key} className="text-xs">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-slate-800">{factor.label}</span>
+                  <span className="tabular-nums text-slate-500">
+                    {factor.score} · weight {factor.weight}
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-slate-600">{factor.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       {reasons.length === 0 ? (
         <p className="mt-3 text-xs leading-5 text-slate-600">

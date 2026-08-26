@@ -5,6 +5,7 @@ import { ClientStrategy } from "@/components/clients/client-strategy";
 import { ClientHeader } from "@/components/clients/client-header";
 import { ClientIntegrations } from "@/components/clients/client-integrations";
 import { ClientOverview } from "@/components/clients/client-overview";
+import { ClientJourneyView } from "@/components/journey/client/client-journey-view";
 import { ClientWork } from "@/components/clients/client-work";
 import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
@@ -40,6 +41,7 @@ import { loadAuthContext } from "@/lib/authz";
 import { type ClientTab, nextMilestone } from "@/lib/clients/client-workspace";
 import { getJourneySummaryCards } from "@/lib/data/client-metrics-query";
 import { getClientRow } from "@/lib/data/clients-dashboard-query";
+import { getJourneyClientDetail } from "@/lib/data/journey-client-query";
 import { prisma } from "@/lib/prisma";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
 import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
@@ -217,6 +219,16 @@ export default async function ClientDetailPage({
       author: { select: { name: true } },
     },
   });
+
+  /*
+   * The journey workspace, read through the same query the Journey page uses.
+   *
+   * The tab used to render a thinner summary of its own, built from a display
+   * grouping rather than the stored stages, so the two disagreed about where a
+   * client was the moment operations added a stage. One workspace, two places
+   * to open it.
+   */
+  const { detail: journeyDetail } = await getJourneyClientDetail(actor, id);
 
   const requested = typeof query.tab === "string" ? (query.tab as ClientTab) : "overview";
   const initialTab = TAB_KEYS.includes(requested) ? requested : "overview";
@@ -843,81 +855,21 @@ export default async function ClientDetailPage({
             />
           ),
 
-          journey: (
-            <div className="space-y-6">
-              {/* The five questions, answered without opening anything else. */}
-              {(() => {
-                const stageKey = client.currentStage.stageKey;
-                const position = journeyPosition(stageKey);
-                const ownership = deriveOwnership(stageKey, client.serviceType);
-                const openTasks = client.agencyTasks.filter((task) => task.status !== "DONE");
-
-                // Waiting on the client is a different kind of stuck from blocked, and
-                // conflating them is why nobody could tell whose move it was.
-                const waitingOnClient = openTasks.some(
-                  (task) => task.status === "WAITING_CLIENT",
-                );
-
-                const blockers = [
-                  ...(client.currentBlocker ? [client.currentBlocker] : []),
-                  ...openTasks
-                    .filter((task) => task.status === "BLOCKED" || task.status === "WAITING_CLIENT")
-                    .map((task) => task.title),
-                ];
-
-                return (
-                  <JourneyOverview
-                    clientId={client.id}
-                    stageName={client.currentStage.name}
-                    progressPercent={
-                      position === null
-                        ? 0
-                        : Math.round(((position + 1) / JOURNEY_OWNERSHIP.length) * 100)
-                    }
-                    currentOwnerLabel={ownership.current
-                      .map((role) => teamRoleLabels[role])
-                      .join(" + ")}
-                    currentOwnerName={client.currentOwner?.name ?? client.assignedUser?.name ?? null}
-                    nextOwnerLabel={
-                      ownership.next.length
-                        ? ownership.next.map((role) => teamRoleLabels[role]).join(" + ")
-                        : "Nobody — end of the journey"
-                    }
-                    openTaskCount={openTasks.length}
-                    targetLaunch={client.contractEndDate}
-                    blockers={blockers}
-                    waitingOnClient={waitingOnClient && blockers.length > 0}
-                    steps={JOURNEY_OWNERSHIP.map((entry, index) => ({
-                      stageKey: entry.stageKey,
-                      label: entry.stageKey.replaceAll("_", " "),
-                      state:
-                        position === null
-                          ? "future"
-                          : index < position
-                            ? "done"
-                            : index === position
-                              ? "current"
-                              : "future",
-                    }))}
-                    workstreams={client.workstreams
-                      .filter((stream) => stream.isRequired)
-                      .map((stream) => ({
-                        role: stream.role,
-                        label: teamRoleLabels[stream.role],
-                        ownerName: stream.owner?.name ?? null,
-                        stage: stream.stage,
-                        isRequired: stream.isRequired,
-                      }))}
-                  />
-                );
-              })()}
-              <div id="readiness">
-                <StageReadiness
-                  clientId={client.id}
-                  currentStagePosition={client.currentStage.position}
-                />
-              </div>
-            </div>
+          journey: journeyDetail ? (
+            <ClientJourneyView
+              detail={journeyDetail}
+              nowIso={new Date().toISOString()}
+              embedded
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Journey</CardTitle>
+                <CardDescription>
+                  This account has no journey record to show yet.
+                </CardDescription>
+              </CardHeader>
+            </Card>
           ),
 
           quality: (
