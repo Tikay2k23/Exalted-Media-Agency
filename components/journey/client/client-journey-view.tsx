@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useClientTab } from "@/components/clients/client-tabs";
+import { TabLink, useClientTab } from "@/components/clients/client-tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -780,13 +780,14 @@ export function ClientJourneyView({
                         {item.label}
                       </button>
                     ))}
-                    <Link
-                      href={`/clients/${account.id}?tab=tasks`}
+                    <TabLink
+                      tab="tasks"
+                      clientId={account.id}
                       className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50"
                     >
                       <ExternalLink className="h-3.5 w-3.5 text-slate-400" aria-hidden />
                       Open All Tasks
-                    </Link>
+                    </TabLink>
                   </div>
                 ) : null}
               </div>
@@ -837,12 +838,13 @@ export function ClientJourneyView({
                     * account sits still, so the fix is offered right here
                     * rather than only inside Needs Attention.
                     */}
-                  <Link
-                    href={`/clients/${account.id}?tab=overview`}
+                  <TabLink
+                    tab="overview"
+                    clientId={account.id}
                     className="mt-0.5 inline-block text-[11px] font-semibold text-sky-700 hover:text-sky-800"
                   >
                     Assign Project Manager
-                  </Link>
+                  </TabLink>
                 </>
               )}
             </div>

@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { TabLink } from "@/components/clients/client-tabs";
 import { Button } from "@/components/ui/button";
 import {
   type DetailTask,
@@ -577,6 +578,16 @@ function TaskRow({ task }: { task: DetailTask }) {
   );
 }
 
+/**
+ * This client's delivery workload, summarised.
+ *
+ * Named for the client rather than the stage, because the client is what it
+ * counts. It was headed "Stage Work Summary" and said "no active work for this
+ * stage" while showing every open task on the account - a task carries no
+ * journey stage, so there was never a stage filter behind the wording. Two
+ * cards claiming filters that do not exist is how somebody comes to believe a
+ * quiet stage is a finished one.
+ */
 export function WorkSummaryCard({
   detail,
   now,
@@ -599,7 +610,7 @@ export function WorkSummaryCard({
   return (
     <Card
       icon={ClipboardList}
-      title="Stage Work Summary"
+      title="Client Work Summary"
       action={
         <span className="text-[11px] font-medium text-slate-500">
           {work.total} task{work.total === 1 ? "" : "s"}
@@ -607,7 +618,7 @@ export function WorkSummaryCard({
       }
     >
       {work.total === 0 ? (
-        <Quiet>No active work for this stage.</Quiet>
+        <Quiet>No work has been created for this client yet.</Quiet>
       ) : (
         <>
           <div className="grid grid-cols-4 gap-2">
@@ -629,7 +640,7 @@ export function WorkSummaryCard({
               ))}
             </ul>
           ) : (
-            <Quiet>Everything in this stage is finished.</Quiet>
+            <Quiet>Everything open for this client is finished.</Quiet>
           )}
 
           {/*
@@ -637,14 +648,23 @@ export function WorkSummaryCard({
             * wrong page. Not filtered to this stage either: a task carries no
             * journey stage, so there is nothing to filter on, and a link that
             * claimed to narrow by stage would be the same mistake again.
+            *
+            * TabLink rather than a Link to ?tab=tasks. The href is identical,
+            * but a real navigation to it from inside the client record is a
+            * soft navigation that never remounts the tab strip, so this button
+            * moved the address bar to ?tab=tasks and left the reader looking
+            * at Journey. It carries no filters of its own: the Work tab opens
+            * on every status, assignee and project, which is what "all work"
+            * means.
             */}
-          <Link
-            href={`/clients/${clientId}?tab=tasks`}
+          <TabLink
+            tab="tasks"
+            clientId={clientId}
             className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
           >
             View all work for this client
             <ArrowRight className="h-3 w-3" aria-hidden />
-          </Link>
+          </TabLink>
         </>
       )}
     </Card>

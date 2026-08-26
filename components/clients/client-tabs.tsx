@@ -1,14 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import type { ClientTab } from "@/lib/clients/client-workspace";
 
@@ -124,19 +117,56 @@ export function ClientTabs({
     setMoreOpen(false);
 
     /*
-     * replaceState rather than a router navigation: every panel is already on
-     * the page, so a navigation would re-run the whole server query to produce
-     * markup the browser is already holding. The URL still ends up correct, so
-     * a link somebody copies opens on the right tab.
+     * History rather than a router navigation: the panels are rendered here,
+     * so a navigation would re-run the whole server query to produce markup
+     * the browser is already holding. The URL still ends up correct, so a link
+     * somebody copies opens on the right tab.
+     *
+     * pushState rather than replaceState, so Back returns to the tab they came
+     * from. Replacing meant a reader who followed a link out of Journey into
+     * Work and pressed Back left the client entirely, having never been given
+     * an entry to go back to. Skipped when the tab is not actually changing,
+     * because clicking the tab you are already on should not cost a Back press
+     * to undo.
      */
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", tab);
-    window.history.replaceState(null, "", url.toString());
+
+    if (url.searchParams.get("tab") !== tab) {
+      url.searchParams.set("tab", tab);
+      window.history.pushState(null, "", url.toString());
+    }
 
     // A tab is a page as far as the reader is concerned; landing halfway down
     // the previous one is disorienting.
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
+
+  /*
+   * Back and Forward.
+   *
+   * Without this the address bar and the page disagree: history moves the URL
+   * to ?tab=journey while this component's own state keeps showing Work, which
+   * is a worse failure than not having the entry at all. Reading the tab back
+   * out of the URL is what makes pushState above safe.
+   */
+  useEffect(() => {
+    const onPop = () => {
+      const tab = new URL(window.location.href).searchParams.get("tab");
+
+      setActive(
+        ALL_CLIENT_TABS.some((entry) => entry.key === tab)
+          ? (tab as ClientTab)
+          : initial,
+      );
+      // Whatever a panel was asked to open belongs to the click, not to the
+      // history entry somebody has just stepped back onto.
+      setFocus(null);
+      setMoreOpen(false);
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [initial]);
 
   const controller = useMemo<TabController>(
     () => ({ active, setTab, focus }),
@@ -237,28 +267,65 @@ export function ClientTabs({
  * to a real anchor when used outside the provider so it is never a dead
  * control.
  */
+/**
+ * A link to another tab of this client's record.
+ *
+ * Always an anchor with a working href, never a bare button. The href is what
+ * makes middle-click, ctrl-click and "open in new tab" behave, what a reader
+ * sees on hover, and what happens on the standalone journey page where there
+ * is no tab controller to ask.
+ *
+ * A plain left-click is intercepted instead, because a real navigation to
+ * ?tab= does not work from inside the page: the App Router treats it as a soft
+ * navigation, so ClientTabs re-renders with a new initial prop and is never
+ * remounted - its own state keeps the old tab and nothing moves. Links written
+ * as <Link href="?tab=..."> from inside the client record therefore changed
+ * the address bar and left the reader looking at the page they started on.
+ *
+ * `clientId` is only needed when the link is rendered somewhere the current
+ * URL is not already this client's record.
+ */
 export function TabLink({
   tab,
+  clientId,
   className,
   children,
 }: {
   tab: ClientTab;
+  clientId?: string;
   className?: string;
   children: ReactNode;
 }) {
   const controller = useClientTab();
-
-  if (!controller) {
-    return (
-      <a href={`?tab=${tab}`} className={className}>
-        {children}
-      </a>
-    );
-  }
+  const href = clientId ? `/clients/${clientId}?tab=${tab}` : `?tab=${tab}`;
 
   return (
-    <button type="button" onClick={() => controller.setTab(tab)} className={className}>
+    <a
+      href={href}
+      className={className}
+      onClick={(event) => {
+        /*
+         * Anything that is not an ordinary left-click belongs to the browser -
+         * a ctrl-click asking for a new tab must get one, not a tab switch in
+         * the window they were trying to keep.
+         */
+        if (
+          !controller
+          || event.defaultPrevented
+          || event.button !== 0
+          || event.metaKey
+          || event.ctrlKey
+          || event.shiftKey
+          || event.altKey
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        controller.setTab(tab);
+      }}
+    >
       {children}
-    </button>
+    </a>
   );
 }
