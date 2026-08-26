@@ -13,6 +13,7 @@ import {
   taskProgress,
   workSummary,
 } from "@/lib/journey/client-detail";
+import { EMPTY_INTAKE, onboardingFocus } from "@/lib/journey/onboarding-focus";
 import {
   type JourneyAccount,
   type JourneyRequirement,
@@ -135,6 +136,24 @@ function detail(overrides: Partial<JourneyClientDetail> = {}): JourneyClientDeta
     activity: [],
     projectStartDate: null,
     targetLaunchDate: null,
+    onboarding: {
+      intake: EMPTY_INTAKE,
+      focus: onboardingFocus({
+        intake: EMPTY_INTAKE,
+        outstanding: [],
+        a2p: null,
+        stageName: "Build & Implementation",
+        nextStageName: "Internal Quality Assurance",
+        nextMilestone: null,
+        now: NOW,
+      }),
+      outstanding: [],
+      chase: [],
+      a2p: null,
+      waitingOnClient: false,
+      canReviewIntake: true,
+      projectManager: { name: "Aileen Romero", seat: "PROJECT_MANAGER" },
+    },
     renewalDate: null,
     canMove: true,
     canOverride: true,
@@ -152,6 +171,7 @@ function flag(overrides: Partial<JourneyFlag> = {}): JourneyFlag {
     responsibleParty: "Client",
     dueAt: NOW.toISOString(),
     round: null,
+    contactId: null,
     raisedByName: "Sarah Reyes",
     raisedAt: daysAgo(4),
     lastFollowUpAt: null,

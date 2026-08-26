@@ -512,11 +512,28 @@ export function questionsForService(service: ServiceType): IntakeQuestion[] {
   return sectionsForService(service).flatMap((section) => section.questions);
 }
 
+/** One unanswered required question, with enough to go and ask for it. */
+export interface MissingRequiredQuestion {
+  questionId: string;
+  label: string;
+  sectionId: string;
+  sectionTitle: string;
+}
+
 export interface IntakeProgress {
   answered: number;
   total: number;
   percent: number;
+  /** Labels only. Kept because three screens already read it by that shape. */
   missingRequired: string[];
+  /**
+   * The same gaps, with the section they sit in.
+   *
+   * Labels alone were enough to count with and not enough to act on: telling
+   * somebody four answers are missing without saying which part of the form
+   * they are in leaves them scrolling the whole thing.
+   */
+  missingRequiredQuestions: MissingRequiredQuestion[];
   complete: boolean;
 }
 
@@ -537,24 +554,34 @@ export function deriveIntakeProgress(
    * sit in the denominator, or the client can never reach a hundred per cent
    * and the required list names something they were never asked.
    */
-  const questions = questionsForService(service).filter((question) =>
-    questionApplies(question, answers),
-  );
+  const sections = sectionsForService(service);
+  const questions = sections
+    .flatMap((section) =>
+      section.questions.map((question) => ({ question, section })),
+    )
+    .filter(({ question }) => questionApplies(question, answers));
+
   const given = (id: string) => {
     const value = answers?.[id];
     return typeof value === "string" && value.trim().length > 0;
   };
 
-  const answered = questions.filter((question) => given(question.id)).length;
-  const missingRequired = questions
-    .filter((question) => question.required && !given(question.id))
-    .map((question) => question.label);
+  const answered = questions.filter(({ question }) => given(question.id)).length;
+  const missingRequiredQuestions = questions
+    .filter(({ question }) => question.required && !given(question.id))
+    .map(({ question, section }) => ({
+      questionId: question.id,
+      label: question.label,
+      sectionId: section.id,
+      sectionTitle: section.title,
+    }));
 
   return {
     answered,
     total: questions.length,
     percent: questions.length === 0 ? 0 : Math.round((answered / questions.length) * 100),
-    missingRequired,
-    complete: missingRequired.length === 0,
+    missingRequired: missingRequiredQuestions.map((entry) => entry.label),
+    missingRequiredQuestions,
+    complete: missingRequiredQuestions.length === 0,
   };
 }

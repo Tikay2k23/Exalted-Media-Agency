@@ -18,10 +18,10 @@ import {
   TriangleAlert,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ClientOverviewFooter } from "@/components/clients/client-overview-footer";
-import { TabLink } from "@/components/clients/client-tabs";
+import { TabLink, useClientTab } from "@/components/clients/client-tabs";
 import { EmptyPanel, Monogram } from "@/components/clients/client-bits";
 import {
   AudienceDialog,
@@ -390,7 +390,42 @@ export function ClientStrategy({
 }) {
   const now = useMemo(() => new Date(serverNow), [serverNow]);
   const [editing, setEditing] = useState<null | "goals" | "audience" | "valueProp" | "note">(null);
-  const [showIntake, setShowIntake] = useState(false);
+  const intakeRef = useRef<HTMLDivElement | null>(null);
+  const tabs = useClientTab();
+  const focus = tabs?.focus ?? null;
+
+  /*
+   * Open on arrival when the journey sent somebody here to work on the intake.
+   *
+   * Initial state rather than an effect, because this panel is mounted by the
+   * tab strip only while it is the active tab - ClientTabs renders
+   * panels[active] and nothing else. So it mounts fresh, with the focus
+   * already set, every time somebody arrives; an effect or a
+   * previous-value comparison would have nothing to react to and would never
+   * fire. It also means no wasted closed-then-open render.
+   */
+  const [showIntake, setShowIntake] = useState(focus === "intake-workspace");
+
+  /*
+   * Arriving here from the journey focus card.
+   *
+   * The card sends people to the intake rather than carrying a send button of
+   * its own - there is one send path in the application and it is the one
+   * below. It cannot say so through the URL: the App Router treats ?tab= as a
+   * soft navigation, so the tab strip re-renders with a new initial prop and
+   * never remounts, and its own state keeps the old value. The tab controller
+   * carries the target instead.
+   */
+  useEffect(() => {
+    if (focus !== "intake" && focus !== "intake-workspace") return;
+
+    /*
+     * Instant, not smooth. A smooth scroll needs animation frames, and there
+     * is no guarantee this panel is being composited when the tab flips to it
+     * - a smooth call in that state simply never runs.
+     */
+    intakeRef.current?.scrollIntoView({ block: "center" });
+  }, [focus]);
 
   const primary = audiences.filter((audience) => audience.tier === "PRIMARY");
   const secondary = audiences.filter((audience) => audience.tier === "SECONDARY");
@@ -493,124 +528,126 @@ export function ClientStrategy({
         </Card>
 
         {/* ---- intake, whose sending is the existing functionality ---- */}
-        <Card
-          title="Client Intake Form"
-          icon={
-            <CardIcon tone="rose">
-              <ClipboardList className="h-4.5 w-4.5" />
-            </CardIcon>
-          }
-          action={
-            <Badge tone={INTAKE_TONE[intake.status] ?? "slate"}>
-              {formatEnumLabel(intake.status)}
-            </Badge>
-          }
-        >
-          <p className="text-xs leading-5 text-slate-600">
-            The intake form collects the information needed to build the right strategy and
-            deliver the work.
-          </p>
+        <div ref={intakeRef} className="min-w-0 scroll-mt-24">
+          <Card
+            title="Client Intake Form"
+            icon={
+              <CardIcon tone="rose">
+                <ClipboardList className="h-4.5 w-4.5" />
+              </CardIcon>
+            }
+            action={
+              <Badge tone={INTAKE_TONE[intake.status] ?? "slate"}>
+                {formatEnumLabel(intake.status)}
+              </Badge>
+            }
+          >
+            <p className="text-xs leading-5 text-slate-600">
+              The intake form collects the information needed to build the right strategy and
+              deliver the work.
+            </p>
 
-          {intake.status === "NOT_SENT" ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50/60 p-4">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-900">
-                    Intake form has not been sent yet.
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    Send it to {intake.recipientEmail} to gather their information.
-                  </p>
+            {intake.status === "NOT_SENT" ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-900">
+                      Intake form has not been sent yet.
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      Send it to {intake.recipientEmail} to gather their information.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-slate-900">
-                  {intake.percent}% answered
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  {intake.submittedAt
-                    ? `Submitted ${shortDate(intake.submittedAt)}`
-                    : intake.viewedAt
-                      ? `Opened ${shortDate(intake.viewedAt)}`
-                      : `Sent ${shortDate(intake.sentAt)}`}
-                </p>
+            ) : (
+              <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-900">
+                    {intake.percent}% answered
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {intake.submittedAt
+                      ? `Submitted ${shortDate(intake.submittedAt)}`
+                      : intake.viewedAt
+                        ? `Opened ${shortDate(intake.viewedAt)}`
+                        : `Sent ${shortDate(intake.sentAt)}`}
+                  </p>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-emerald-500"
+                    style={{ width: `${intake.percent}%` }}
+                  />
+                </div>
+                {intake.missingRequired.length > 0 ? (
+                  <p className="text-[11px] text-amber-600">
+                    {intake.missingRequired.length} required answer
+                    {intake.missingRequired.length === 1 ? "" : "s"} still missing
+                  </p>
+                ) : null}
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-emerald-500"
-                  style={{ width: `${intake.percent}%` }}
-                />
-              </div>
-              {intake.missingRequired.length > 0 ? (
-                <p className="text-[11px] text-amber-600">
-                  {intake.missingRequired.length} required answer
-                  {intake.missingRequired.length === 1 ? "" : "s"} still missing
-                </p>
-              ) : null}
-            </div>
-          )}
+            )}
 
-          {/*
-            * Sending, resending and reviewing all live in the intake workspace
-            * that already exists. This opens it rather than reimplementing any
-            * of it - there is one send path in the application and this is not
-            * a second one.
-            */}
-          {/*
-            * A2P, when the client needs it.
-            *
-            * One line and a link. The registration itself is sixty fields and a
-            * review trail, which belongs on its own page rather than swamping a
-            * card whose job is to say where the intake has got to.
-            */}
-          {a2p ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
-                  A2P registration
-                </p>
-                <p className="text-xs text-slate-700">
-                  {a2p.complete} of {a2p.total} items · {a2p.headline}
-                </p>
+            {/*
+              * Sending, resending and reviewing all live in the intake workspace
+              * that already exists. This opens it rather than reimplementing any
+              * of it - there is one send path in the application and this is not
+              * a second one.
+              */}
+            {/*
+              * A2P, when the client needs it.
+              *
+              * One line and a link. The registration itself is sixty fields and a
+              * review trail, which belongs on its own page rather than swamping a
+              * card whose job is to say where the intake has got to.
+              */}
+            {a2p ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                    A2P registration
+                  </p>
+                  <p className="text-xs text-slate-700">
+                    {a2p.complete} of {a2p.total} items · {a2p.headline}
+                  </p>
+                </div>
+                <a
+                  href={`/clients/${clientId}/a2p`}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50"
+                >
+                  Open A2P profile
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                </a>
               </div>
-              <a
-                href={`/clients/${clientId}/a2p`}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50"
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIntake((open) => !open)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
               >
-                Open A2P profile
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                <FileText className="h-3.5 w-3.5" aria-hidden />
+                {intake.status === "NOT_SENT" ? "Send Intake Form" : "Open intake workspace"}
+                <ChevronDown
+                  className={cn("h-3.5 w-3.5 transition", showIntake && "rotate-180")}
+                  aria-hidden
+                />
+              </button>
+
+              <a
+                href={`/clients/${clientId}/intake-preview`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Preview Intake Form
               </a>
             </div>
-          ) : null}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setShowIntake((open) => !open)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
-            >
-              <FileText className="h-3.5 w-3.5" aria-hidden />
-              {intake.status === "NOT_SENT" ? "Send Intake Form" : "Open intake workspace"}
-              <ChevronDown
-                className={cn("h-3.5 w-3.5 transition", showIntake && "rotate-180")}
-                aria-hidden
-              />
-            </button>
-
-            <a
-              href={`/clients/${clientId}/intake-preview`}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Preview Intake Form
-            </a>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
 
       {/* The existing intake workspace, unchanged, revealed on demand. */}

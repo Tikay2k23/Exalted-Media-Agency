@@ -128,9 +128,26 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * duplicating it here would make two places to read and eventually two places
  * that disagree.
  */
-export function ClientInformationPanel({ detail }: { detail: JourneyClientDetail }) {
+export function ClientInformationPanel({
+  detail,
+  onOpenJourney,
+  onOpenTab,
+}: {
+  detail: JourneyClientDetail;
+  /** Jump to the journey itself, which the stage row offers. */
+  onOpenJourney?: () => void;
+  /** Move to another tab of the client record without a full navigation. */
+  onOpenTab?: (tab: "contacts" | "services") => void;
+}) {
   const { account } = detail;
   const primary = detail.contacts.find((contact) => contact.isPrimary) ?? detail.contacts[0];
+  /*
+   * The approver comes from the existing contact role rather than a second
+   * field. Somebody marked as the approver is who signs off; there is no
+   * separate authorised-approver record to keep in step with this one.
+   */
+  const approver = detail.contacts.find((contact) => contact.isApprover) ?? null;
+  const services = account.services.map((service) => formatEnumLabel(service));
 
   return (
     <Card icon={Building2} title="Essential Client Info">
@@ -150,15 +167,92 @@ export function ClientInformationPanel({ detail }: { detail: JourneyClientDetail
         />
         <InfoRow
           label="Phone"
-          value={primary?.phone ?? <span className="text-slate-400">Not recorded</span>}
+          value={
+            primary?.phone ? (
+              // tel: reaches whatever the machine already uses to dial.
+              <a href={`tel:${primary.phone.replace(/[^+\d]/g, "")}`} className="text-sky-700 hover:underline">
+                {primary.phone}
+              </a>
+            ) : (
+              <span className="text-slate-400">Not recorded</span>
+            )
+          }
         />
         <InfoRow
+          label="Authorised Approver"
+          value={
+            approver ? (
+              <span className="flex flex-wrap items-baseline gap-1.5">
+                {approver.name}
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+                  Confirmed
+                </span>
+              </span>
+            ) : (
+              <span className="text-slate-400">Not assigned</span>
+            )
+          }
+        />
+        {/*
+          * The account's manager, not whoever sits in a project's manager
+          * column. That column will accept anybody, and on at least one live
+          * account it holds a creative specialist - naming them the project
+          * manager here would be exactly the wrong answer to "who owns this".
+          */}
+        <InfoRow
           label="Project Manager"
-          value={account.projectManagerName ?? <span className="text-amber-700">Unassigned</span>}
+          value={
+            detail.onboarding.projectManager?.name ?? (
+              <span className="text-amber-700">Not assigned</span>
+            )
+          }
+        />
+        <InfoRow
+          label="Current Journey Stage"
+          value={
+            onOpenJourney ? (
+              <button
+                type="button"
+                onClick={onOpenJourney}
+                className="text-left text-sky-700 hover:underline"
+              >
+                {account.stageName}
+              </button>
+            ) : (
+              account.stageName
+            )
+          }
         />
         <InfoRow
           label="Services"
-          value={account.services.map((service) => formatEnumLabel(service)).join(", ")}
+          value={
+            services.length === 0 ? (
+              <span className="text-slate-400">None recorded</span>
+            ) : (
+              /*
+               * The primary plus a count, rather than a list that wraps to
+               * four lines on an account that bought everything.
+               */
+              <span className="flex flex-wrap items-baseline gap-1.5">
+                {onOpenTab ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTab("services")}
+                    className="text-left text-sky-700 hover:underline"
+                  >
+                    {services[0]}
+                  </button>
+                ) : (
+                  services[0]
+                )}
+                {services.length > 1 ? (
+                  <span className="text-[11px] text-slate-500">
+                    +{services.length - 1} more
+                  </span>
+                ) : null}
+              </span>
+            )
+          }
         />
         <InfoRow
           label="Project Start Date"
@@ -192,12 +286,31 @@ export function ClientInformationPanel({ detail }: { detail: JourneyClientDetail
         />
       </div>
 
-      <Link href={`/clients/${account.id}`} className="mt-3 block">
-        <Button size="sm" variant="secondary" className="h-8 w-full gap-1.5 text-[11px]">
+      {/*
+        * Account, not the client root.
+        *
+        * Everything above this button is contact and ownership information,
+        * and Account is where that is edited. Landing somebody on Overview and
+        * letting them find it themselves is a click this card can spend.
+        */}
+      {onOpenTab ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="mt-3 h-8 w-full gap-1.5 text-[11px]"
+          onClick={() => onOpenTab("contacts")}
+        >
           Open Full Client Profile
-          <ExternalLink className="h-3 w-3" aria-hidden />
+          <ArrowRight className="h-3 w-3" aria-hidden />
         </Button>
-      </Link>
+      ) : (
+        <Link href={`/clients/${account.id}?tab=contacts`} className="mt-3 block">
+          <Button size="sm" variant="secondary" className="h-8 w-full gap-1.5 text-[11px]">
+            Open Full Client Profile
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </Button>
+        </Link>
+      )}
     </Card>
   );
 }

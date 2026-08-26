@@ -1,3 +1,4 @@
+import { type ChaseGroup } from "@/lib/journey/contacts-to-chase";
 import {
   type JourneyAccount,
   type JourneyActivityEntry,
@@ -7,6 +8,11 @@ import {
   exitReadiness,
   stageAging,
 } from "@/lib/journey/journey-board";
+import {
+  type IntakeSnapshot,
+  type OnboardingFocus,
+  type OutstandingItem,
+} from "@/lib/journey/onboarding-focus";
 
 /**
  * What one client's journey page needs, and how it decides what to say.
@@ -65,6 +71,8 @@ export interface JourneyFlag {
   impact: "BLOCKS_STAGE" | "DELAYS_MILESTONE" | "NO_BLOCK" | null;
   expectedResolutionAt: string | null;
   requirementKey: string | null;
+  /** Which client contact owes it, where it was raised against a person. */
+  contactId: string | null;
 }
 
 export interface DetailTask {
@@ -78,11 +86,21 @@ export interface DetailTask {
 }
 
 export interface DetailContact {
+  /**
+   * The record id, which the chase list needs.
+   *
+   * Raised conditions point at a contact by id, so a list grouped by person
+   * cannot be assembled from names alone - two people called Chris at the same
+   * client is not a hypothetical.
+   */
+  id: string;
   name: string;
   email: string | null;
   phone: string | null;
   role: string | null;
   isPrimary: boolean;
+  /** The existing contact role, rather than a second approver field. */
+  isApprover: boolean;
 }
 
 export interface TimelineMilestone {
@@ -122,9 +140,44 @@ export interface JourneyClientDetail {
   targetLaunchDate: string | null;
   renewalDate: string | null;
 
+  /**
+   * The onboarding picture, assembled once on the server.
+   *
+   * The focus card, the chase drawer, the requirements list and the missing
+   * answers list are four views of one calculation. Deriving it here rather
+   * than in each component is what stops the card saying three outstanding
+   * items while the drawer it opens shows four.
+   */
+  onboarding: OnboardingDetail;
+
   canMove: boolean;
   canOverride: boolean;
   canManageFlags: boolean;
+}
+
+export interface OnboardingDetail {
+  intake: IntakeSnapshot;
+  focus: OnboardingFocus;
+  /** Everything still owed, already in chase order. */
+  outstanding: OutstandingItem[];
+  /** Grouped by the person who owes it. Empty when nobody owes anything. */
+  chase: ChaseGroup[];
+  /** Null when this client has no A2P registration in play. */
+  a2p: { percent: number; complete: number; total: number; headline: string } | null;
+  /** Derived from the outstanding items, never stored. */
+  waitingOnClient: boolean;
+  /** Whether this user may act on the intake and the dependencies. */
+  canReviewIntake: boolean;
+  /**
+   * Who is actually managing this account, seat included.
+   *
+   * Not the same as account.projectManagerName, which reports whoever sits in
+   * a project's projectManager column because that is the field the stage gate
+   * checks. That column can hold a creative specialist - it does on at least
+   * one live account - and answering "who is the project manager" with a
+   * person who is not one is worse than admitting nobody is.
+   */
+  projectManager: { name: string; seat: string } | null;
 }
 
 /* -------------------------------------------------------------------------- */

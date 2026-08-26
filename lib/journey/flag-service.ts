@@ -292,7 +292,14 @@ export async function markDependencyReceived(input: {
 
   const flag = await prisma.clientJourneyFlag.findUnique({
     where: { id: flagId },
-    select: { id: true, clientId: true, reason: true, resolvedAt: true, cancelledAt: true },
+    select: {
+      id: true,
+      clientId: true,
+      reason: true,
+      resolvedAt: true,
+      cancelledAt: true,
+      receivedAt: true,
+    },
   });
 
   if (!flag) return failure("NOT_FOUND", "That record no longer exists.");
@@ -305,9 +312,29 @@ export async function markDependencyReceived(input: {
     return failure("INVALID", "That request is already closed.");
   }
 
-  const updated = await prisma.clientJourneyFlag.update({
-    where: { id: flag.id },
+  if (flag.receivedAt) {
+    return failure("INVALID", "This information has already been marked received.");
+  }
+
+  /*
+   * Conditional on it still being unreceived.
+   *
+   * Two people can have this open at once, and the read above is not the
+   * write. Without the condition the second click silently moves the received
+   * date to now, quietly rewriting when the client actually answered - which
+   * is the one thing this timestamp exists to record.
+   */
+  const claimed = await prisma.clientJourneyFlag.updateMany({
+    where: { id: flag.id, receivedAt: null, resolvedAt: null, cancelledAt: null },
     data: { receivedAt: new Date() },
+  });
+
+  if (claimed.count === 0) {
+    return failure("INVALID", "This information has already been marked received.");
+  }
+
+  const updated = await prisma.clientJourneyFlag.findUniqueOrThrow({
+    where: { id: flag.id },
     select: { id: true, receivedAt: true },
   });
 

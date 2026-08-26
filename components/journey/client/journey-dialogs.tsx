@@ -21,7 +21,14 @@ import { cn } from "@/lib/utils";
 /* Shell                                                                      */
 /* -------------------------------------------------------------------------- */
 
-function Modal({
+/**
+ * The one dialog shell on this page.
+ *
+ * Exported so the onboarding drawers use it rather than growing a second
+ * shell with its own escape handling and its own idea of how tall a dialog
+ * is on a phone.
+ */
+export function Modal({
   title,
   eyebrow,
   onClose,

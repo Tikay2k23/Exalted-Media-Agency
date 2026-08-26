@@ -38,6 +38,12 @@ import {
   JourneyFlagDialog,
 } from "@/components/journey/client/journey-dialogs";
 import {
+  ContactsToChaseDrawer,
+  MissingInformationDrawer,
+  OnboardingFocusCard,
+  RequirementsDrawer,
+} from "@/components/journey/client/onboarding-focus";
+import {
   ClientInformationPanel,
   NeedsAttentionPanel,
 } from "@/components/journey/client/journey-panels";
@@ -76,6 +82,7 @@ import {
   deriveProgress,
   explainHealth,
 } from "@/lib/journey/journey-board";
+import { type FocusActionKey } from "@/lib/journey/onboarding-focus";
 import {
   TOTAL_JOURNEY_STAGES,
   journeyStageForStoredStage,
@@ -137,6 +144,8 @@ export function ClientJourneyView({
   const [recovering, setRecovering] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  /** Which onboarding drawer is open, if any. */
+  const [drawer, setDrawer] = useState<"chase" | "missing" | "requirements" | null>(null);
 
   /*
    * Refetch on the server rather than reload the browser: the point is fresh
@@ -155,6 +164,44 @@ export function ClientJourneyView({
   const step = useMemo(() => nextStep(detail), [detail]);
   const cards = useMemo(() => attentionCards(detail, now), [detail, now]);
   const clock = useMemo(() => stageClock(account, now), [account, now]);
+
+  /*
+   * Whether onboarding is what this account is about right now.
+   *
+   * Always in the three onboarding stages. Past them, only while a form is
+   * genuinely in flight - sent, and not yet read.
+   *
+   * The narrower second test is deliberate and was arrived at the hard way.
+   * Taking over whenever the intake was merely "unfinished" put "Focus: Send
+   * Intake" on a client sitting in Internal Quality Assurance, because nobody
+   * had ever sent that account a form. Most accounts past onboarding are in
+   * that position, so the card that was meant to stop stale onboarding advice
+   * would have served stale onboarding advice to two thirds of the board -
+   * and buried the defect and checklist guidance somebody in QA actually
+   * needs. A form that was never sent to a client in QA is a gap for the
+   * requirements table to raise, not a reason to replace the stage's card.
+   */
+  const onboardingLeads = useMemo(() => {
+    const stageKey = journeyStageForStoredStage(
+      account.stageKey,
+      account.stagePosition,
+    ).key;
+
+    if (
+      stageKey === "payment_received"
+      || stageKey === "onboarding"
+      || stageKey === "access_assets"
+    ) {
+      return true;
+    }
+
+    const state = detail.onboarding.focus.intakeState;
+
+    return state === "SENT"
+      || state === "OPENED"
+      || state === "IN_PROGRESS"
+      || state === "SUBMITTED";
+  }, [account.stageKey, account.stagePosition, detail.onboarding.focus.intakeState]);
 
   /*
    * The score behind the health label.
@@ -479,6 +526,70 @@ export function ClientJourneyView({
 
     // A card with no home is a card that should not have carried a button.
     console.warn(`[journey] No action wired for attention card: ${card.key}`);
+  }
+
+  /**
+   * Where the focus card's buttons go.
+   *
+   * Three of them open a drawer here; the rest hand off to a screen that
+   * already owns the job. Nothing in this switch sends an intake form or
+   * reviews one - both live in Strategy, and this navigates to them rather
+   * than growing a second copy that would have to be kept in step.
+   *
+   * `focusTarget` is how the Strategy tab knows what to do on arrival: every
+   * panel on the client page is mounted before anybody clicks, so a URL
+   * parameter cannot reach one. The tab controller carries it instead.
+   */
+  function goToStrategy(focusTarget: "intake" | "intake-workspace") {
+    router.push(`/clients/${account.id}?tab=services`);
+    tabs?.setTab("services", focusTarget);
+  }
+
+  function actOnFocus(action: FocusActionKey) {
+    switch (action) {
+      case "go-to-strategy":
+        goToStrategy("intake");
+        return;
+
+      case "open-onboarding-form":
+      case "review-intake":
+        // The existing intake workspace, opened where it already lives.
+        goToStrategy("intake-workspace");
+        return;
+
+      case "preview-intake":
+        // The read-only preview route that already exists. New tab, because
+        // it is a reference rather than somewhere to work.
+        window.open(`/clients/${account.id}/intake-preview`, "_blank", "noopener");
+        return;
+
+      case "contacts-to-chase":
+        setDrawer("chase");
+        return;
+
+      case "view-missing-information":
+        setDrawer("missing");
+        return;
+
+      case "view-requirements":
+        setDrawer("requirements");
+        return;
+
+      case "view-journey":
+        /*
+         * Already on the journey when this card is embedded in the tab, so
+         * scrolling to the timeline is the honest reading of "view journey".
+         */
+        if (embedded) {
+          document
+            .getElementById("journey-timeline")
+            ?.scrollIntoView({ block: "start" });
+          return;
+        }
+
+        router.push(`/clients/${account.id}?tab=journey`);
+        return;
+    }
   }
 
   async function resolveFlag(card: AttentionCard) {
@@ -813,7 +924,7 @@ export function ClientJourneyView({
         * goes looking for it.
         */}
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
-        <div className="min-w-0 space-y-4">
+        <div id="journey-timeline" className="min-w-0 scroll-mt-24 space-y-4">
           <JourneyCard
             account={account}
             steps={steps}
@@ -888,8 +999,28 @@ export function ClientJourneyView({
             onDetails={() => setHealthOpen(true)}
           />
 
-          <StageFocusCard detail={detail} />
-          <ClientInformationPanel detail={detail} />
+          {/*
+            * Onboarding owns this slot while onboarding is what is happening.
+            *
+            * Past the onboarding stages the per-stage focus is the more useful
+            * card - somebody looking at an account in Internal QA wants
+            * defects and checklists, not a form that was signed off weeks ago.
+            * Which is also what "stop emphasising intake once onboarding is
+            * complete" asks for.
+            */}
+          {onboardingLeads ? (
+            <OnboardingFocusCard detail={detail} onAct={actOnFocus} />
+          ) : (
+            <StageFocusCard detail={detail} />
+          )}
+          <ClientInformationPanel
+            detail={detail}
+            onOpenJourney={() => actOnFocus("view-journey")}
+            onOpenTab={(tab) => {
+              router.push(`/clients/${account.id}?tab=${tab}`);
+              tabs?.setTab(tab);
+            }}
+          />
         </div>
       </div>
 
@@ -909,6 +1040,33 @@ export function ClientJourneyView({
           clientId={account.id}
           kind={flagKind}
           onClose={() => setFlagKind(null)}
+        />
+      ) : null}
+
+      {drawer === "chase" ? (
+        <ContactsToChaseDrawer
+          detail={detail}
+          onClose={() => setDrawer(null)}
+          onChanged={onRefresh}
+        />
+      ) : null}
+
+      {drawer === "missing" ? (
+        <MissingInformationDrawer
+          detail={detail}
+          onClose={() => setDrawer(null)}
+          onOpenForm={() => {
+            setDrawer(null);
+            actOnFocus("open-onboarding-form");
+          }}
+        />
+      ) : null}
+
+      {drawer === "requirements" ? (
+        <RequirementsDrawer
+          detail={detail}
+          onClose={() => setDrawer(null)}
+          onChase={() => setDrawer("chase")}
         />
       ) : null}
 
