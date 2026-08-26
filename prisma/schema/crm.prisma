@@ -518,6 +518,8 @@ model Client {
   clientNotes            ClientNote[]
   a2pProfile             A2PProfile?
 
+  automationRuns StageAutomationRun[]
+
   @@index([assignedUserId])
   @@index([status])
   @@index([currentStageId])
@@ -559,6 +561,8 @@ model ClientContact {
 }
 
 model ClientStageHistory {
+  automationRuns StageAutomationRun[]
+
   id          String   @id @default(cuid())
   clientId    String
   fromStageId String?
@@ -833,4 +837,59 @@ model ClientJourneyFlag {
   @@index([dueAt])
   @@index([taskId])
   @@index([contactId])
+}
+
+/// What a stage transition set in motion, and whether it worked.
+enum AutomationAction {
+  SYNC_WORKSTREAMS
+  GENERATE_TASKS
+  RECORD_HANDOFF
+  NOTIFY
+}
+
+enum AutomationStatus {
+  SUCCEEDED
+  FAILED
+}
+
+/// One thing a stage transition tried to do.
+///
+/// The move itself is a transaction and needs no record: it either happened or
+/// it did not. These are the effects that run after it commits - generating the
+/// stage's work, recording the handoff, notifying the people who now own it -
+/// and each can fail on its own while the account has genuinely moved.
+///
+/// They used to fail silently in the worst possible way: an exception after the
+/// commit told the caller the move failed while the client sat in the new
+/// stage. Now a failure is caught, written down, and visible, so somebody can
+/// see that an account advanced but nobody was told.
+model StageAutomationRun {
+  id       String @id @default(cuid())
+  clientId String
+  /// The transition this belongs to. Null only if the history row is later
+  /// removed, which nothing does today.
+  historyId String?
+
+  action AutomationAction
+  status AutomationStatus
+
+  startedAt   DateTime
+  completedAt DateTime?
+  /// Bumped when somebody runs the step again rather than a new row, so the log
+  /// shows one action that took three attempts rather than three actions.
+  retryCount  Int       @default(0)
+  /// The message, not the stack. Somebody reading the log needs to know what
+  /// broke, and a stack trace in an interface is noise.
+  lastError   String?
+  /// What it produced - task ids, a handoff id - so the effect can be found.
+  generatedIds String[]
+
+  createdAt DateTime @default(now())
+
+  client  Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  history ClientStageHistory? @relation(fields: [historyId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([historyId])
+  @@index([status])
 }

@@ -18,6 +18,7 @@ import {
   type RequirementEvaluation,
   evaluateStageRequirements,
 } from "@/lib/journey/stage-requirements";
+import { runAutomationStep } from "@/lib/journey/automation-runs";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -233,7 +234,17 @@ export async function moveClientStage(
   // Make sure the client has the workstreams its service calls for before any
   // task is routed at a specialist seat, or the first move into production
   // would route at seats that do not exist yet.
-  await syncWorkstreams({ clientId: client.id, service: client.serviceType });
+  /*
+   * Recorded like the rest, though it runs before the move: if the seats a
+   * stage routes work at were never created, the tasks that follow land on
+   * the wrong people, and it is worth being able to see that happened.
+   */
+  const workstreamSync = await runAutomationStep(
+    { clientId: client.id, historyId: null, action: "SYNC_WORKSTREAMS" },
+    () => syncWorkstreams({ clientId: client.id, service: client.serviceType }),
+  );
+
+  void workstreamSync;
 
   const assigneeCandidates = {
     accountOwnerId: client.assignedUserId,
@@ -274,6 +285,9 @@ export async function moveClientStage(
 
   // The move, its history entry, and the work it generates land together or
   // not at all. A stage change with no follow-up work is a silent process gap.
+  /* Captured inside the transaction, read by the steps that follow it. */
+  let historyId: string | null = null;
+
   try {
   await prisma.$transaction(async (transaction) => {
     /*
@@ -301,7 +315,7 @@ export async function moveClientStage(
       throw new StaleJourneyError();
     }
 
-    await transaction.clientStageHistory.create({
+    const history = await transaction.clientStageHistory.create({
       data: {
         clientId: client.id,
         fromStageId: client.currentStageId,
@@ -325,6 +339,8 @@ export async function moveClientStage(
           : undefined,
       },
     });
+
+    historyId = history.id;
 
     if (generatedTasks.length) {
       await transaction.employeeTask.createMany({ data: generatedTasks, skipDuplicates: true });
@@ -367,25 +383,47 @@ export async function moveClientStage(
   // has genuinely changed hands only once the stage change has committed, and
   // a handoff row pointing at a transaction that rolled back would be a lie in
   // the one place people go to read the history.
-  const handoff = await recordHandoff({
-    clientId: client.id,
-    companyName: client.companyName,
-    service: client.serviceType,
-    toStageKey: targetStage.stageKey,
-    actorId: actor.id,
-    fromRole: client.currentOwnerRole,
-    fromUserId: client.currentOwnerId,
-    note: wasOverridden ? requestedOverride?.reason.trim() : null,
-  });
+  /*
+   * Everything past this point runs against an account that has already
+   * moved. A throw here used to travel out of the whole call, so the caller
+   * was told the move failed while the client sat in the new stage - the one
+   * outcome worse than either succeeding or failing outright. Each step is
+   * recorded and none of them can undo what has committed.
+   */
+  const handoffRun = await runAutomationStep(
+    {
+      clientId: client.id,
+      historyId,
+      action: "RECORD_HANDOFF",
+      idsOf: (value) => (value?.id ? [value.id] : []),
+    },
+    () =>
+      recordHandoff({
+        clientId: client.id,
+        companyName: client.companyName,
+        service: client.serviceType,
+        toStageKey: targetStage.stageKey,
+        actorId: actor.id,
+        fromRole: client.currentOwnerRole,
+        fromUserId: client.currentOwnerId,
+        note: wasOverridden ? requestedOverride?.reason.trim() : null,
+      }),
+  );
 
-  await notifyStageChange({
-    actor,
-    client,
-    targetStageName: targetStage.name,
-    wasOverridden,
-    blocking: gate.blocking,
-    generatedTaskAssigneeIds: generatedTasks.map((task) => task.assignedToId),
-  });
+  const handoff = handoffRun.value;
+
+  await runAutomationStep(
+    { clientId: client.id, historyId, action: "NOTIFY" },
+    () =>
+      notifyStageChange({
+        actor,
+        client,
+        targetStageName: targetStage.name,
+        wasOverridden,
+        blocking: gate.blocking,
+        generatedTaskAssigneeIds: generatedTasks.map((task) => task.assignedToId),
+      }),
+  );
 
   return {
     ok: true,
