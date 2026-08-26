@@ -377,7 +377,22 @@ export function ClientJourneyView({
       }
     }
 
-    // Everything else is work, and the work lives in the task system.
+    /*
+     * The requirements are already on this page, in the card below. Sending
+     * somebody to the task list to complete a requirement was wrong: a
+     * requirement is the stage gate, not delivery work, and plenty of them -
+     * "primary contact recorded" - have no task behind them at all, so the
+     * list they landed on could hold nothing to do with what was blocking.
+     */
+    if (step.kind === "complete-requirements") {
+      setShowAllRequirements(true);
+      // Instant rather than smooth: this is a jump to a section on the same page,
+      // and an animated scroll only delays the thing somebody asked for.
+      document.getElementById("stage-requirements")?.scrollIntoView({ block: "start" });
+      return;
+    }
+
+    // What is left is delivery work, and that does live in the task system.
     router.push(`/clients/${account.id}?tab=tasks`);
   }
 
@@ -659,11 +674,13 @@ export function ClientJourneyView({
           </div>
 
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+            <div id="stage-requirements" className="min-w-0 scroll-mt-4">
             <StageRequirementsCard
               detail={detail}
               expanded={showAllRequirements}
               onToggle={() => setShowAllRequirements((open) => !open)}
             />
+            </div>
             <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
           </div>
 
