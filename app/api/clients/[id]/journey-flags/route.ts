@@ -6,6 +6,8 @@ import { loadAuthContext } from "@/lib/authz";
 import {
   FLAG_FAILURE_STATUS,
   raiseJourneyFlag,
+  markDependencyReceived,
+  recordFollowUp,
   resolveJourneyFlag,
 } from "@/lib/journey/flag-service";
 
@@ -20,11 +22,25 @@ const bodySchema = z.discriminatedUnion("action", [
     responsibleParty: z.string().max(160).nullish(),
     dueAt: z.string().nullish(),
     round: z.coerce.number().int().min(1).max(50).nullish(),
+    severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).nullish(),
+    impact: z.enum(["BLOCKS_STAGE", "DELAYS_MILESTONE", "NO_BLOCK"]).nullish(),
+    expectedResolutionAt: z.string().nullish(),
+    requirementKey: z.string().max(120).nullish(),
+    taskId: z.string().max(60).nullish(),
+    contactId: z.string().max(60).nullish(),
   }),
   z.object({
     action: z.literal("resolve"),
     flagId: z.string().min(1),
     note: z.string().max(1000).nullish(),
+  }),
+  z.object({
+    action: z.literal("follow-up"),
+    flagId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("received"),
+    flagId: z.string().min(1),
   }),
 ]);
 
@@ -64,12 +80,24 @@ export async function POST(
             responsibleParty: parsed.data.responsibleParty ?? null,
             dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
             round: parsed.data.round ?? null,
+            severity: parsed.data.severity ?? null,
+            impact: parsed.data.impact ?? null,
+            expectedResolutionAt: parsed.data.expectedResolutionAt
+              ? new Date(parsed.data.expectedResolutionAt)
+              : null,
+            requirementKey: parsed.data.requirementKey ?? null,
+            taskId: parsed.data.taskId ?? null,
+            contactId: parsed.data.contactId ?? null,
           })
-        : await resolveJourneyFlag({
-            actor,
-            flagId: parsed.data.flagId,
-            note: parsed.data.note ?? null,
-          });
+        : parsed.data.action === "follow-up"
+          ? await recordFollowUp({ actor, flagId: parsed.data.flagId })
+          : parsed.data.action === "received"
+            ? await markDependencyReceived({ actor, flagId: parsed.data.flagId })
+            : await resolveJourneyFlag({
+                actor,
+                flagId: parsed.data.flagId,
+                note: parsed.data.note ?? null,
+              });
 
     if (!result.ok) {
       return NextResponse.json(

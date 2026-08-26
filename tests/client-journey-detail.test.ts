@@ -153,6 +153,15 @@ function flag(overrides: Partial<JourneyFlag> = {}): JourneyFlag {
     round: null,
     raisedByName: "Sarah Reyes",
     raisedAt: daysAgo(4),
+    lastFollowUpAt: null,
+    followUpCount: 0,
+    receivedAt: null,
+    resolvedAt: null,
+    cancelledAt: null,
+    severity: null,
+    impact: null,
+    expectedResolutionAt: null,
+    requirementKey: null,
     ...overrides,
   };
 }

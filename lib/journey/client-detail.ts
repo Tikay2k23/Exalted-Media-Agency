@@ -48,6 +48,23 @@ export interface JourneyFlag {
   round: number | null;
   raisedByName: string | null;
   raisedAt: string;
+
+  /*
+   * The dependency and blocker fields.
+   *
+   * Nullable and defaulted throughout: a condition raised before any of this
+   * existed still reads, and the status is derived from these rather than
+   * stored, so there is no second copy of the same fact to fall out of step.
+   */
+  lastFollowUpAt: string | null;
+  followUpCount: number;
+  receivedAt: string | null;
+  resolvedAt: string | null;
+  cancelledAt: string | null;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+  impact: "BLOCKS_STAGE" | "DELAYS_MILESTONE" | "NO_BLOCK" | null;
+  expectedResolutionAt: string | null;
+  requirementKey: string | null;
 }
 
 export interface DetailTask {

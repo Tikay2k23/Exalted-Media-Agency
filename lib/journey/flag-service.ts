@@ -66,6 +66,19 @@ export interface RaiseFlagInput {
   responsibleParty?: string | null;
   dueAt?: Date | null;
   round?: number | null;
+
+  /*
+   * What a blocker costs, and what it hangs off.
+   *
+   * All optional: a waiting record has no severity to give, and a condition
+   * raised before any of this existed keeps working with none of it set.
+   */
+  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+  impact?: "BLOCKS_STAGE" | "DELAYS_MILESTONE" | "NO_BLOCK" | null;
+  expectedResolutionAt?: Date | null;
+  requirementKey?: string | null;
+  taskId?: string | null;
+  contactId?: string | null;
 }
 
 export async function raiseJourneyFlag(input: RaiseFlagInput) {
@@ -97,6 +110,12 @@ export async function raiseJourneyFlag(input: RaiseFlagInput) {
       responsibleParty: input.responsibleParty?.trim() || null,
       dueAt: input.dueAt ?? null,
       round: input.round ?? null,
+      severity: input.severity ?? null,
+      impact: input.impact ?? null,
+      expectedResolutionAt: input.expectedResolutionAt ?? null,
+      requirementKey: input.requirementKey?.trim() || null,
+      taskId: input.taskId ?? null,
+      contactId: input.contactId ?? null,
       raisedById: actor.id,
     },
     select: { id: true },
@@ -182,4 +201,123 @@ export async function resolveJourneyFlag(input: ResolveFlagInput) {
   });
 
   return { ok: true as const, flagId: flag.id, alreadyResolved: false };
+}
+
+/**
+ * Recording that somebody chased a client dependency.
+ *
+ * Deliberately not a send. Nothing in this application sends email or SMS -
+ * client-facing communication is an explicit human action here - so this
+ * records that the chase happened and when, which is what makes the age of a
+ * request mean something and stops the same item being asked for twice in a
+ * morning.
+ */
+export async function recordFollowUp(input: {
+  actor: AuthContext;
+  flagId: string;
+  note?: string | null;
+}) {
+  const { actor, flagId } = input;
+
+  const flag = await prisma.clientJourneyFlag.findUnique({
+    where: { id: flagId },
+    select: {
+      id: true,
+      clientId: true,
+      reason: true,
+      resolvedAt: true,
+      cancelledAt: true,
+      lastFollowUpAt: true,
+      followUpCount: true,
+      client: { select: { companyName: true, assignedUserId: true } },
+    },
+  });
+
+  if (!flag) return failure("NOT_FOUND", "That record no longer exists.");
+
+  if (!mayManage(actor)) {
+    return failure("FORBIDDEN", "You do not have permission to update this account.");
+  }
+
+  if (flag.resolvedAt || flag.cancelledAt) {
+    return failure("INVALID", "That request is already closed.");
+  }
+
+  /*
+   * Once a day at most, checked here rather than only in the interface: the
+   * point is that a client is not chased four times for one thing, and a
+   * double-click must not count as two chases.
+   */
+  if (flag.lastFollowUpAt) {
+    const since = Date.now() - flag.lastFollowUpAt.getTime();
+
+    if (since < 86_400_000) {
+      return failure("INVALID", "This was already followed up today.");
+    }
+  }
+
+  const now = new Date();
+
+  const updated = await prisma.clientJourneyFlag.update({
+    where: { id: flag.id },
+    data: {
+      lastFollowUpAt: now,
+      followUpCount: { increment: 1 },
+    },
+    select: { id: true, followUpCount: true, lastFollowUpAt: true },
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Followed up with ${flag.client.companyName} on: ${flag.reason}`,
+    entityType: "CLIENT",
+    entityId: flag.clientId,
+    metadataJson: { flagId: flag.id, followUpCount: updated.followUpCount },
+  });
+
+  return { ok: true as const, flag: updated };
+}
+
+/**
+ * The client answered.
+ *
+ * Separate from resolving: received is their move and resolved is ours, and an
+ * account sitting on an answer nobody has checked should not read as finished.
+ */
+export async function markDependencyReceived(input: {
+  actor: AuthContext;
+  flagId: string;
+}) {
+  const { actor, flagId } = input;
+
+  const flag = await prisma.clientJourneyFlag.findUnique({
+    where: { id: flagId },
+    select: { id: true, clientId: true, reason: true, resolvedAt: true, cancelledAt: true },
+  });
+
+  if (!flag) return failure("NOT_FOUND", "That record no longer exists.");
+
+  if (!mayManage(actor)) {
+    return failure("FORBIDDEN", "You do not have permission to update this account.");
+  }
+
+  if (flag.resolvedAt || flag.cancelledAt) {
+    return failure("INVALID", "That request is already closed.");
+  }
+
+  const updated = await prisma.clientJourneyFlag.update({
+    where: { id: flag.id },
+    data: { receivedAt: new Date() },
+    select: { id: true, receivedAt: true },
+  });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `Recorded a client response for: ${flag.reason}`,
+    entityType: "CLIENT",
+    entityId: flag.clientId,
+    metadataJson: { flagId: flag.id },
+  });
+
+  return { ok: true as const, flag: updated };
 }

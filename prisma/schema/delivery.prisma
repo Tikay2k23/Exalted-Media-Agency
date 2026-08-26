@@ -262,6 +262,8 @@ model EmployeeTask {
   blockedBy  TaskDependency[]       @relation("DependentTask")
   blocking   TaskDependency[]       @relation("PrerequisiteTask")
 
+  journeyFlags ClientJourneyFlag[]
+
   @@index([assignedToId])
   @@index([createdById])
   @@index([clientId])

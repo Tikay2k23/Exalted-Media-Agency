@@ -27,6 +27,13 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { getStageTaskTemplates } from "@/lib/automation/stage-automation";
 import type { JourneyFlag } from "@/lib/journey/client-detail";
+import {
+  DEPENDENCY_STATUS_LABELS,
+  IMPACT_LABELS,
+  ageInDays,
+  canFollowUp,
+  dependencyStatus,
+} from "@/lib/journey/dependency";
 import type { JourneyHealth } from "@/lib/journey/journey-health";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -224,24 +231,29 @@ export function ClientDependenciesCard({
   flags: JourneyFlag[];
   now: Date;
   /**
-   * Opens the waiting record for editing. Deliberately not a send: nothing in
-   * this application sends email or SMS, and a button that implies it would be
-   * a promise the system cannot keep.
+   * Records that somebody chased this. Deliberately not a send: nothing in this
+   * application sends email or SMS, and a button implying it would be a promise
+   * the system cannot keep.
    */
   onFollowUp: (flag: JourneyFlag) => void;
   canAct: boolean;
 }) {
-  const waiting = flags.filter((flag) => flag.kind === "WAITING_ON_CLIENT");
+  const waiting = flags.filter(
+    (flag) => flag.kind === "WAITING_ON_CLIENT" && !flag.resolvedAt,
+  );
 
   if (waiting.length === 0) return null;
 
-  const ageOf = (flag: JourneyFlag) =>
-    Math.max(
-      0,
-      Math.round((now.getTime() - new Date(flag.raisedAt).getTime()) / 86_400_000),
-    );
+  const oldest = Math.max(...waiting.map((flag) => ageInDays(flag, now)));
 
-  const oldest = Math.max(...waiting.map(ageOf));
+  const STATUS_TONE: Record<string, string> = {
+    REQUESTED: "bg-slate-100 text-slate-600",
+    WAITING: "bg-amber-50 text-amber-700",
+    OVERDUE: "bg-rose-50 text-rose-700",
+    RECEIVED: "bg-indigo-50 text-indigo-700",
+    RESOLVED: "bg-emerald-50 text-emerald-700",
+    CANCELLED: "bg-slate-100 text-slate-500",
+  };
 
   return (
     <Panel title="Client Dependencies" icon={MailQuestion}>
@@ -251,46 +263,64 @@ export function ClientDependenciesCard({
       </p>
 
       <ul className="mt-2.5 space-y-2">
-        {waiting.map((flag) => (
-          <li key={flag.id} className="rounded-lg border border-slate-200 p-2.5">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="min-w-0 text-xs font-medium text-slate-900">{flag.reason}</p>
-              {flag.dueAt ? (
+        {waiting.map((flag) => {
+          const status = dependencyStatus(flag, now);
+          const chaseable = canFollowUp(flag, now);
+
+          return (
+            <li key={flag.id} className="rounded-lg border border-slate-200 p-2.5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="min-w-0 text-xs font-medium text-slate-900">{flag.reason}</p>
                 <span
                   className={cn(
                     "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold",
-                    new Date(flag.dueAt) < now
-                      ? "bg-rose-50 text-rose-700"
-                      : "bg-amber-50 text-amber-700",
+                    STATUS_TONE[status],
                   )}
                 >
-                  Due {formatDate(flag.dueAt)}
+                  {DEPENDENCY_STATUS_LABELS[status]}
                 </span>
+              </div>
+
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Requested {formatDate(flag.raisedAt)}
+                {flag.raisedByName ? ` by ${flag.raisedByName}` : ""}
+                {flag.dueAt ? ` · due ${formatDate(flag.dueAt)}` : ""}
+              </p>
+
+              {flag.followUpCount > 0 ? (
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Chased {flag.followUpCount} time{flag.followUpCount === 1 ? "" : "s"}
+                  {flag.lastFollowUpAt ? `, last on ${formatDate(flag.lastFollowUpAt)}` : ""}
+                </p>
               ) : null}
-            </div>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              Requested {formatDate(flag.raisedAt)}
-              {flag.raisedByName ? ` by ${flag.raisedByName}` : ""}
-            </p>
-            {canAct ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="mt-2 gap-1.5"
-                onClick={() => onFollowUp(flag)}
-              >
-                <Send className="h-3.5 w-3.5" aria-hidden />
-                Update request
-              </Button>
-            ) : null}
-          </li>
-        ))}
+
+              {flag.impact ? (
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  {IMPACT_LABELS[flag.impact]}
+                </p>
+              ) : null}
+
+              {canAct ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2 gap-1.5"
+                  disabled={!chaseable}
+                  title={chaseable ? undefined : "Already followed up today"}
+                  onClick={() => onFollowUp(flag)}
+                >
+                  <Send className="h-3.5 w-3.5" aria-hidden />
+                  {chaseable ? "Record follow-up" : "Followed up today"}
+                </Button>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
     </Panel>
   );
 }
-
 /* -------------------------------------------------------------------------- */
 /* Upcoming stage                                                             */
 /* -------------------------------------------------------------------------- */

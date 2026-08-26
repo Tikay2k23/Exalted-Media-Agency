@@ -309,6 +309,39 @@ export function ClientJourneyView({
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
+  /*
+   * Recording that somebody chased a client dependency.
+   *
+   * Not a send. Nothing here sends email or SMS - that stays an explicit human
+   * action in this application - so this records the chase, which is what makes
+   * the age of a request mean anything. The server refuses a second one the
+   * same day, so a double click cannot chase a client twice.
+   */
+  async function followUpOn(flagId: string) {
+    if (busyCard) return;
+
+    setBusyCard(`follow-${flagId}`);
+
+    try {
+      const response = await fetch(`/api/clients/${account.id}/journey-flags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "follow-up", flagId }),
+      });
+
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+
+        window.alert(failure?.error ?? "We could not record that follow-up.");
+        return;
+      }
+
+      router.refresh();
+    } finally {
+      setBusyCard(null);
+    }
+  }
+
   async function resolveFlag(card: AttentionCard) {
     const flagId = card.key.startsWith("flag-") ? card.key.slice(5) : null;
 
@@ -639,7 +672,7 @@ export function ClientJourneyView({
               flags={detail.flags}
               now={now}
               canAct={detail.canManageFlags}
-              onFollowUp={() => setFlagKind("WAITING_ON_CLIENT")}
+              onFollowUp={(flag) => void followUpOn(flag.id)}
             />
             <MilestonesCard milestones={detail.milestones} />
             <UpcomingStageCard

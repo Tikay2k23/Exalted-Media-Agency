@@ -131,6 +131,8 @@ model PipelineStage {
   requirements  StageRequirement[]
   leads         Lead[]
 
+  journeyFlags ClientJourneyFlag[]
+
   @@unique([pipelineId, position])
   @@unique([pipelineId, stageKey])
   @@index([position])
@@ -550,6 +552,8 @@ model ClientContact {
   reviewCycles ReviewCycle[] @relation("ReviewApprover")
   approvals    Approval[]    @relation("ApprovalContact")
 
+  journeyFlags ClientJourneyFlag[]
+
   @@index([clientId])
   @@index([status])
 }
@@ -731,6 +735,27 @@ enum JourneyFlagKind {
   PAUSED
 }
 
+/// How badly a blocker hurts. Separate from impact: a critical problem that
+/// blocks nothing is still worth knowing about, and a minor one that stops the
+/// stage still stops it.
+enum FlagSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// What a raised condition actually costs.
+///
+/// The gate reads this rather than guessing from the kind: an agency can be
+/// blocked on something that does not hold the stage shut, and treating every
+/// blocker as a stage stopper trains people to stop raising them.
+enum FlagImpact {
+  BLOCKS_STAGE
+  DELAYS_MILESTONE
+  NO_BLOCK
+}
+
 /// One raised condition, from the moment it is raised until it is cleared.
 ///
 /// Append-only in spirit: resolving sets resolvedAt rather than deleting, so
@@ -754,6 +779,38 @@ model ClientJourneyFlag {
   /// Which round of revisions this is, when that is what was raised.
   round Int?
 
+  /// The stage this was raised in, so a flag can be read in the context it
+  /// belongs to rather than only against wherever the client is now.
+  stageId String?
+  /// The requirement it hangs off, by catalogue key. Not a relation: the
+  /// requirement catalogue lives in code, and a foreign key to it would need a
+  /// migration every time somebody adds a requirement.
+  requirementKey String?
+  /// The task it hangs off, where one exists.
+  taskId String?
+  /// Which client contact owes it. Free text responsibleParty stays for the
+  /// cases that are not a person on file - a host, a registrar, a bank.
+  contactId String?
+
+  /// Chasing. Counted rather than inferred from activity, because the count is
+  /// what tells somebody this has been asked for four times already.
+  lastFollowUpAt DateTime?
+  followUpCount  Int       @default(0)
+
+  /// The client answered, before anybody checked whether the answer was any
+  /// good. Kept apart from resolvedAt: received is their move, resolved is
+  /// ours, and collapsing them loses the window where a wrong answer sits
+  /// looking finished.
+  receivedAt DateTime?
+  /// Closed without being met - the requirement went away, the client changed
+  /// their mind, the work was descoped. Not the same as resolved.
+  cancelledAt DateTime?
+
+  /// Blockers only. Null on a waiting record, which has no severity to give.
+  severity FlagSeverity?
+  impact   FlagImpact?
+  expectedResolutionAt DateTime?
+
   raisedById String?
   raisedAt   DateTime @default(now())
 
@@ -767,8 +824,13 @@ model ClientJourneyFlag {
   client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   raisedBy   User?  @relation("JourneyFlagRaiser", fields: [raisedById], references: [id], onDelete: SetNull)
   resolvedBy User?  @relation("JourneyFlagResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  stage      PipelineStage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  task       EmployeeTask?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  contact    ClientContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([clientId, resolvedAt])
   @@index([kind])
   @@index([dueAt])
+  @@index([taskId])
+  @@index([contactId])
 }
