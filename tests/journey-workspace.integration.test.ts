@@ -12,6 +12,7 @@ import {
   groupByPhase,
   stageAging,
 } from "@/lib/journey/journey-board";
+import { raiseJourneyFlag, resolveJourneyFlag } from "@/lib/journey/flag-service";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -263,5 +264,86 @@ describe("journey workspace data (integration)", { skip: !hasDatabase }, () => {
       readiness.canAdvance,
       account.exitCriteria.every((rule) => rule.satisfied || !rule.isBlocking),
     );
+  });
+
+  it("fills in when a blocker is raised", async () => {
+    const actor = await loadAuthContext(fixtures!.managerId);
+    assert.ok(actor);
+
+    const raised = await raiseJourneyFlag({
+      actor,
+      clientId: fixtures!.ownedClientId,
+      kind: "BLOCKED",
+      reason: "API credentials rejected by the provider",
+      impact: "BLOCKS_STAGE",
+    });
+
+    assert.equal(raised.ok, true);
+
+    const client = await prisma.client.findUniqueOrThrow({
+      where: { id: fixtures!.ownedClientId },
+      select: { currentBlocker: true },
+    });
+
+    assert.equal(client.currentBlocker, "API credentials rejected by the provider");
+  });
+
+  it("empties when the last one is resolved", async () => {
+    const actor = await loadAuthContext(fixtures!.managerId);
+    assert.ok(actor);
+
+    const open = await prisma.clientJourneyFlag.findFirstOrThrow({
+      where: { clientId: fixtures!.ownedClientId, kind: "BLOCKED", resolvedAt: null },
+      select: { id: true },
+    });
+
+    const resolved = await resolveJourneyFlag({
+      actor,
+      flagId: open.id,
+      note: "Provider reissued the credentials.",
+    });
+
+    assert.equal(resolved.ok, true);
+
+    const client = await prisma.client.findUniqueOrThrow({
+      where: { id: fixtures!.ownedClientId },
+      select: { currentBlocker: true },
+    });
+
+    assert.equal(client.currentBlocker, null);
+  });
+});
+
+
+/**
+ * One source of truth for whether an account is blocked.
+ *
+ * Client.currentBlocker drives health, the board and the attention list, and
+ * it used to be writable as free text from the client record as well as being
+ * synced from the flags. Two writers meant an account could read Blocked with
+ * no record behind it that anybody could own, date or resolve - which is
+ * exactly what one client in the seed data had.
+ */
+describe("the blocked column mirrors the flags", { skip: !hasDatabase }, () => {
+  it("leaves no blocked account without a record behind it", async () => {
+    /*
+     * The invariant, checked across everything rather than the fixture: a
+     * client reading Blocked with no open flag cannot be resolved by anybody,
+     * because there is nothing to resolve.
+     */
+    const clients = await prisma.client.findMany({
+      where: { deletedAt: null, currentBlocker: { not: null } },
+      select: {
+        companyName: true,
+        currentBlocker: true,
+        journeyFlags: { where: { kind: "BLOCKED", resolvedAt: null }, select: { id: true } },
+      },
+    });
+
+    const orphans = clients
+      .filter((client) => client.currentBlocker?.trim() && client.journeyFlags.length === 0)
+      .map((client) => `${client.companyName}: ${client.currentBlocker}`);
+
+    assert.deepEqual(orphans, []);
   });
 });
