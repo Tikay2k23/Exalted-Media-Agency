@@ -424,6 +424,16 @@ export function StageDetailsPanel({
             ? ` (${Math.round((clock.day / clock.targetDays) * 100)}%)`
             : ""}
         </Row>
+        {clock.pausedDays > 0 ? (
+          <Row label="Paused Time">
+            {clock.pausedDays} day{clock.pausedDays === 1 ? "" : "s"}
+          </Row>
+        ) : null}
+        {clock.pausedDays > 0 ? (
+          <Row label="Counting Toward Target">
+            {clock.effectiveDays} day{clock.effectiveDays === 1 ? "" : "s"}
+          </Row>
+        ) : null}
         {waitingSince ? (
           <Row label="Waiting Since">
             {formatDate(waitingSince)}

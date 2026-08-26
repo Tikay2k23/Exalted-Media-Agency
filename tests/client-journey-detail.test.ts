@@ -100,6 +100,7 @@ function account(overrides: Partial<JourneyAccount> = {}): JourneyAccount {
     openTaskCount: 3,
     completedTaskCount: 5,
     overdueTaskCount: 0,
+  pausedDays: 0,
     blockedTaskCount: 0,
     waitingTaskCount: 0,
     reviewTaskCount: 0,

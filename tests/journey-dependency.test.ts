@@ -9,6 +9,7 @@ import {
   daysSinceFollowUp,
   dependencyStatus,
   isOpen,
+  pausedDaysInStage,
   summarise,
 } from "@/lib/journey/dependency";
 
@@ -204,5 +205,86 @@ describe("summary", () => {
     assert.equal(summary.overdue, 1);
     assert.equal(summary.received, 1);
     assert.equal(summary.open, 2);
+  });
+});
+
+/**
+ * Pause periods and the stage clock.
+ *
+ * An agency that agreed to stop for a fortnight has not spent a fortnight being
+ * slow. A target that cannot tell those apart turns every paused account red,
+ * and a colour that is always red stops being read.
+ */
+describe("paused time inside a stage", () => {
+  const stageEntered = "2026-08-01T00:00:00.000Z";
+  const now = new Date("2026-08-21T00:00:00.000Z"); // 20 calendar days in
+
+  it("counts nothing when the account was never paused", () => {
+    assert.equal(pausedDaysInStage([], stageEntered, now), 0);
+  });
+
+  it("counts a closed pause", () => {
+    const paused = pausedDaysInStage(
+      [{ raisedAt: "2026-08-05T00:00:00.000Z", resolvedAt: "2026-08-08T00:00:00.000Z" }],
+      stageEntered,
+      now,
+    );
+
+    assert.equal(paused, 3);
+  });
+
+  it("runs an open pause up to now", () => {
+    const paused = pausedDaysInStage(
+      [{ raisedAt: "2026-08-16T00:00:00.000Z", resolvedAt: null }],
+      stageEntered,
+      now,
+    );
+
+    assert.equal(paused, 5);
+  });
+
+  it("adds separate pauses together", () => {
+    const paused = pausedDaysInStage(
+      [
+        { raisedAt: "2026-08-03T00:00:00.000Z", resolvedAt: "2026-08-05T00:00:00.000Z" },
+        { raisedAt: "2026-08-10T00:00:00.000Z", resolvedAt: "2026-08-14T00:00:00.000Z" },
+      ],
+      stageEntered,
+      now,
+    );
+
+    assert.equal(paused, 6);
+  });
+
+  it("ignores the part of a pause that happened before this stage", () => {
+    // Started during the previous stage: only the overlap counts, because the
+    // earlier part did not slow this stage down.
+    const paused = pausedDaysInStage(
+      [{ raisedAt: "2026-07-20T00:00:00.000Z", resolvedAt: "2026-08-04T00:00:00.000Z" }],
+      stageEntered,
+      now,
+    );
+
+    assert.equal(paused, 3);
+  });
+
+  it("ignores a pause that ended before the stage began", () => {
+    const paused = pausedDaysInStage(
+      [{ raisedAt: "2026-07-10T00:00:00.000Z", resolvedAt: "2026-07-15T00:00:00.000Z" }],
+      stageEntered,
+      now,
+    );
+
+    assert.equal(paused, 0);
+  });
+
+  it("does not let a few hours buy a day", () => {
+    const paused = pausedDaysInStage(
+      [{ raisedAt: "2026-08-05T09:00:00.000Z", resolvedAt: "2026-08-05T17:00:00.000Z" }],
+      stageEntered,
+      now,
+    );
+
+    assert.equal(paused, 0);
   });
 });

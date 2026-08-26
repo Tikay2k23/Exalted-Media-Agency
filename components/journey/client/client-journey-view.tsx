@@ -366,6 +366,19 @@ export function ClientJourneyView({
     }
   }
 
+  const openPause = detail.flags.find((flag) => flag.kind === "PAUSED" && !flag.resolvedAt) ?? null;
+
+  /** Closing the pause period, which restarts the stage clock. */
+  async function resumeJourney(flagId: string) {
+    await fetch(`/api/clients/${account.id}/journey-flags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "resolve", flagId, note: "Journey resumed." }),
+    });
+
+    router.refresh();
+  }
+
   async function resolveFlag(card: AttentionCard) {
     const flagId = card.key.startsWith("flag-") ? card.key.slice(5) : null;
 
@@ -432,7 +445,22 @@ export function ClientJourneyView({
       icon: Repeat2,
       onSelect: () => setFlagKind("REVISIONS_REQUIRED"),
     },
-    { label: "Pause Journey", icon: PauseCircle, onSelect: () => setFlagKind("PAUSED") },
+    /*
+     * Pause and resume are the same control. Offering Pause to an account
+     * already paused would open a second period against the first, and two
+     * overlapping pauses make the stage clock impossible to reason about.
+     */
+    openPause
+      ? {
+          label: "Resume Journey",
+          icon: PauseCircle,
+          onSelect: () => void resumeJourney(openPause.id),
+        }
+      : {
+          label: "Pause Journey",
+          icon: PauseCircle,
+          onSelect: () => setFlagKind("PAUSED"),
+        },
   ];
 
   return (

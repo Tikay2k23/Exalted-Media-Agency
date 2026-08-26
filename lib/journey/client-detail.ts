@@ -133,6 +133,10 @@ export interface JourneyClientDetail {
 
 export interface StageClock {
   enteredAt: string;
+  /** Days spent formally paused, which the target does not count. */
+  pausedDays: number;
+  /** Calendar days less the paused ones - what the target is judged on. */
+  effectiveDays: number;
   day: number;
   targetDays: number | null;
   /** Days left inside the target. Negative once it is over. */
@@ -147,10 +151,13 @@ export interface StageClock {
 export function stageClock(account: JourneyAccount, now: Date): StageClock {
   const aging = stageAging(account, now);
   const target = aging.targetDays;
-  const remaining = target === null ? null : target - aging.days;
+  // Judged on effective days: a paused account is not running out of time.
+  const remaining = target === null ? null : target - aging.effectiveDays;
 
   return {
     enteredAt: account.stageEnteredAt,
+    pausedDays: aging.pausedDays,
+    effectiveDays: aging.effectiveDays,
     day: aging.days,
     targetDays: target,
     remaining,

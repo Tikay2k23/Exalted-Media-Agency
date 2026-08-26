@@ -173,3 +173,43 @@ export function summarise(
     blocking: open.some(blocksStage),
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Pause periods                                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface PausePeriod {
+  /** When the pause started. */
+  raisedAt: string | Date;
+  /** When it was lifted, or null while it is still running. */
+  resolvedAt: string | Date | null;
+}
+
+/**
+ * How long an account has been parked inside the current stage.
+ *
+ * Only the part of each pause that falls inside the stage counts: a pause that
+ * started two stages ago did not slow this one down, and counting it would
+ * hand an account credit it never earned. An open pause runs to now.
+ *
+ * Whole days, rounded down, so a pause of a few hours does not buy a day.
+ */
+export function pausedDaysInStage(
+  pauses: PausePeriod[],
+  stageEnteredAt: string | Date,
+  now: Date,
+): number {
+  const stageStart = new Date(stageEnteredAt).getTime();
+  const end = now.getTime();
+
+  let paused = 0;
+
+  for (const pause of pauses) {
+    const from = Math.max(new Date(pause.raisedAt).getTime(), stageStart);
+    const to = pause.resolvedAt ? new Date(pause.resolvedAt).getTime() : end;
+
+    if (to > from) paused += to - from;
+  }
+
+  return Math.floor(paused / 86_400_000);
+}

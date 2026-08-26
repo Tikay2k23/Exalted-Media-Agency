@@ -7,6 +7,7 @@ import {
   ReviewStatus,
 } from "@prisma/client";
 
+import { pausedDaysInStage } from "@/lib/journey/dependency";
 import { type AuthContext } from "@/lib/authz";
 import {
   type JourneyAccount,
@@ -151,6 +152,11 @@ export const journeyAccountSelect = {
   healthStatus: true,
   serviceType: true,
   stageEnteredAt: true,
+  /* Pause records, so the stage clock can stop while an account is parked. */
+  journeyFlags: {
+    where: { kind: "PAUSED" },
+    select: { raisedAt: true, resolvedAt: true },
+  },
   currentBlocker: true,
   nextAction: true,
   nextActionDueAt: true,
@@ -541,6 +547,7 @@ export function buildJourneyAccount(
     nextStageId: nextStage?.id ?? null,
     nextStageName: nextStage?.name ?? null,
     nextStageKey: nextStage?.stageKey ?? null,
+    pausedDays: pausedDaysInStage(client.journeyFlags, client.stageEnteredAt, new Date()),
 
     milestones,
     history,

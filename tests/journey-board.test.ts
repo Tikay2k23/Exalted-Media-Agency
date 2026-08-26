@@ -98,6 +98,7 @@ function account(overrides: Partial<JourneyAccount> = {}): JourneyAccount {
     openTaskCount: 0,
     completedTaskCount: 0,
     overdueTaskCount: 0,
+  pausedDays: 0,
     blockedTaskCount: 0,
     waitingTaskCount: 0,
     reviewTaskCount: 0,
@@ -992,5 +993,64 @@ describe("intake states that mean waiting on the client", () => {
     for (const status of ["SUBMITTED", "REVIEWED", "NOT_SENT"]) {
       assert.equal(BOARD_WITH_CLIENT.includes(status), false, `${status} is not the client's move`);
     }
+  });
+});
+
+/**
+ * The stage clock against a paused account.
+ *
+ * Time in stage stays calendar time, because that is genuinely how long it has
+ * been. What the target is judged on is calendar time less the pauses: an
+ * agency that agreed to stop for a week has not spent a week being late, and a
+ * board that cannot tell those apart turns every paused account red.
+ */
+describe("stage aging with pauses", () => {
+  const NOW = new Date("2026-08-21T00:00:00.000Z");
+
+  const paused = (days: number) =>
+    account({
+      stageEnteredAt: "2026-08-14T00:00:00.000Z", // seven calendar days
+      stageTargetDays: 5,
+      pausedDays: days,
+    });
+
+  it("is over target when nothing was paused", () => {
+    const aging = stageAging(paused(0), NOW);
+
+    assert.equal(aging.days, 7);
+    assert.equal(aging.effectiveDays, 7);
+    assert.equal(aging.isOverTarget, true);
+    assert.equal(aging.overBy, 2);
+  });
+
+  it("is on track once the paused days come off", () => {
+    // The brief's own example: seven calendar days, two paused, five effective,
+    // five target - on track, not two days late.
+    const aging = stageAging(paused(2), NOW);
+
+    assert.equal(aging.days, 7, "time in stage is still seven days");
+    assert.equal(aging.pausedDays, 2);
+    assert.equal(aging.effectiveDays, 5);
+    assert.equal(aging.isOverTarget, false);
+    assert.equal(aging.overBy, 0);
+  });
+
+  it("says so on the label rather than hiding the pause", () => {
+    assert.match(stageAging(paused(2), NOW).label, /paused/);
+  });
+
+  it("never counts more paused days than the stage has lasted", () => {
+    const aging = stageAging(paused(400), NOW);
+
+    assert.equal(aging.pausedDays, 7);
+    assert.equal(aging.effectiveDays, 0);
+  });
+
+  it("still goes over once the pause no longer covers the overrun", () => {
+    const aging = stageAging(paused(1), NOW);
+
+    assert.equal(aging.effectiveDays, 6);
+    assert.equal(aging.isOverTarget, true);
+    assert.equal(aging.overBy, 1);
   });
 });

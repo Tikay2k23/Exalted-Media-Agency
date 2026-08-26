@@ -148,6 +148,15 @@ export interface JourneyAccount {
   openTaskCount: number;
   completedTaskCount: number;
   overdueTaskCount: number;
+  /**
+   * Days this account has spent formally paused inside the current stage.
+   *
+   * Counted from the pause records rather than guessed, and subtracted from
+   * the stage clock: an agency that agreed to stop for a fortnight has not
+   * spent a fortnight being slow, and a target that says otherwise is one
+   * people learn to ignore.
+   */
+  pausedDays: number;
   blockedTaskCount: number;
   waitingTaskCount: number;
   reviewTaskCount: number;
@@ -211,8 +220,13 @@ export function isActiveAccount(account: JourneyAccount) {
 /* -------------------------------------------------------------------------- */
 
 export interface StageAging {
+  /** Calendar days since the account entered the stage. */
   days: number;
   /** The expected duration, from the stored stage or the canonical fallback. */
+  /** Days spent paused, which the target does not count. */
+  pausedDays: number;
+  /** Calendar days less the paused ones. This is what the target is judged on. */
+  effectiveDays: number;
   targetDays: number | null;
   /** Days past target. Zero when inside it, or when no target is configured. */
   overBy: number;
@@ -228,17 +242,32 @@ export function stageAging(account: JourneyAccount, now: Date): StageAging {
   // the canonical fallback only fills in where a stage has none configured.
   const targetDays = account.stageTargetDays ?? journeyStageOf(account).fallbackTargetDays;
 
-  const overBy = targetDays === null ? 0 : Math.max(0, days - targetDays);
+  /*
+   * Paused time does not count against the target.
+   *
+   * A stage held for a fortnight at the client's request is not a stage the
+   * agency ran two weeks late, and a board that cannot tell those apart turns
+   * every paused account red until nobody reads the colour. Time in stage
+   * stays calendar time, because that is genuinely how long it has been.
+   */
+  const pausedDays = Math.max(0, Math.min(account.pausedDays, days));
+  const effectiveDays = Math.max(0, days - pausedDays);
+
+  const overBy = targetDays === null ? 0 : Math.max(0, effectiveDays - targetDays);
   const isOverTarget = overBy > 0;
 
   return {
     days,
+    pausedDays,
+    effectiveDays,
     targetDays,
     overBy,
     isOverTarget,
     label: isOverTarget
       ? `${overBy} day${overBy === 1 ? "" : "s"} over target`
-      : `Day ${days} in stage`,
+      : pausedDays > 0
+        ? `Day ${effectiveDays} in stage, ${pausedDays} paused`
+        : `Day ${days} in stage`,
   };
 }
 
