@@ -11,6 +11,10 @@ import {
   PauseCircle,
   Repeat2,
   UserRound,
+  MailQuestion,
+  Plus,
+  StickyNote,
+  ArrowUpRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -43,10 +47,18 @@ import {
   type JourneyClientDetail,
   attentionCards,
   formatDay,
+  isReadyToAdvance,
   nextStep,
   stageClock,
 } from "@/lib/journey/client-detail";
 import { journeyHealth } from "@/lib/journey/journey-health";
+import {
+  ClientDependenciesCard,
+  JourneyHealthCard,
+  type QuickAction,
+  QuickActionsCard,
+  UpcomingStageCard,
+} from "./journey-rail";
 import {
   HEALTH_COLORS,
   HEALTH_LABELS,
@@ -135,6 +147,58 @@ export function ClientJourneyView({
       now,
     });
   }, [account.requirements, detail.flags, detail.tasks, clock, now]);
+
+  /*
+   * What this stage offers, given what is actually true of it.
+   *
+   * Context-aware rather than a fixed list: an account nobody is waiting on
+   * is not offered a chase, and a viewer who cannot move the journey is not
+   * shown a button that would refuse them. Advancing leads when the gate is
+   * open, because that is the whole point of the page.
+   */
+  const quickActions = useMemo<QuickAction[]>(() => {
+    const actions: QuickAction[] = [];
+    const ready = isReadyToAdvance(detail);
+
+    if (detail.canMove && account.nextStageId) {
+      actions.push({
+        key: "advance",
+        label: ready ? `Advance to ${account.nextStageName}` : "Advance stage",
+        icon: ArrowUpRight,
+        primary: ready,
+        onSelect: () => setAdvancing(true),
+      });
+    }
+
+    if (detail.canManageFlags) {
+      const waiting = detail.flags.some((flag) => flag.kind === "WAITING_ON_CLIENT");
+
+      actions.push({
+        key: "waiting",
+        label: waiting ? "Update what the client owes" : "Request missing items",
+        icon: MailQuestion,
+        onSelect: () => setFlagKind("WAITING_ON_CLIENT"),
+      });
+
+      actions.push({
+        key: "blocked",
+        label: detail.flags.some((flag) => flag.kind === "BLOCKED")
+          ? "Update the blocker"
+          : "Add a blocker",
+        icon: Plus,
+        onSelect: () => setFlagKind("BLOCKED"),
+      });
+    }
+
+    actions.push({
+      key: "note",
+      label: "Add a note",
+      icon: StickyNote,
+      onSelect: () => router.push(`/clients/${account.id}?tab=activity`),
+    });
+
+    return actions;
+  }, [detail, account.id, account.nextStageId, account.nextStageName, router]);
   const health = useMemo(() => explainHealth(account, now), [account, now]);
   const progress = deriveProgress(account);
   /*
@@ -446,20 +510,24 @@ export function ClientJourneyView({
       {/* Body                                                              */}
       {/* ---------------------------------------------------------------- */}
       {/*
-        * Three columns, as the reference lays them out.
+        * Laid out as the reference does it.
         *
-        * The brief describes a 65/35 split, and the image shows that 65 split
-        * again: the action and the work it produces on the left, the gate and
-        * the route in the middle, the context you glance at on the right. Three
-        * roughly equal columns rather than one wide one - a single 65% column
-        * stacks six cards into a very long page and buries the timeline.
-        *
-        * Needs Attention appears twice, once per breakpoint. On a phone it has
-        * to sit directly under the action card rather than below five cards of
-        * detail, and the two never render together.
+        * The timeline runs the full width at the top, because it is the one
+        * thing on the page about the whole journey rather than this stage.
+        * Then the work of the stage on the left and the context you glance at
+        * on the right, and the history underneath where you go looking for it
+        * rather than read it on the way past.
         */}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.95fr)]">
+      <JourneyTimelineCard
+        detail={detail}
+        now={now}
+        expanded={showFullJourney}
+        onToggle={() => setShowFullJourney((open) => !open)}
+      />
+
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">
+          {/* The action first: it is what the page is for. */}
           <NextBestActionCard
             detail={detail}
             step={step}
@@ -472,30 +540,30 @@ export function ClientJourneyView({
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
           </div>
 
-          <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <StageRequirementsCard
+              detail={detail}
+              expanded={showAllRequirements}
+              onToggle={() => setShowAllRequirements((open) => !open)}
+            />
+            <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
+          </div>
 
-          <StageFocusCard detail={detail} />
-        </div>
-
-        <div className="min-w-0 space-y-4">
-          <StageRequirementsCard
-            detail={detail}
-            expanded={showAllRequirements}
-            onToggle={() => setShowAllRequirements((open) => !open)}
-          />
-
-          <JourneyTimelineCard
-            detail={detail}
-            now={now}
-            expanded={showFullJourney}
-            onToggle={() => setShowFullJourney((open) => !open)}
-          />
-
-          <CurrentStageCard
-            detail={detail}
-            now={now}
-            onExplainHealth={() => setHealthOpen(true)}
-          />
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <ClientDependenciesCard
+              flags={detail.flags}
+              now={now}
+              canAct={detail.canManageFlags}
+              onFollowUp={() => setFlagKind("WAITING_ON_CLIENT")}
+            />
+            <MilestonesCard milestones={detail.milestones} />
+            <UpcomingStageCard
+              nextStageName={account.nextStageName}
+              nextStageKey={account.nextStageKey}
+              onPreview={() => setAdvancing(true)}
+            />
+            <StageFocusCard detail={detail} />
+          </div>
         </div>
 
         <div className="min-w-0 space-y-4">
@@ -503,15 +571,30 @@ export function ClientJourneyView({
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
           </div>
 
-          <MilestonesCard milestones={detail.milestones} />
-          <ClientInformationPanel detail={detail} />
-          <RecentActivityPanel
-            entries={detail.activity}
+          <CurrentStageCard
+            detail={detail}
             now={now}
-            clientId={account.id}
+            onExplainHealth={() => setHealthOpen(true)}
           />
+
+          <QuickActionsCard actions={quickActions} />
+
+          <JourneyHealthCard
+            health={scored}
+            statusLabel={HEALTH_LABELS[health.health]}
+            onAssess={() => setHealthOpen(true)}
+          />
+
+          <ClientInformationPanel detail={detail} />
         </div>
       </div>
+
+      {/* Where you go looking for what happened, rather than read on the way past. */}
+      <RecentActivityPanel
+        entries={detail.activity}
+        now={now}
+        clientId={account.id}
+      />
 
       {advancing && account.nextStageId ? (
         <AdvanceStageDialog detail={detail} onClose={() => setAdvancing(false)} />

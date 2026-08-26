@@ -167,6 +167,8 @@ export interface JourneyAccount {
   exitCriteria: JourneyRequirement[];
   nextStageId: string | null;
   nextStageName: string | null;
+  /** The stable key, so the interface can look up what entering it will do. */
+  nextStageKey: string | null;
 
   milestones: JourneyMilestone[];
   history: JourneyHistoryEntry[];

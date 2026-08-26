@@ -114,7 +114,8 @@ function account(overrides: Partial<JourneyAccount> = {}): JourneyAccount {
     requirements: [],
     exitCriteria: [],
     nextStageId: "stage-qa",
-    nextStageName: "Internal Quality Assurance",
+    nextStageKey: null,
+  nextStageName: "Internal Quality Assurance",
 
     milestones: [],
     history: [],

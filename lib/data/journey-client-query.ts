@@ -67,6 +67,8 @@ export async function getJourneyClientDetail(
           id: true,
           name: true,
           position: true,
+          // So the upcoming-stage card can say what entering it will do.
+          stageKey: true,
           requirements: {
             orderBy: { position: "asc" },
             select: { requirementKey: true, label: true, isBlocking: true },

@@ -284,6 +284,8 @@ export interface StageForAccount {
   id: string;
   position: number;
   name: string;
+  /** Stable key, so callers can look up what entering the stage does. */
+  stageKey?: string | null;
   requirements: StageRule[];
 }
 
@@ -538,6 +540,7 @@ export function buildJourneyAccount(
     exitCriteria: evaluate(nextStage?.id ?? null),
     nextStageId: nextStage?.id ?? null,
     nextStageName: nextStage?.name ?? null,
+    nextStageKey: nextStage?.stageKey ?? null,
 
     milestones,
     history,

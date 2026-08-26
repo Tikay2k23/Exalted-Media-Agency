@@ -112,7 +112,8 @@ function account(overrides: Partial<JourneyAccount> = {}): JourneyAccount {
     requirements: [],
     exitCriteria: [],
     nextStageId: "stage-onboarding",
-    nextStageName: "Onboarding Form Sent",
+    nextStageKey: null,
+  nextStageName: "Onboarding Form Sent",
 
     milestones: [],
     history: [],
