@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useClientTab } from "@/components/clients/client-tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -113,6 +114,14 @@ export function ClientJourneyView({
   owners?: { id: string; name: string }[];
 }) {
   const router = useRouter();
+  /*
+   * Switching tabs from inside a panel needs the controller, not a URL push.
+   * client-tabs says why: App Router treats ?tab= as a soft navigation, so the
+   * tab component re-renders with a new initial prop and is never remounted -
+   * its useState keeps the old value and nothing moves. Null on the standalone
+   * journey page, which has no tabs to switch.
+   */
+  const tabs = useClientTab();
 
   // Fixed for the render so the header, the stage card and the milestone rail
   // cannot disagree about what day it is.
@@ -432,6 +441,45 @@ export function ClientJourneyView({
     }
   }
 
+
+  /*
+   * What a Needs Attention button does.
+   *
+   * Everything used to go to resolveFlag, which reads a flag id out of the
+   * card key and returns quietly when there is not one - so the two cards
+   * that are not flags had buttons that did nothing at all, which is worse
+   * than having no button. Each card now goes where its own problem lives.
+   */
+  function actOnCard(card: AttentionCard) {
+    if (card.key.startsWith("flag-")) {
+      void resolveFlag(card);
+      return;
+    }
+
+    if (card.key === "overdue-tasks") {
+      // Straight to the task itself where the card named one.
+      const href = card.targetId
+        ? `/clients/${account.id}?tab=tasks&task=${card.targetId}`
+        : `/clients/${account.id}?tab=tasks`;
+
+      /*
+       * The push carries the task id so the Work tab knows which row to open;
+       * the controller is what actually moves the user there.
+       */
+      router.push(href);
+      tabs?.setTab("tasks", card.targetId ?? undefined);
+      return;
+    }
+
+    if (card.key === "missing-access") {
+      router.push(`/clients/${account.id}?tab=files`);
+      tabs?.setTab("files");
+      return;
+    }
+
+    // A card with no home is a card that should not have carried a button.
+    console.warn(`[journey] No action wired for attention card: ${card.key}`);
+  }
 
   async function resolveFlag(card: AttentionCard) {
     const flagId = card.key.startsWith("flag-") ? card.key.slice(5) : null;
@@ -781,7 +829,7 @@ export function ClientJourneyView({
           />
 
           <div className="xl:hidden">
-            <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
+            <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={actOnCard} />
           </div>
 
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
@@ -818,7 +866,7 @@ export function ClientJourneyView({
 
         <div className="min-w-0 space-y-4">
           <div className="hidden xl:block">
-            <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
+            <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={actOnCard} />
           </div>
 
           <StageDetailsPanel

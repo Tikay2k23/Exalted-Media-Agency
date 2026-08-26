@@ -387,6 +387,14 @@ export interface AttentionCard {
   lines: string[];
   /** The button, when there is one thing to do about it. */
   action: string | null;
+  /**
+   * What the button should open, where the card is about one record.
+   *
+   * Without it a card can name a problem it cannot take anybody to: the
+   * overdue-task card knew a task was late and had no way to say which one,
+   * so its button had nothing to act on and did nothing at all.
+   */
+  targetId?: string | null;
   tone: "amber" | "rose" | "violet" | "slate";
 }
 
@@ -451,6 +459,7 @@ export function attentionCards(detail: JourneyClientDetail, now: Date): Attentio
       title: `${overdueTasks.length} task${overdueTasks.length === 1 ? "" : "s"} overdue`,
       lines: [worst.title, `${late} day${late === 1 ? "" : "s"} overdue`],
       action: "Open Task",
+      targetId: worst.id,
       tone: "rose",
     });
   }

@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { AddTaskDialog } from "@/components/clients/add-task-dialog";
+import { useClientTab } from "@/components/clients/client-tabs";
 import { RowMenu } from "@/components/work/row-menu";
 import { TaskDetailModal } from "@/components/work/task-detail-modal";
 import type {
@@ -231,6 +232,7 @@ export function ClientWork({
   serverNow: string;
 }) {
   const router = useRouter();
+  const tabs = useClientTab();
   const [, startTransition] = useTransition();
 
   const [metric, setMetric] = useState<WorkMetricKey | null>(null);
@@ -267,6 +269,19 @@ export function ClientWork({
 
     return () => clearTimeout(timer);
   }, [search]);
+
+  /*
+   * Opening a task somebody arrived here to see.
+   *
+   * The journey's overdue-task card sends the id through the tab controller,
+   * because this panel is already mounted when they click - it cannot read a
+   * task out of the URL on arrival, having initialised long before.
+   */
+  useEffect(() => {
+    if (tabs?.focus && tasks.some((task) => task.id === tabs.focus)) {
+      setOpenId(tabs.focus);
+    }
+  }, [tabs?.focus, tasks]);
 
   useEffect(() => setPage(1), [metric, debounced, status, priority, assignee, category, sort]);
 

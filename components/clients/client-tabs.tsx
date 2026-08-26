@@ -29,7 +29,17 @@ import type { ClientTab } from "@/lib/clients/client-workspace";
 
 interface TabController {
   active: ClientTab;
-  setTab: (tab: ClientTab) => void;
+  /**
+   * Move to a tab, optionally naming a record for it to open.
+   *
+   * The focus exists because every panel is already mounted: a panel cannot
+   * read what to open out of the URL on arrival, having initialised long
+   * before anybody clicked. Passing it through the same call that moves the
+   * user is the only handover that actually reaches the other side.
+   */
+  setTab: (tab: ClientTab, focus?: string) => void;
+  /** What the current tab was asked to open, if anything. */
+  focus: string | null;
 }
 
 const TabContext = createContext<TabController | null>(null);
@@ -106,9 +116,11 @@ export function ClientTabs({
 }) {
   const [active, setActive] = useState<ClientTab>(initial);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [focus, setFocus] = useState<string | null>(null);
 
-  const setTab = useCallback((tab: ClientTab) => {
+  const setTab = useCallback((tab: ClientTab, nextFocus?: string) => {
     setActive(tab);
+    setFocus(nextFocus ?? null);
     setMoreOpen(false);
 
     /*
@@ -126,7 +138,10 @@ export function ClientTabs({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  const controller = useMemo<TabController>(() => ({ active, setTab }), [active, setTab]);
+  const controller = useMemo<TabController>(
+    () => ({ active, setTab, focus }),
+    [active, setTab, focus],
+  );
 
   const inMore = SECONDARY.some((tab) => tab.key === active);
   const activeLabel = ALL_CLIENT_TABS.find((tab) => tab.key === active)?.label ?? "More";
