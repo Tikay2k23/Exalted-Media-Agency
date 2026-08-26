@@ -47,6 +47,7 @@ import {
   type JourneyClientDetail,
   attentionCards,
   formatDay,
+  requirementGroups,
   isReadyToAdvance,
   nextStep,
   stageClock,
@@ -59,6 +60,14 @@ import {
   QuickActionsCard,
   UpcomingStageCard,
 } from "./journey-rail";
+import {
+  JourneyCard,
+  JourneyFooter,
+  JourneyHealthPanel,
+  StageDetailsPanel,
+  StageHistoryStrip,
+  type TimelineStep,
+} from "./journey-reference";
 import {
   HEALTH_COLORS,
   HEALTH_LABELS,
@@ -108,6 +117,17 @@ export function ClientJourneyView({
   const [showAllRequirements, setShowAllRequirements] = useState(false);
   const [showFullJourney, setShowFullJourney] = useState(false);
   const [busyCard, setBusyCard] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  /*
+   * Refetch on the server rather than reload the browser: the point is fresh
+   * numbers, not a fresh page.
+   */
+  function onRefresh() {
+    setRefreshing(true);
+    router.refresh();
+    window.setTimeout(() => setRefreshing(false), 600);
+  }
 
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -199,6 +219,70 @@ export function ClientJourneyView({
 
     return actions;
   }, [detail, account.id, account.nextStageId, account.nextStageName, router]);
+
+  const groups = useMemo(
+    () => requirementGroups(account.requirements),
+    [account.requirements],
+  );
+
+  /*
+   * The stepper, from the stages this client actually travels.
+   *
+   * Past stages take their date from the move that entered them, which is the
+   * only real record of when it happened - a stage with no recorded move shows
+   * no date rather than a guessed one.
+   */
+  const steps = useMemo<TimelineStep[]>(() => {
+    const entered = new Map<string, string>();
+
+    for (const move of account.history) {
+      if (!entered.has(move.toStageName)) entered.set(move.toStageName, move.changedAt);
+    }
+
+    return detail.stages.map((stage) => {
+      const state =
+        stage.position < account.stagePosition
+          ? ("done" as const)
+          : stage.position === account.stagePosition
+            ? ("current" as const)
+            : ("future" as const);
+
+      return {
+        id: stage.id,
+        name: stage.name,
+        state,
+        enteredAt:
+          state === "current"
+            ? account.stageEnteredAt
+            : state === "done"
+              ? (entered.get(stage.name) ?? null)
+              : null,
+      };
+    });
+  }, [detail.stages, account.history, account.stagePosition, account.stageEnteredAt]);
+
+  /* The oldest open wait, which is what the rail dates from. */
+  const waitingSince = useMemo(() => {
+    const open = detail.flags
+      .filter((flag) => flag.kind === "WAITING_ON_CLIENT")
+      .map((flag) => flag.raisedAt)
+      .sort();
+
+    return open[0] ?? null;
+  }, [detail.flags]);
+
+  const secondaryStatus = detail.flags[0] ? FLAG_LABELS[detail.flags[0].kind] : null;
+
+  const historyEntries = useMemo(
+    () =>
+      detail.activity.slice(0, 4).map((entry) => ({
+        id: entry.id,
+        label: entry.action,
+        at: entry.createdAt,
+        actorName: entry.actorName,
+      })),
+    [detail.activity],
+  );
   const health = useMemo(() => explainHealth(account, now), [account, now]);
   const progress = deriveProgress(account);
   /*
@@ -510,37 +594,35 @@ export function ClientJourneyView({
       {/* Body                                                              */}
       {/* ---------------------------------------------------------------- */}
       {/*
-        * Laid out as the reference does it.
+        * The reference layout.
         *
-        * The timeline runs the full width at the top, because it is the one
-        * thing on the page about the whole journey rather than this stage.
-        * Then the work of the stage on the left and the context you glance at
-        * on the right, and the history underneath where you go looking for it
-        * rather than read it on the way past.
+        * The timeline and the summary beneath it are one card, because they
+        * answer one question together - where is this account, and how close
+        * is it to leaving. The rail runs alongside from the top and holds what
+        * you read rather than operate. History sits underneath, where somebody
+        * goes looking for it.
         */}
-      <JourneyTimelineCard
-        detail={detail}
-        now={now}
-        expanded={showFullJourney}
-        onToggle={() => setShowFullJourney((open) => !open)}
-      />
-
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
         <div className="min-w-0 space-y-4">
-          {/* The action first: it is what the page is for. */}
-          <NextBestActionCard
-            detail={detail}
+          <JourneyCard
+            account={account}
+            steps={steps}
+            clock={clock}
+            groups={groups}
             step={step}
-            now={now}
+            secondaryStatus={secondaryStatus}
+            description={null}
+            canChangeOwner={detail.canMove}
+            onChangeOwner={() => router.push(`/clients/${account.id}?tab=contacts`)}
             onPrimary={onPrimary}
-            onAdvance={() => setAdvancing(true)}
+            onViewRequirement={() => setShowAllRequirements(true)}
           />
 
           <div className="xl:hidden">
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
           </div>
 
-          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <StageRequirementsCard
               detail={detail}
               expanded={showAllRequirements}
@@ -549,7 +631,7 @@ export function ClientJourneyView({
             <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
           </div>
 
-          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-3">
             <ClientDependenciesCard
               flags={detail.flags}
               now={now}
@@ -562,8 +644,12 @@ export function ClientJourneyView({
               nextStageKey={account.nextStageKey}
               onPreview={() => setAdvancing(true)}
             />
-            <StageFocusCard detail={detail} />
           </div>
+
+          <StageHistoryStrip
+            entries={historyEntries}
+            onViewAll={() => router.push(`/journey/${account.id}/history`)}
+          />
         </div>
 
         <div className="min-w-0 space-y-4">
@@ -571,29 +657,35 @@ export function ClientJourneyView({
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={resolveFlag} />
           </div>
 
-          <CurrentStageCard
-            detail={detail}
+          <StageDetailsPanel
+            account={account}
+            clock={clock}
+            groups={groups}
+            secondaryStatus={secondaryStatus}
+            healthLabel={HEALTH_LABELS[health.health]}
+            waitingSince={waitingSince}
             now={now}
-            onExplainHealth={() => setHealthOpen(true)}
           />
 
           <QuickActionsCard actions={quickActions} />
 
-          <JourneyHealthCard
+          <JourneyHealthPanel
             health={scored}
             statusLabel={HEALTH_LABELS[health.health]}
             onAssess={() => setHealthOpen(true)}
+            onDetails={() => setHealthOpen(true)}
           />
 
+          <StageFocusCard detail={detail} />
           <ClientInformationPanel detail={detail} />
         </div>
       </div>
 
-      {/* Where you go looking for what happened, rather than read on the way past. */}
-      <RecentActivityPanel
-        entries={detail.activity}
-        now={now}
-        clientId={account.id}
+      <JourneyFooter
+        timezone={null}
+        updatedAt={nowIso}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       />
 
       {advancing && account.nextStageId ? (
