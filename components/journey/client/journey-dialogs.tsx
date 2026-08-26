@@ -594,3 +594,58 @@ export function HealthDialog({
     </Modal>
   );
 }
+
+/**
+ * The next stage, read only.
+ *
+ * Opened from Upcoming Stage. It used to open the advance dialog, which is the
+ * one thing a preview must not do: somebody looking at what comes next was one
+ * button away from going there. Nothing here mutates.
+ */
+export function StagePreviewDialog({
+  stageName,
+  entryActions,
+  onClose,
+}: {
+  stageName: string;
+  entryActions: { title: string; note: string }[];
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      eyebrow="Upcoming stage"
+      title={stageName}
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <p className="text-xs leading-5 text-slate-600">
+        Nothing on this panel changes the journey. It shows what entering{" "}
+        {stageName} will set in motion.
+      </p>
+
+      {entryActions.length === 0 ? (
+        <p className="mt-3 text-xs text-slate-500">
+          Entering this stage creates no automatic work.
+        </p>
+      ) : (
+        <>
+          <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Entry actions ({entryActions.length})
+          </p>
+          <ul className="mt-2 space-y-2">
+            {entryActions.map((action) => (
+              <li key={action.title} className="rounded-lg border border-slate-200 p-2.5">
+                <p className="text-xs font-medium text-slate-900">{action.title}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-slate-600">{action.note}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Modal>
+  );
+}

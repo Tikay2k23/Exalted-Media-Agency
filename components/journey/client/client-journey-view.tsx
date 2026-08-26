@@ -32,6 +32,7 @@ import {
 import {
   AdvanceStageDialog,
   HealthDialog,
+  StagePreviewDialog,
   JourneyFlagDialog,
 } from "@/components/journey/client/journey-dialogs";
 import {
@@ -52,6 +53,7 @@ import {
   nextStep,
   stageClock,
 } from "@/lib/journey/client-detail";
+import { getStageTaskTemplates } from "@/lib/automation/stage-automation";
 import { journeyHealth } from "@/lib/journey/journey-health";
 import {
   ClientDependenciesCard,
@@ -117,6 +119,7 @@ export function ClientJourneyView({
   const [showAllRequirements, setShowAllRequirements] = useState(false);
   const [showFullJourney, setShowFullJourney] = useState(false);
   const [busyCard, setBusyCard] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   /*
@@ -195,7 +198,7 @@ export function ClientJourneyView({
 
       actions.push({
         key: "waiting",
-        label: waiting ? "Update what the client owes" : "Request missing items",
+        label: waiting ? "Update what the client owes" : "Record what the client owes",
         icon: MailQuestion,
         onSelect: () => setFlagKind("WAITING_ON_CLIENT"),
       });
@@ -612,7 +615,7 @@ export function ClientJourneyView({
             step={step}
             secondaryStatus={secondaryStatus}
             description={null}
-            canChangeOwner={detail.canMove}
+            canChangeOwner={false}
             onChangeOwner={() => router.push(`/clients/${account.id}?tab=contacts`)}
             onPrimary={onPrimary}
             onViewRequirement={() => setShowAllRequirements(true)}
@@ -642,7 +645,7 @@ export function ClientJourneyView({
             <UpcomingStageCard
               nextStageName={account.nextStageName}
               nextStageKey={account.nextStageKey}
-              onPreview={() => setAdvancing(true)}
+              onPreview={() => setPreviewing(true)}
             />
           </div>
 
@@ -708,6 +711,21 @@ export function ClientJourneyView({
           color={HEALTH_COLORS[health.health]}
           reasons={health.reasons}
           onClose={() => setHealthOpen(false)}
+        />
+      ) : null}
+
+      {previewing && account.nextStageName ? (
+        <StagePreviewDialog
+          stageName={account.nextStageName}
+          entryActions={
+            account.nextStageKey
+              ? getStageTaskTemplates(account.nextStageKey).map((template) => ({
+                  title: template.title,
+                  note: template.note,
+                }))
+              : []
+          }
+          onClose={() => setPreviewing(false)}
         />
       ) : null}
     </div>

@@ -223,6 +223,11 @@ export function ClientDependenciesCard({
 }: {
   flags: JourneyFlag[];
   now: Date;
+  /**
+   * Opens the waiting record for editing. Deliberately not a send: nothing in
+   * this application sends email or SMS, and a button that implies it would be
+   * a promise the system cannot keep.
+   */
   onFollowUp: (flag: JourneyFlag) => void;
   canAct: boolean;
 }) {
@@ -276,7 +281,7 @@ export function ClientDependenciesCard({
                 onClick={() => onFollowUp(flag)}
               >
                 <Send className="h-3.5 w-3.5" aria-hidden />
-                Send follow-up
+                Update request
               </Button>
             ) : null}
           </li>
