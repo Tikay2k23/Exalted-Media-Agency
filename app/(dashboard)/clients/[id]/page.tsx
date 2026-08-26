@@ -21,16 +21,8 @@ import { ClientProjects } from "@/components/clients/client-projects";
 import { ClientQuality } from "@/components/clients/client-quality";
 import { ClientReporting } from "@/components/clients/client-reporting";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
-import { JourneyOverview } from "@/components/clients/journey-overview";
-import { StageReadiness } from "@/components/clients/stage-readiness";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@/components/ui/table";
 import {
   getClientDetail,
@@ -98,12 +90,9 @@ import {
 } from "@/lib/intake/question-catalogue";
 import { can, canAccessAssignedRecord, canManageClients, teamRoleLabels } from "@/lib/permissions";
 import {
-  JOURNEY_OWNERSHIP,
-  deriveOwnership,
-  journeyPosition,
 } from "@/lib/workflow/handoff-engine";
 import { requireUser } from "@/lib/session";
-import { formatDate, formatDateTime, formatEnumLabel } from "@/lib/utils";
+import { formatDateTime, formatEnumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

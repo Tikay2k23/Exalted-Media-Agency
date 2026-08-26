@@ -5,7 +5,6 @@ import {
   SERVICE_TASK_TEMPLATES,
   STAGE_TASK_TEMPLATES,
   getServiceTaskTemplates,
-  getStageTaskTemplates,
   templateKeyFor,
 } from "@/lib/automation/stage-automation";
 

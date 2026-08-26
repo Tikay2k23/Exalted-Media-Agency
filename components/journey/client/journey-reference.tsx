@@ -26,7 +26,6 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { JourneyAccount } from "@/lib/journey/journey-board";
 import type {
-  JourneyClientDetail,
   NextStep,
   RequirementGroups,
   StageClock,

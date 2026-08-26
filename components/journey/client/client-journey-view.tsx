@@ -20,15 +20,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  CurrentStageCard,
   MilestonesCard,
   StageRequirementsCard,
-  JourneyTimelineCard,
   StageFocusCard,
-  NextBestActionCard,
   WorkSummaryCard,
 } from "@/components/journey/client/journey-cards";
 import {
@@ -42,7 +39,6 @@ import {
 import {
   ClientInformationPanel,
   NeedsAttentionPanel,
-  RecentActivityPanel,
 } from "@/components/journey/client/journey-panels";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,7 +57,6 @@ import { getStageTaskTemplates } from "@/lib/automation/stage-automation";
 import { journeyHealth } from "@/lib/journey/journey-health";
 import {
   ClientDependenciesCard,
-  JourneyHealthCard,
   type QuickAction,
   QuickActionsCard,
   UpcomingStageCard,
@@ -128,7 +123,6 @@ export function ClientJourneyView({
   const [flagKind, setFlagKind] = useState<FlagKind | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
   const [showAllRequirements, setShowAllRequirements] = useState(false);
-  const [showFullJourney, setShowFullJourney] = useState(false);
   const [busyCard, setBusyCard] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [recovering, setRecovering] = useState(false);
@@ -187,15 +181,24 @@ export function ClientJourneyView({
   const openPause = detail.flags.find((flag) => flag.kind === "PAUSED" && !flag.resolvedAt) ?? null;
 
   /** Closing the pause period, which restarts the stage clock. */
-  async function resumeJourney(flagId: string) {
-    await fetch(`/api/clients/${account.id}/journey-flags`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "resolve", flagId, note: "Journey resumed." }),
-    });
-
-    router.refresh();
-  }
+  /*
+   * Stable across renders, because the quick actions memo closes over it. A
+   * fresh function each render would either break the memo or leave it holding
+   * a stale one - and the stale one would resume the wrong pause after a
+   * refresh.
+   */
+  const resumeJourney = useCallback(
+    async (flagId: string) => {
+      await fetch(`/api/clients/${account.id}/journey-flags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve", flagId, note: "Journey resumed." }),
+      });
+  
+      router.refresh();
+    },
+    [account.id, router],
+  );
 
   /*
    * What this stage offers, given what is actually true of it.
@@ -307,6 +310,7 @@ export function ClientJourneyView({
     router,
     scored.status,
     openPause,
+    resumeJourney,
   ]);
 
   const groups = useMemo(
