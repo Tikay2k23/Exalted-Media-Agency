@@ -24,6 +24,8 @@ const FAILURE_STATUS = {
   OVERRIDE_INVALID: 400,
   STAGE_DEPRECATED: 400,
   PIPELINE_MISMATCH: 400,
+  // Somebody else moved the account first; the caller should reload and look.
+  STALE: 409,
 } as const;
 
 export async function POST(request: Request) {

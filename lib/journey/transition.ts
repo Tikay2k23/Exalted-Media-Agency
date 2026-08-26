@@ -37,7 +37,17 @@ export type MoveStageFailureCode =
   | "OVERRIDE_NOT_PERMITTED"
   | "OVERRIDE_INVALID"
   | "STAGE_DEPRECATED"
+  | "STALE"
   | "PIPELINE_MISMATCH";
+
+/**
+ * Thrown inside the transaction when the account moved under us.
+ *
+ * A thrown error is what rolls the whole thing back - returning a failure from
+ * inside would leave the history entry and the generated work already written
+ * against a move that never happened.
+ */
+class StaleJourneyError extends Error {}
 
 export interface StageOverrideRequest {
   reason: string;
@@ -264,14 +274,32 @@ export async function moveClientStage(
 
   // The move, its history entry, and the work it generates land together or
   // not at all. A stage change with no follow-up work is a silent process gap.
+  try {
   await prisma.$transaction(async (transaction) => {
-    await transaction.client.update({
-      where: { id: client.id },
+    /*
+     * The move only lands if the account is still where we validated it.
+     *
+     * Two people advancing at once used to both succeed: each read the same
+     * stage, each validated against it, and each wrote. The result was two
+     * history entries and a doubled set of entry actions for one real move.
+     * The stage we checked is the version - if it has changed, this decision
+     * was made about an account that no longer exists in that state, and the
+     * safe thing is to make somebody look again rather than apply it.
+     *
+     * This also covers the double click, which is the same race with one
+     * person in it.
+     */
+    const moved = await transaction.client.updateMany({
+      where: { id: client.id, currentStageId: client.currentStageId },
       data: {
         currentStageId: targetStage.id,
         stageEnteredAt: now,
       },
     });
+
+    if (moved.count === 0) {
+      throw new StaleJourneyError();
+    }
 
     await transaction.clientStageHistory.create({
       data: {
@@ -302,6 +330,19 @@ export async function moveClientStage(
       await transaction.employeeTask.createMany({ data: generatedTasks, skipDuplicates: true });
     }
   });
+  } catch (error) {
+    if (error instanceof StaleJourneyError) {
+      return {
+        ok: false as const,
+        code: "STALE" as const,
+        message:
+          "This journey was updated by somebody else while you were looking at it. "
+          + "The latest state has been loaded - please review it before moving the account.",
+      };
+    }
+
+    throw error;
+  }
 
   await logActivity({
     actorId: actor.id,

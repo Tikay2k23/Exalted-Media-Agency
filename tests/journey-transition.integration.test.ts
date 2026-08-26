@@ -382,6 +382,69 @@ describe("client journey stage gate (integration)", { skip: !hasDatabase }, () =
     assert.equal(new Set(keys).size, keys.length);
   });
 
+  /*
+   * Two people advancing at once.
+   *
+   * Both used to succeed: each read the same stage, each validated against it,
+   * and each wrote. One real move produced two history entries and two runs of
+   * the entry actions. The double click is the same race with one person in it.
+   */
+  it("lets only one of two simultaneous moves land", async () => {
+    const actor = await loadAuthContext(fixtures!.managerId);
+    assert.ok(actor);
+
+    // Park the client somewhere both moves can start from.
+    await moveClientStage({
+      clientId: fixtures!.clientId,
+      targetStageId: fixtures!.paymentStageId,
+      actor,
+      override: { reason: "Reset for the concurrency check on this account.", riskAcknowledged: true },
+    });
+
+    const historyBefore = await prisma.clientStageHistory.count({
+      where: { clientId: fixtures!.clientId, toStageId: fixtures!.productionStageId },
+    });
+
+    const move = () =>
+      moveClientStage({
+        clientId: fixtures!.clientId,
+        targetStageId: fixtures!.productionStageId,
+        actor,
+        override: {
+          reason: "Both callers pushing the same account forward at once.",
+          riskAcknowledged: true,
+        },
+      });
+
+    const [first, second] = await Promise.all([move(), move()]);
+
+    const results = [first, second];
+    const landed = results.filter((result) => result.ok);
+    const refused = results.filter((result) => !result.ok);
+
+    assert.equal(landed.length, 1, "both moves landed - the account advanced twice");
+    assert.equal(refused.length, 1);
+
+    // Refused for the right reason, not by accident.
+    const rejection = refused[0];
+
+    if (!rejection.ok) {
+      // STALE specifically: without the guard neither move is refused at all,
+      // so this is the guard talking and not the gate happening to catch it.
+      assert.equal(rejection.code, "STALE");
+    }
+
+    const historyAfter = await prisma.clientStageHistory.count({
+      where: { clientId: fixtures!.clientId, toStageId: fixtures!.productionStageId },
+    });
+
+    assert.equal(
+      historyAfter - historyBefore,
+      1,
+      "one move should write one history entry",
+    );
+  });
+
   it("notifies oversight roles that a gate was overridden", async () => {
     const overrideNotifications = await prisma.notification.findMany({
       where: { entityId: fixtures!.clientId, type: "STAGE_OVERRIDE" },
