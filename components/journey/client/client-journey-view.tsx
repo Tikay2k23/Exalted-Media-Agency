@@ -13,6 +13,7 @@ import {
   UserRound,
   MailQuestion,
   Plus,
+  ScrollText,
   LifeBuoy,
   StickyNote,
   ArrowUpRight,
@@ -33,6 +34,7 @@ import {
 import {
   AdvanceStageDialog,
   HealthDialog,
+  AutomationLogDialog,
   RecoveryPlanDialog,
   StagePreviewDialog,
   JourneyFlagDialog,
@@ -128,6 +130,7 @@ export function ClientJourneyView({
   const [showAllRequirements, setShowAllRequirements] = useState(false);
   const [showFullJourney, setShowFullJourney] = useState(false);
   const [busyCard, setBusyCard] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -180,6 +183,19 @@ export function ClientJourneyView({
       now,
     });
   }, [account.requirements, detail.flags, detail.tasks, clock, now]);
+
+  const openPause = detail.flags.find((flag) => flag.kind === "PAUSED" && !flag.resolvedAt) ?? null;
+
+  /** Closing the pause period, which restarts the stage clock. */
+  async function resumeJourney(flagId: string) {
+    await fetch(`/api/clients/${account.id}/journey-flags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "resolve", flagId, note: "Journey resumed." }),
+    });
+
+    router.refresh();
+  }
 
   /*
    * What this stage offers, given what is actually true of it.
@@ -244,8 +260,54 @@ export function ClientJourneyView({
       onSelect: () => router.push(`/clients/${account.id}?tab=activity`),
     });
 
+    /*
+     * These three live in the More menu on the standalone journey page, and
+     * that menu sits inside the header the client tab hides - so embedding the
+     * view quietly took them away. They belong in Quick Actions anyway: it is
+     * the one place on the tab for acting on the journey.
+     */
+    if (detail.canManageFlags) {
+      actions.push({
+        key: "revisions",
+        label: "Request revisions",
+        icon: Repeat2,
+        onSelect: () => setFlagKind("REVISIONS_REQUIRED"),
+      });
+
+      actions.push(
+        openPause
+          ? {
+              key: "resume",
+              label: "Resume journey",
+              icon: PauseCircle,
+              onSelect: () => void resumeJourney(openPause.id),
+            }
+          : {
+              key: "pause",
+              label: "Pause journey",
+              icon: PauseCircle,
+              onSelect: () => setFlagKind("PAUSED"),
+            },
+      );
+    }
+
+    actions.push({
+      key: "automation",
+      label: "View automation log",
+      icon: ScrollText,
+      onSelect: () => setLogOpen(true),
+    });
+
     return actions;
-  }, [detail, account.id, account.nextStageId, account.nextStageName, router, scored.status]);
+  }, [
+    detail,
+    account.id,
+    account.nextStageId,
+    account.nextStageName,
+    router,
+    scored.status,
+    openPause,
+  ]);
 
   const groups = useMemo(
     () => requirementGroups(account.requirements),
@@ -366,18 +428,6 @@ export function ClientJourneyView({
     }
   }
 
-  const openPause = detail.flags.find((flag) => flag.kind === "PAUSED" && !flag.resolvedAt) ?? null;
-
-  /** Closing the pause period, which restarts the stage clock. */
-  async function resumeJourney(flagId: string) {
-    await fetch(`/api/clients/${account.id}/journey-flags`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "resolve", flagId, note: "Journey resumed." }),
-    });
-
-    router.refresh();
-  }
 
   async function resolveFlag(card: AttentionCard) {
     const flagId = card.key.startsWith("flag-") ? card.key.slice(5) : null;
@@ -450,6 +500,11 @@ export function ClientJourneyView({
      * already paused would open a second period against the first, and two
      * overlapping pauses make the stage clock impossible to reason about.
      */
+    {
+      label: "View Automation Log",
+      icon: ScrollText,
+      onSelect: () => setLogOpen(true),
+    },
     openPause
       ? {
           label: "Resume Journey",
@@ -814,6 +869,10 @@ export function ClientJourneyView({
           reasons={health.reasons}
           onClose={() => setHealthOpen(false)}
         />
+      ) : null}
+
+      {logOpen ? (
+        <AutomationLogDialog clientId={account.id} onClose={() => setLogOpen(false)} />
       ) : null}
 
       {recovering ? (

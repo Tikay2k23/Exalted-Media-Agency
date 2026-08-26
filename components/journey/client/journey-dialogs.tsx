@@ -813,3 +813,150 @@ export function RecoveryPlanDialog({
     </Modal>
   );
 }
+
+export interface AutomationRunView {
+  id: string;
+  action: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  retryCount: number;
+  lastError: string | null;
+  generatedCount: number;
+  stageName: string | null;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  SYNC_WORKSTREAMS: "Set up the specialist seats",
+  GENERATE_TASKS: "Create the stage's work",
+  RECORD_HANDOFF: "Record the handoff",
+  NOTIFY: "Tell the people who now own it",
+};
+
+/**
+ * What this account's stage moves actually did.
+ *
+ * Worth opening for one reason: a step can fail while the move itself lands, so
+ * an account can be in a new stage with none of its work created and nobody
+ * told. That used to be invisible. Failures are listed first because they are
+ * the only entries anybody needs to act on.
+ */
+export function AutomationLogDialog({
+  clientId,
+  onClose,
+}: {
+  clientId: string;
+  onClose: () => void;
+}) {
+  const [runs, setRuns] = useState<AutomationRunView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`/api/clients/${clientId}/automation-runs`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("failed");
+
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled) setRuns(data.runs ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setError("We couldn't load the automation log.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  const failures = runs?.filter((run) => run.status === "FAILED") ?? [];
+  const rest = runs?.filter((run) => run.status !== "FAILED") ?? [];
+
+  return (
+    <Modal
+      eyebrow="Automation"
+      title="What the stage moves did"
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      {error ? (
+        <p role="alert" className="text-xs text-rose-600">
+          {error}
+        </p>
+      ) : runs === null ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : runs.length === 0 ? (
+        <p className="text-xs text-slate-600">
+          Nothing has run against this account yet. Entries appear here when a stage
+          move creates work, records a handoff or notifies somebody.
+        </p>
+      ) : (
+        <>
+          {failures.length > 0 ? (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-500">
+                Failed ({failures.length})
+              </p>
+              <ul className="mt-2 space-y-2">
+                {failures.map((run) => (
+                  <li key={run.id} className="rounded-lg border border-rose-200 bg-rose-50/60 p-2.5">
+                    <p className="text-xs font-medium text-slate-900">
+                      {ACTION_LABELS[run.action] ?? run.action}
+                      {run.stageName ? ` · ${run.stageName}` : ""}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-rose-700">{run.lastError}</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      {new Date(run.startedAt).toLocaleString()}
+                      {run.retryCount > 0 ? ` · ${run.retryCount} retries` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+
+          {rest.length > 0 ? (
+            <>
+              <p
+                className={cn(
+                  "text-[10px] font-semibold uppercase tracking-wider text-slate-400",
+                  failures.length > 0 && "mt-4",
+                )}
+              >
+                Completed
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {rest.map((run) => (
+                  <li key={run.id} className="flex items-start justify-between gap-2 text-[11px]">
+                    <span className="min-w-0 text-slate-700">
+                      {ACTION_LABELS[run.action] ?? run.action}
+                      {run.stageName ? (
+                        <span className="text-slate-400"> · {run.stageName}</span>
+                      ) : null}
+                      {run.generatedCount > 0 ? (
+                        <span className="text-slate-400">
+                          {" "}
+                          · {run.generatedCount} created
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-slate-400">
+                      {new Date(run.startedAt).toLocaleDateString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </>
+      )}
+    </Modal>
+  );
+}
