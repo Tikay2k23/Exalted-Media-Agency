@@ -38,6 +38,14 @@ import {
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  DefectsDialog,
+  LaunchChecklistDialog,
+  QaChecklistDialog,
+  RaiseDefectDialog,
+  RecordApprovalDialog,
+} from "@/components/clients/approval-dialogs";
+import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -192,6 +200,11 @@ export interface ApprovalWorkspaceProps {
   };
   /** The launch this checklist belongs to, for the review action. */
   launchId: string | null;
+  /** For the defect form and the sign-off form, from the account itself. */
+  assignees: { id: string; name: string }[];
+  projects: { id: string; name: string }[];
+  approvers: { id: string; name: string; role: string | null }[];
+  approvalTypes: { value: string; label: string }[];
   permissions: {
     canTest: boolean;
     canCloseDefect: boolean;
@@ -199,6 +212,11 @@ export interface ApprovalWorkspaceProps {
     canActivateLaunch: boolean;
   };
 }
+
+/** What every panel needs: the data, and a way to open a working surface. */
+type PanelProps = ApprovalWorkspaceProps & {
+  onOpen: (dialog: "qa" | "defects" | "raise" | "launch" | "approval") => void;
+};
 
 function shortDate(iso: string | null) {
   if (!iso) return null;
@@ -216,6 +234,18 @@ export function ClientApprovalWorkspace(props: ApprovalWorkspaceProps) {
   const [reviewResult, setReviewResult] = useState<string[] | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  /*
+   * Which working surface is open.
+   *
+   * These replaced three older workspaces that used to sit under this page.
+   * Two views of the same records is one too many, and the summary cards
+   * linking down to them meant the page had to render both.
+   */
+  const [dialog, setDialog] = useState<
+    "qa" | "defects" | "raise" | "launch" | "approval" | null
+  >(null);
+  /** The QA check a defect is being raised against, where there is one. */
+  const [defectFrom, setDefectFrom] = useState<QaCheck | null>(null);
 
   /*
    * The review runs against the same gate the page is rendering, so it can
@@ -288,9 +318,9 @@ export function ClientApprovalWorkspace(props: ApprovalWorkspaceProps) {
 
       {/* ------------------------------------------------------ the main band */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <QaPanel {...props} />
-        <DefectsPanel {...props} />
-        <ClientApprovalPanel {...props} />
+        <QaPanel {...props} onOpen={setDialog} />
+        <DefectsPanel {...props} onOpen={setDialog} />
+        <ClientApprovalPanel {...props} onOpen={setDialog} />
 
         <Panel icon={ClipboardCheck} title="Approval Stage Details">
           <div className="divide-y divide-slate-100">
@@ -337,7 +367,7 @@ export function ClientApprovalWorkspace(props: ApprovalWorkspaceProps) {
 
       {/* ----------------------------------------------------- the lower band */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <LaunchPanel {...props} />
+        <LaunchPanel {...props} onOpen={setDialog} />
 
         <Panel icon={Clock} title="Approval History" className="xl:col-span-2">
           {props.history.length === 0 ? (
@@ -374,17 +404,28 @@ export function ClientApprovalWorkspace(props: ApprovalWorkspaceProps) {
             </ol>
           )}
 
-          <a
-            href={`/clients/${props.clientId}?tab=activity`}
+          {/*
+            * TabLink, not an anchor to ?tab=activity. From inside the client
+            * record that is a soft navigation: the tab strip never remounts,
+            * so the address bar moves and the reader stays put.
+            */}
+          <TabLink
+            tab="activity"
+            clientId={props.clientId}
             className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800"
           >
             View full history
             <ExternalLink className="h-3 w-3" aria-hidden />
-          </a>
+          </TabLink>
         </Panel>
 
         <div className="min-w-0 space-y-4">
-          <QuickActions {...props} onStartLaunchReview={startLaunchReview} reviewing={reviewing} />
+          <QuickActions
+            {...props}
+            onOpen={setDialog}
+            onStartLaunchReview={startLaunchReview}
+            reviewing={reviewing}
+          />
 
           {/* ------------------------------------------------ approval health */}
           <Panel icon={Activity} title="Approval Health">
@@ -511,6 +552,61 @@ export function ClientApprovalWorkspace(props: ApprovalWorkspaceProps) {
         </div>
       ) : null}
 
+      {dialog === "qa" ? (
+        <QaChecklistDialog
+          checks={props.qaChecks}
+          canTest={permissions.canTest}
+          onClose={() => setDialog(null)}
+          onRaiseDefect={(check) => {
+            setDefectFrom(check);
+            setDialog("raise");
+          }}
+        />
+      ) : null}
+
+      {dialog === "defects" ? (
+        <DefectsDialog
+          defects={props.defects}
+          canClose={permissions.canCloseDefect}
+          onClose={() => setDialog(null)}
+          onRaise={() => {
+            setDefectFrom(null);
+            setDialog("raise");
+          }}
+        />
+      ) : null}
+
+      {dialog === "raise" ? (
+        <RaiseDefectDialog
+          clientId={props.clientId}
+          assignees={props.assignees}
+          projects={props.projects}
+          prefillFrom={defectFrom}
+          onClose={() => {
+            setDefectFrom(null);
+            setDialog(null);
+          }}
+        />
+      ) : null}
+
+      {dialog === "launch" ? (
+        <LaunchChecklistDialog
+          checks={props.launchChecks}
+          canManage={permissions.canActivateLaunch}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+
+      {dialog === "approval" ? (
+        <RecordApprovalDialog
+          clientId={props.clientId}
+          approvers={props.approvers}
+          projects={props.projects}
+          approvalTypes={props.approvalTypes}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+
       {!permissions.canActivateLaunch && gate.state === "READY_FOR_LAUNCH_REVIEW" ? (
         <p className="text-[11px] text-slate-400">
           Everything is clear. Activating the launch needs the launch permission, which this
@@ -525,7 +621,7 @@ export function ClientApprovalWorkspace(props: ApprovalWorkspaceProps) {
 /* Panels                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function QaPanel({ gate, qaChecks, clientId }: ApprovalWorkspaceProps) {
+function QaPanel({ gate, qaChecks, onOpen }: PanelProps) {
   return (
     <Panel icon={ShieldCheck} title="Internal Quality Assurance">
       {gate.qa.total === 0 ? (
@@ -583,30 +679,32 @@ function QaPanel({ gate, qaChecks, clientId }: ApprovalWorkspaceProps) {
         * The QA plans already have a screen. This opens it rather than
         * growing a second checklist that would have to be kept in step.
         */}
-      <a
-        href={`/clients/${clientId}?tab=quality#qa-plans`}
+      <button
+        type="button"
+        onClick={() => onOpen("qa")}
         className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
       >
         <ClipboardCheck className="h-3.5 w-3.5" aria-hidden />
         View full QA checklist
-      </a>
+      </button>
     </Panel>
   );
 }
 
-function DefectsPanel({ gate, defects, clientId, permissions }: ApprovalWorkspaceProps) {
+function DefectsPanel({ gate, defects, permissions, onOpen }: PanelProps) {
   return (
     <Panel
       icon={Bug}
       title="Open Defects"
       action={
         permissions.canTest ? (
-          <a
-            href={`/clients/${clientId}?tab=quality#defects`}
+          <button
+            type="button"
+            onClick={() => onOpen("raise")}
             className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50"
           >
             Raise defect
-          </a>
+          </button>
         ) : null
       }
     >
@@ -616,8 +714,9 @@ function DefectsPanel({ gate, defects, clientId, permissions }: ApprovalWorkspac
         <ul className="space-y-2">
           {gate.defects.open.slice(0, 3).map((entry) => (
             <li key={entry.id}>
-              <a
-                href={`/clients/${clientId}?tab=quality#defects`}
+              <button
+                type="button"
+                onClick={() => onOpen("defects")}
                 className="block rounded-xl border border-slate-200 p-2.5 transition hover:border-slate-300"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -638,25 +737,26 @@ function DefectsPanel({ gate, defects, clientId, permissions }: ApprovalWorkspac
                   <span className="truncate">{shortDate(entry.reportedAt)}</span>
                   <span className="truncate text-right">{formatEnumLabel(entry.status)}</span>
                 </div>
-              </a>
+              </button>
             </li>
           ))}
         </ul>
       )}
 
       {defects.length > gate.defects.open.slice(0, 3).length ? (
-        <a
-          href={`/clients/${clientId}?tab=quality#defects`}
+        <button
+          type="button"
+          onClick={() => onOpen("defects")}
           className="mt-3 inline-block text-xs font-semibold text-sky-700 hover:text-sky-800"
         >
           View all defects ({defects.length})
-        </a>
+        </button>
       ) : null}
     </Panel>
   );
 }
 
-function ClientApprovalPanel({ gate, clientId, permissions }: ApprovalWorkspaceProps) {
+function ClientApprovalPanel({ gate, permissions, onOpen }: PanelProps) {
   const { approval } = gate;
 
   return (
@@ -721,19 +821,20 @@ function ClientApprovalPanel({ gate, clientId, permissions }: ApprovalWorkspaceP
         * This links to it rather than offering a second way in.
         */}
       {permissions.canRecordApproval ? (
-        <a
-          href={`/clients/${clientId}?tab=quality#approvals`}
+        <button
+          type="button"
+          onClick={() => onOpen("approval")}
           className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-950 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
         >
           <BadgeCheck className="h-3.5 w-3.5" aria-hidden />
           {approval.state === "APPROVED" ? "View sign-off record" : "Record approval"}
-        </a>
+        </button>
       ) : null}
     </Panel>
   );
 }
 
-function LaunchPanel({ gate, launchChecks, clientId }: ApprovalWorkspaceProps) {
+function LaunchPanel({ gate, launchChecks, onOpen }: PanelProps) {
   return (
     <Panel
       icon={Rocket}
@@ -783,13 +884,14 @@ function LaunchPanel({ gate, launchChecks, clientId }: ApprovalWorkspaceProps) {
         </ul>
       )}
 
-      <a
-        href={`/clients/${clientId}?tab=quality#launches`}
+      <button
+        type="button"
+        onClick={() => onOpen("launch")}
         className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
       >
         <Rocket className="h-3.5 w-3.5" aria-hidden />
         Open launch checklist
-      </a>
+      </button>
     </Panel>
   );
 }
@@ -805,71 +907,115 @@ function QuickActions({
   gate,
   clientId,
   permissions,
+  onOpen,
   onStartLaunchReview,
   reviewing,
-}: ApprovalWorkspaceProps & {
+}: PanelProps & {
   onStartLaunchReview: () => void;
   reviewing: boolean;
 }) {
-  const links: { label: string; href: string }[] = [];
+  /**
+   * One action. Either it opens a working surface here or it leaves the page.
+   *
+   * `dialog` and `href` are exclusive so nothing can be half-wired: an action
+   * that names neither will not compile.
+   */
+  type Action =
+    | { label: string; dialog: Parameters<typeof onOpen>[0]; href?: never }
+    | { label: string; tab: "tasks"; dialog?: never };
 
-  const qaLink = { label: "View QA checklist", href: `/clients/${clientId}?tab=quality#qa-plans` };
-  const defectLink = { label: "Raise defect", href: `/clients/${clientId}?tab=quality#defects` };
-  const approvalLink = {
-    label: "Open approvals",
-    href: `/clients/${clientId}?tab=quality#approvals`,
-  };
-  const launchLink = {
-    label: "Open launch checklist",
-    href: `/clients/${clientId}?tab=quality#launches`,
-  };
-  const workLink = { label: "Open revision work", href: `/clients/${clientId}?tab=tasks` };
+  const actions: Action[] = [];
 
+  const qa: Action = { label: "View QA checklist", dialog: "qa" };
+  const raise: Action = { label: "Raise defect", dialog: "raise" };
+  const approval: Action = { label: "Record approval", dialog: "approval" };
+  const viewApproval: Action = { label: "View approval history", dialog: "approval" };
+  const launch: Action = { label: "Open launch checklist", dialog: "launch" };
+  const defects: Action = { label: "Resolve launch blockers", dialog: "defects" };
+  const work: Action = { label: "Open revision work", tab: "tasks" };
+
+  /*
+   * Sections 35 to 40: what is offered follows the phase, so nobody is shown
+   * "Record approval" on work that has not passed QA, or a launch checklist on
+   * an account still failing its tests.
+   */
   switch (gate.state) {
     case "QA_IN_PROGRESS":
     case "QA_FAILING":
-      links.push(qaLink);
-      if (permissions.canTest) links.push(defectLink);
+      actions.push(qa);
+      if (permissions.canTest) actions.push(raise);
       break;
 
     case "QA_READY":
-      links.push(approvalLink, qaLink);
-      if (permissions.canTest) links.push(defectLink);
+      if (permissions.canRecordApproval) actions.push(approval);
+      actions.push(qa);
+      if (permissions.canTest) actions.push(raise);
       break;
 
     case "WAITING_ON_CLIENT":
-      links.push(approvalLink);
-      if (permissions.canTest) links.push(defectLink);
+      if (permissions.canRecordApproval) actions.push(approval);
+      if (permissions.canTest) actions.push(raise);
       break;
 
     case "REVISIONS_REQUIRED":
-      links.push(workLink, approvalLink);
+      actions.push(work, viewApproval);
       break;
 
     case "LAUNCH_BLOCKED":
-      links.push(launchLink);
-      if (permissions.canTest) links.push(defectLink);
+      actions.push(launch);
+      if (gate.defects.open.length > 0) actions.push(defects);
       break;
 
     case "READY_FOR_LAUNCH_REVIEW":
-      links.push(launchLink, approvalLink);
+      actions.push(launch);
       break;
   }
 
   return (
     <Panel icon={Zap} title="Quick Actions">
       <ul className="space-y-1.5">
-        {links.map((link) => (
-          <li key={link.label}>
-            <a
-              href={link.href}
-              className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              {link.label}
-              <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
-            </a>
+        {actions.map((action) => (
+          <li key={action.label}>
+            {action.dialog ? (
+              <button
+                type="button"
+                onClick={() => onOpen(action.dialog)}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                {action.label}
+                <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+              </button>
+            ) : (
+              <TabLink
+                tab={action.tab}
+                clientId={clientId}
+                className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                {action.label}
+                <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+              </TabLink>
+            )}
           </li>
         ))}
+
+        {/*
+          * Requesting sign-off and chasing it are the two actions this page
+          * cannot perform. There is no mail or SMS service in the application,
+          * so a Request Approval button would compose a message nothing sends.
+          * Shown disabled with the reason rather than hidden, because their
+          * absence would otherwise look like an oversight.
+          */}
+        {gate.state === "QA_READY" || gate.state === "WAITING_ON_CLIENT" ? (
+          <li>
+            <span
+              title="No email or SMS service is configured, so this cannot send. Record the approval once the client replies."
+              className="flex cursor-not-allowed items-center justify-between gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs font-medium text-slate-400"
+            >
+              {gate.state === "QA_READY" ? "Request approval" : "Send reminder"}
+              <span className="shrink-0 text-[10px] uppercase">No mailer</span>
+            </span>
+          </li>
+        ) : null}
 
         {/*
           * Always offered where a checklist exists, because the useful answer

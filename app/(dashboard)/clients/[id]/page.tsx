@@ -9,17 +9,14 @@ import { ClientJourneyView } from "@/components/journey/client/client-journey-vi
 import { ClientWork } from "@/components/clients/client-work";
 import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
-import { ClientApprovals } from "@/components/clients/client-approvals";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientGrowth } from "@/components/clients/client-growth";
 import { ClientHealth } from "@/components/clients/client-health";
 import { ClientOffboarding } from "@/components/clients/client-offboarding";
 import { ClientIntake } from "@/components/clients/client-intake";
 import { ClientInvoices } from "@/components/clients/client-invoices";
-import { ClientLaunches } from "@/components/clients/client-launches";
 import { ClientProjects } from "@/components/clients/client-projects";
 import { ClientApprovalWorkspace } from "@/components/clients/client-approval-workspace";
-import { ClientQuality } from "@/components/clients/client-quality";
 import { ClientReporting } from "@/components/clients/client-reporting";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,14 +34,11 @@ import { getClientRow } from "@/lib/data/clients-dashboard-query";
 import { getJourneyClientDetail } from "@/lib/data/journey-client-query";
 import { prisma } from "@/lib/prisma";
 import { deriveProjectProgress } from "@/lib/delivery/project-service";
-import { deriveLaunchReadiness } from "@/lib/launch/launch-service";
 import {
   CLIENT_APPROVAL_TYPES,
-  describeApprovalShortfall,
   isVerifiableApproval,
 } from "@/lib/approvals/approval-service";
 import { approvalGate } from "@/lib/quality/approval-gate";
-import { isDefectOpen } from "@/lib/quality/defect-service";
 import {
   daysSinceAssessment,
   isComplaintOpen,
@@ -94,7 +88,7 @@ import { can, canAccessAssignedRecord, canManageClients, teamRoleLabels } from "
 import {
 } from "@/lib/workflow/handoff-engine";
 import { requireUser } from "@/lib/session";
-import { formatDateTime, formatEnumLabel } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -295,6 +289,16 @@ export default async function ClientDetailPage({
     defects: approvalDefects,
     launchChecks: approvalLaunchChecks,
     launchId: approvalLaunch?.id ?? null,
+    assignees: options.users,
+    projects: client.projects.map((project) => ({ id: project.id, name: project.name })),
+    /* Only contacts the account has marked as authorised to approve. */
+    approvers: client.contacts
+      .filter((contact) => contact.isApprover)
+      .map((contact) => ({ id: contact.id, name: contact.name, role: contact.role })),
+    approvalTypes: CLIENT_APPROVAL_TYPES.map((option) => ({
+      value: option.value,
+      label: option.label,
+    })),
     history: approvalHistory,
     stage: {
       name: client.currentStage.name,
@@ -996,141 +1000,21 @@ export default async function ClientDetailPage({
             </Card>
           ),
 
-          quality: (
-            <div className="space-y-6">
-              {/*
-                * The summary the tab was missing.
-                *
-                * Everything below it already worked - QA plans, defects,
-                * sign-off records, launch checklists - and none of it added
-                * up to an answer. This reads all four through one derivation
-                * so the page can say where the work has got to and what is
-                * stopping it, and the workspaces underneath remain the place
-                * the actual editing happens.
-                */}
-              <ClientApprovalWorkspace {...approvalWorkspaceProps} />
-
-              <div id="qa-plans" className="scroll-mt-24">
-              <ClientQuality
-                clientId={client.id}
-                currentUserId={actor.id}
-                canTest={can(actor, "qa.test")}
-                canClose={can(actor, "qa.closeDefect")}
-                canApprove={can(actor, "qa.approve")}
-                assignees={options.users}
-                defects={client.defects.map((defect) => ({
-                  id: defect.id,
-                  reference: defect.reference,
-                  title: defect.title,
-                  severity: defect.severity,
-                  status: defect.status,
-                  description: defect.description,
-                  assignedToName: defect.assignedTo?.name ?? null,
-                  assignedToId: defect.assignedToId,
-                  dueDate: defect.dueDate?.toISOString() ?? null,
-                  closureOverrideReason: defect.closureOverrideReason,
-                  isOpen: isDefectOpen(defect.status),
-                }))}
-                qaPlans={client.qaPlans.map((plan) => ({
-                  id: plan.id,
-                  name: plan.name,
-                  deliverable: plan.deliverable,
-                  status: plan.status,
-                  tests: plan.tests.map((test) => ({
-                    id: test.id,
-                    objective: test.objective,
-                    status: test.status,
-                    actualResult: test.actualResult,
-                  })),
-                }))}
-              />
-              {/* Sits between quality assurance and launch, which is the order it
-                  happens in: the work passes QA, the client signs it off, it goes
-                  live. */}
-              </div>
-
-              <div id="approvals" className="scroll-mt-24">
-              <ClientApprovals
-                clientId={client.id}
-                canRecord={can(actor, "revisions.recordApproval")}
-                contactCount={client.contacts.length}
-                approvalTypes={CLIENT_APPROVAL_TYPES.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                }))}
-                approvers={client.contacts
-                  .filter((contact) => contact.isApprover)
-                  .map((contact) => ({
-                    id: contact.id,
-                    name: contact.name,
-                    role: contact.role,
-                  }))}
-                projects={client.projects.map((project) => ({
-                  id: project.id,
-                  name: project.name,
-                }))}
-                approvals={client.approvals.map((approval) => ({
-                  id: approval.id,
-                  type: approval.type,
-                  typeLabel: formatEnumLabel(approval.type),
-                  subject: approval.subject,
-                  status: approval.status,
-                  approvedByName: approval.approvedByName,
-                  approvedAt: approval.approvedAt.toISOString(),
-                  evidenceUrl: approval.evidenceUrl,
-                  notes: approval.notes,
-                  recordedByName: approval.recordedBy?.name ?? null,
-                  projectName: approval.project?.name ?? null,
-                  withdrawnReason: approval.withdrawnReason,
-                  withdrawnByName: approval.withdrawnBy?.name ?? null,
-                  countsForLaunch: isVerifiableApproval(approval),
-                  shortfall: describeApprovalShortfall(approval),
-                }))}
-              />
-              </div>
-
-              <div id="launches" className="scroll-mt-24">
-              <ClientLaunches
-                clientId={client.id}
-                canSchedule={can(actor, "launch.schedule")}
-                canActivate={can(actor, "launch.activate")}
-                owners={options.users}
-                launches={client.launches.map((launch) => {
-                  const readiness = deriveLaunchReadiness(launch);
-
-                  return {
-                    id: launch.id,
-                    name: launch.name,
-                    status: launch.status,
-                    scheduledFor: launch.scheduledFor?.toISOString() ?? null,
-                    ownerName: launch.owner?.name ?? null,
-                    backupVerified: launch.backupVerifiedAt !== null,
-                    rollbackPlan: launch.rollbackPlan,
-                    isFrozen: launch.isFrozen,
-                    freezeReason: launch.freezeReason,
-                    checklistItems: launch.checklistItems.map((item) => ({
-                      id: item.id,
-                      label: item.label,
-                      status: item.status,
-                      isRequired: item.isRequired,
-                    })),
-                    monitoringChecks: launch.monitoringChecks.map((check) => ({
-                      id: check.id,
-                      window: check.window,
-                      result: check.result,
-                      dueAt: check.dueAt?.toISOString() ?? null,
-                      observations: check.observations,
-                    })),
-                    readinessBlockers: readiness.blockers,
-                    isReady: readiness.ready,
-                    completedRequired: readiness.completedRequired,
-                    totalRequired: readiness.totalRequired,
-                  };
-                })}
-              />
-              </div>
-            </div>
-          ),
+          /*
+           * Approvals: one page, one view of each record.
+           *
+           * Three workspaces used to stack here - QA plans, approval records
+           * and launches - each honest on its own and none of them adding up
+           * to an answer. Worse, the summary card added above them meant the
+           * tab rendered a reading of the records and a second copy of the
+           * records underneath it.
+           *
+           * They are gone rather than hidden. Every endpoint they posted to
+           * is untouched and the cards now open those working surfaces
+           * directly, so the same rows are edited through the same services
+           * with one fewer place to look.
+           */
+          quality: <ClientApprovalWorkspace {...approvalWorkspaceProps} />,
 
           reports: (
             <div className="space-y-6">
