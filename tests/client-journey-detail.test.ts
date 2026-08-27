@@ -405,6 +405,30 @@ describe("needs attention", () => {
     assert.deepEqual(attentionCards(detail(), NOW), []);
   });
 
+  /*
+   * Chasing is not closing.
+   *
+   * Every flag card was dispatched to the resolve endpoint, so the waiting
+   * card - whose button reads Send Follow-Up - marked what the client owed as
+   * done and the account stopped waiting without the client having answered.
+   * The label is what says which of those a card means, so it is asserted
+   * here: a card offering to chase must never be one that closes.
+   */
+  it("never offers to close something under a chasing label", () => {
+    const kinds = [
+      { kind: "WAITING_ON_CLIENT" as const, expected: "Send Follow-Up" },
+      { kind: "BLOCKED" as const, expected: "Mark Resolved" },
+      { kind: "REVISIONS_REQUIRED" as const, expected: "Mark Resolved" },
+      { kind: "PAUSED" as const, expected: "Resume Journey" },
+    ];
+
+    for (const { kind, expected } of kinds) {
+      const [card] = attentionCards(detail({ flags: [flag({ kind })] }), NOW);
+
+      assert.equal(card.action, expected, `${kind} should offer "${expected}"`);
+    }
+  });
+
   it("leads with a raised condition and how long it has run", () => {
     const [card] = attentionCards(detail({ flags: [flag()] }), NOW);
 

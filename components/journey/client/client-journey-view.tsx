@@ -534,6 +534,24 @@ export function ClientJourneyView({
    */
   function actOnCard(card: AttentionCard) {
     if (card.key.startsWith("flag-")) {
+      const flag = detail.flags.find(
+        (candidate) => candidate.id === card.key.slice(5),
+      );
+
+      /*
+       * A card reading "Send Follow-Up" must not resolve the thing.
+       *
+       * Every flag card came here and every one was resolved, so the waiting
+       * card - whose button says Send Follow-Up - marked what the client owes
+       * as done, and the account stopped waiting without the client having
+       * answered. The other kinds do say Mark Resolved or Resume Journey, and
+       * for those resolving is exactly right.
+       */
+      if (flag?.kind === "WAITING_ON_CLIENT") {
+        setDrawer("chase");
+        return;
+      }
+
       void resolveFlag(card);
       return;
     }
@@ -647,6 +665,20 @@ export function ClientJourneyView({
         setShowAllRequirements(true);
         document.getElementById("stage-requirements")?.scrollIntoView({ block: "start" });
         return;
+
+      default: {
+        /*
+         * Exhaustiveness, checked by the compiler.
+         *
+         * A new focus state carrying a new button will not build until it is
+         * wired here. Without this the switch simply falls through and the
+         * button does nothing at all, which is the failure this whole pass is
+         * about and is invisible in review.
+         */
+        const unhandled: never = action;
+
+        console.warn(`[journey] No action wired for delivery button: ${String(unhandled)}`);
+      }
     }
   }
 
@@ -704,6 +736,13 @@ export function ClientJourneyView({
 
         router.push(`/clients/${account.id}?tab=journey`);
         return;
+
+      default: {
+        // Same compiler-checked exhaustiveness as the delivery dispatcher.
+        const unhandled: never = action;
+
+        console.warn(`[journey] No action wired for focus button: ${String(unhandled)}`);
+      }
     }
   }
 
@@ -733,27 +772,44 @@ export function ClientJourneyView({
       return;
     }
 
-    if (step.kind === "resolve-blocker" || step.kind === "chase-client") {
-      const card = cards.find((candidate) => candidate.key.startsWith("flag-"));
-
-      if (card) {
-        void resolveFlag(card);
-        return;
-      }
+    /*
+     * Chasing is not closing.
+     *
+     * This button reads "Send Follow-Up" and used to call resolveFlag, which
+     * posts action: "resolve" - so the one button offered for an account
+     * waiting on its client marked the thing the client owes as done, and the
+     * waiting state disappeared without the client having answered. The chase
+     * drawer is where a follow-up is actually recorded.
+     */
+    if (step.kind === "chase-client") {
+      setDrawer("chase");
+      return;
     }
 
     /*
-     * The requirements are already on this page, in the card below. Sending
-     * somebody to the task list to complete a requirement was wrong: a
-     * requirement is the stage gate, not delivery work, and plenty of them -
-     * "primary contact recorded" - have no task behind them at all, so the
-     * list they landed on could hold nothing to do with what was blocking.
+     * Resolving a blocker takes a note, and this had none.
+     *
+     * The same immediate resolve, on a card where nobody had been shown what
+     * they were clearing. The drawer names the blocker, carries the reason,
+     * and records what cleared it. Where the blocker is a blocked task rather
+     * than a raised flag there is no record to open, so the work itself is.
      */
+    if (step.kind === "resolve-blocker") {
+      if (detail.delivery.topBlocker) {
+        setDrawer("blocker");
+        return;
+      }
+
+      openWork("blocked");
+      return;
+    }
+
     /*
-     * Complete Requirements opens every gate holding the next stage, each
-     * with a route to the record that satisfies it. View Requirement beside
-     * it opens only the one at the front of the queue - the two buttons are
-     * different questions and used to be the same scroll.
+     * The requirements are the stage gate, not delivery work. Plenty of them -
+     * "primary contact recorded" - have no task behind them at all, so the
+     * task list somebody used to land on could hold nothing to do with what
+     * was blocking. Complete Requirements opens every gate holding the next
+     * stage, each with a route to the record that satisfies it.
      */
     if (step.kind === "complete-requirements") {
       setDrawer("blocking");

@@ -27,7 +27,8 @@ export type DeliveryFocusKey =
   | "WAITING_ON_CLIENT"
   | "BUILD"
   | "QA_READINESS"
-  | "READY_FOR_QA";
+  | "READY_FOR_QA"
+  | "JOURNEY_COMPLETE";
 
 /** Everything the card's buttons can do. A closed set, so none can be unwired. */
 export type DeliveryActionKey =
@@ -298,16 +299,36 @@ export function deliveryFocus(input: DeliveryInput): DeliveryFocus {
     };
   }
 
-  /* 6. Everything clear. */
+  /*
+   * 6. Everything clear - but only offer the advance if there is somewhere to
+   * advance to.
+   *
+   * This arm is the fallthrough, so it also catches an account that has
+   * reached the end of the journey. Offering "Advance to the next stage" there
+   * produced a button that set the dialog open and rendered nothing, because
+   * the dialog needs a next stage to move to. A finished account is told it is
+   * finished.
+   */
+  if (!input.nextStageName) {
+    return {
+      ...shell,
+      key: "JOURNEY_COMPLETE",
+      title: "Focus: Journey Complete",
+      description:
+        "This account has reached the end of the journey with no work or requirements outstanding.",
+      actions: [{ key: "projects", label: "Projects", primary: false }],
+    };
+  }
+
   return {
     ...shell,
     key: "READY_FOR_QA",
-    title: `Focus: Ready for ${input.nextStageName ?? "the next stage"}`,
+    title: `Focus: Ready for ${input.nextStageName}`,
     description: "Production and exit requirements are complete.",
     actions: [
       {
         key: "advance-stage",
-        label: `Advance to ${input.nextStageName ?? "the next stage"}`,
+        label: `Advance to ${input.nextStageName}`,
         primary: true,
       },
       { key: "review-readiness", label: "Review Readiness", primary: false },

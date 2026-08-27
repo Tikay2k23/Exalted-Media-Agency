@@ -536,7 +536,23 @@ export async function getJourneyClientDetail(
       (flag) => flag.kind === "BLOCKED" && !flag.resolvedAt && !flag.cancelledAt,
     );
     const severityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as const;
+    /** The same test the card, the gate and the health score apply. */
+    const holdsStage = (flag: JourneyFlag) =>
+      flag.impact ? flag.impact === "BLOCKS_STAGE" : flag.kind === "BLOCKED";
+
     const rankedBlockers = [...openBlockers].sort((left, right) => {
+      /*
+       * Whether it holds the stage outranks how bad it is.
+       *
+       * Severity alone put a critical blocker marked "does not block" at the
+       * front, so the card quoted the high-severity blocker actually holding
+       * the stage while View Blocker opened the critical one that was not -
+       * two different records, one button, and no way to tell.
+       */
+      const byHold = Number(holdsStage(right)) - Number(holdsStage(left));
+
+      if (byHold !== 0) return byHold;
+
       const bySeverity =
         (severityRank[left.severity ?? "LOW"] ?? 3)
         - (severityRank[right.severity ?? "LOW"] ?? 3);

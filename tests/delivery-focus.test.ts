@@ -134,6 +134,32 @@ describe("delivery focus priority", () => {
     assert.match(result.actions[0].label, /Advance to Internal Quality Assurance/);
   });
 
+  it("does not offer an advance when there is nowhere to advance to", () => {
+    /*
+     * The ready arm is the fallthrough, so it also catches an account at the
+     * end of the journey. It used to offer "Advance to the next stage" there,
+     * and the dialog behind that button needs a next stage - so it opened
+     * nothing at all.
+     */
+    const result = deliveryFocus(input({ nextStageName: null }));
+
+    assert.equal(result.key, "JOURNEY_COMPLETE");
+    assert.equal(
+      result.actions.some((action) => action.key === "advance-stage"),
+      false,
+    );
+  });
+
+  it("never labels a button after a stage that is not there", () => {
+    for (const next of [null, "Internal Quality Assurance"]) {
+      const result = deliveryFocus(input({ nextStageName: next }));
+
+      for (const action of result.actions) {
+        assert.doesNotMatch(action.label, /the next stage/i);
+      }
+    }
+  });
+
   it("never claims readiness while a gate is unmet", () => {
     // The coordination rule: this card and Next Best Action read the same
     // count, so one cannot say ready while the other says one to go.

@@ -12,7 +12,6 @@ import {
   ListChecks,
   Target,
 } from "lucide-react";
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { TabLink } from "@/components/clients/client-tabs";
@@ -38,11 +37,7 @@ import {
   HEALTH_LABELS,
 } from "@/lib/journey/journey-board";
 import { journeyStageForStoredStage } from "@/lib/journey/phases";
-import {
-  stageFocusFor,
-  stageFocusHref,
-  stageSignals,
-} from "@/lib/journey/stage-focus";
+import { stageFocusFor, stageSignals } from "@/lib/journey/stage-focus";
 import { cn } from "@/lib/utils";
 
 /* -------------------------------------------------------------------------- */
@@ -1001,14 +996,24 @@ export function StageFocusCard({ detail }: { detail: JourneyClientDetail }) {
         ))}
       </ul>
 
+      {/*
+        * TabLink, not a Link to the href stageFocusHref builds.
+        *
+        * The address is the same and it works from anywhere else, but from
+        * inside the client record it is a soft navigation: the tab strip
+        * re-renders with a new initial prop and never remounts, so these
+        * buttons moved the address bar and left the reader on Journey. That is
+        * every stage's focus links - eight stages' worth of buttons that did
+        * nothing where most people click them.
+        */}
       <div className="mt-4 flex flex-wrap gap-2">
         {focus.links.map((link) => (
-          <Link key={link.tab + link.label} href={stageFocusHref(link, account.id)}>
+          <TabLink key={link.tab + link.label} tab={link.tab} clientId={account.id}>
             <Button size="sm" variant="secondary" className="gap-1.5">
               {link.label}
               <ArrowRight className="h-3.5 w-3.5" aria-hidden />
             </Button>
-          </Link>
+          </TabLink>
         ))}
       </div>
     </Card>
