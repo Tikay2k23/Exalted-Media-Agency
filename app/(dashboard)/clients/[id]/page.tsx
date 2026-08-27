@@ -18,6 +18,7 @@ import { ClientIntake } from "@/components/clients/client-intake";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientLaunches } from "@/components/clients/client-launches";
 import { ClientProjects } from "@/components/clients/client-projects";
+import { ClientApprovalWorkspace } from "@/components/clients/client-approval-workspace";
 import { ClientQuality } from "@/components/clients/client-quality";
 import { ClientReporting } from "@/components/clients/client-reporting";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
@@ -42,6 +43,7 @@ import {
   describeApprovalShortfall,
   isVerifiableApproval,
 } from "@/lib/approvals/approval-service";
+import { approvalGate } from "@/lib/quality/approval-gate";
 import { isDefectOpen } from "@/lib/quality/defect-service";
 import {
   daysSinceAssessment,
@@ -184,6 +186,135 @@ export default async function ClientDetailPage({
       actor: { select: { name: true } },
     },
   });
+
+  /*
+   * The Approvals gate, computed once from the rows the tab already loads.
+   *
+   * Assembled here rather than inside the card so the summary tiles, the
+   * panels and the launch review are all reading one calculation - the whole
+   * point being that a page cannot show 65% QA beside a clear launch light.
+   */
+  const approvalNow = new Date();
+  const approvalQaChecks = client.qaPlans.flatMap((plan) =>
+    plan.tests.map((test) => ({
+      id: test.id,
+      objective: test.objective,
+      status: test.status as string,
+      planName: plan.name,
+      testerName: test.testerId ? (options.users.find((u) => u.id === test.testerId)?.name ?? null) : null,
+      evidenceUrl: test.evidenceUrl,
+      retestRequired: test.retestRequired,
+    })),
+  );
+  const approvalDefects = client.defects.map((defect) => ({
+    id: defect.id,
+    reference: defect.reference,
+    title: defect.title,
+    severity: defect.severity as string,
+    status: defect.status as string,
+    assignedToName: defect.assignedTo?.name ?? null,
+    reportedAt: defect.createdAt.toISOString(),
+    dueDate: defect.dueDate?.toISOString() ?? null,
+  }));
+  /* The newest launch is the one being prepared; older ones are history. */
+  const approvalLaunch = client.launches[0] ?? null;
+  const approvalLaunchChecks = (approvalLaunch?.checklistItems ?? []).map((item) => ({
+    id: item.id,
+    label: item.label,
+    category: item.category as string,
+    status: item.status as string,
+    isRequired: item.isRequired,
+    evidenceUrl: item.evidenceUrl,
+  }));
+
+  const approvalGateState = approvalGate({
+    qa: approvalQaChecks,
+    defects: approvalDefects,
+    rounds: client.reviewCycles.map((cycle) => ({
+      id: cycle.id,
+      roundNumber: cycle.roundNumber,
+      status: cycle.status as string,
+      sentAt: cycle.sentAt?.toISOString() ?? null,
+      feedbackDeadline: cycle.feedbackDeadline?.toISOString() ?? null,
+      approverName: cycle.approverContact?.name ?? null,
+      projectName: cycle.project?.name ?? null,
+      openRevisions: cycle.revisions.filter(
+        (revision) =>
+          revision.status !== "COMPLETE"
+          && revision.status !== "DECLINED"
+          && revision.status !== "DEFERRED",
+      ).length,
+    })),
+    records: client.approvals.map((approval) => ({
+      id: approval.id,
+      subject: approval.subject,
+      approvedByName: approval.approvedByName,
+      approvedAt: approval.approvedAt.toISOString(),
+      evidenceUrl: approval.evidenceUrl,
+      countsForLaunch: isVerifiableApproval(approval),
+    })),
+    launch: approvalLaunchChecks,
+    now: approvalNow,
+  });
+
+  /*
+   * The approval trail, from the activity log rather than a second table.
+   *
+   * Every service on this path already writes an entry - defects, QA runs,
+   * sign-offs, launches - so the history is a reading of what happened rather
+   * than a parallel record that could disagree with it.
+   */
+  const approvalHistory = activity
+    .map((entry) => {
+      const text = entry.action.toLowerCase();
+      const kind = /defect/.test(text)
+        ? ("defect" as const)
+        : /qa|test/.test(text)
+          ? ("qa" as const)
+          : /approv|sign-?off|revision/.test(text)
+            ? ("approval" as const)
+            : /launch|go.?live/.test(text)
+              ? ("launch" as const)
+              : ("other" as const);
+
+      return {
+        id: entry.id,
+        action: entry.action,
+        actorName: entry.actor?.name ?? null,
+        createdAt: entry.createdAt.toISOString(),
+        kind,
+      };
+    })
+    // Approval-relevant events only: the rest belongs on the Activity tab.
+    .filter((entry) => entry.kind !== "other");
+
+  const approvalWorkspaceProps = {
+    clientId: client.id,
+    gate: approvalGateState,
+    qaChecks: approvalQaChecks,
+    defects: approvalDefects,
+    launchChecks: approvalLaunchChecks,
+    launchId: approvalLaunch?.id ?? null,
+    history: approvalHistory,
+    stage: {
+      name: client.currentStage.name,
+      ownerName: client.assignedUser?.name ?? null,
+      dueDate: client.nextActionDueAt?.toISOString() ?? null,
+      day: Math.max(
+        1,
+        Math.round(
+          (approvalNow.getTime() - client.stageEnteredAt.getTime()) / 86_400_000,
+        ),
+      ),
+      targetDays: client.currentStage.slaDays,
+    },
+    permissions: {
+      canTest: can(actor, "qa.test"),
+      canCloseDefect: can(actor, "qa.closeDefect"),
+      canRecordApproval: can(actor, "revisions.recordApproval"),
+      canActivateLaunch: can(actor, "launch.activate"),
+    },
+  };
 
   /*
    * End-of-day updates across this account's work.
@@ -867,6 +998,19 @@ export default async function ClientDetailPage({
 
           quality: (
             <div className="space-y-6">
+              {/*
+                * The summary the tab was missing.
+                *
+                * Everything below it already worked - QA plans, defects,
+                * sign-off records, launch checklists - and none of it added
+                * up to an answer. This reads all four through one derivation
+                * so the page can say where the work has got to and what is
+                * stopping it, and the workspaces underneath remain the place
+                * the actual editing happens.
+                */}
+              <ClientApprovalWorkspace {...approvalWorkspaceProps} />
+
+              <div id="qa-plans" className="scroll-mt-24">
               <ClientQuality
                 clientId={client.id}
                 currentUserId={actor.id}
@@ -903,6 +1047,9 @@ export default async function ClientDetailPage({
               {/* Sits between quality assurance and launch, which is the order it
                   happens in: the work passes QA, the client signs it off, it goes
                   live. */}
+              </div>
+
+              <div id="approvals" className="scroll-mt-24">
               <ClientApprovals
                 clientId={client.id}
                 canRecord={can(actor, "revisions.recordApproval")}
@@ -940,6 +1087,9 @@ export default async function ClientDetailPage({
                   shortfall: describeApprovalShortfall(approval),
                 }))}
               />
+              </div>
+
+              <div id="launches" className="scroll-mt-24">
               <ClientLaunches
                 clientId={client.id}
                 canSchedule={can(actor, "launch.schedule")}
@@ -978,6 +1128,7 @@ export default async function ClientDetailPage({
                   };
                 })}
               />
+              </div>
             </div>
           ),
 

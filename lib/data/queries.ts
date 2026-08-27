@@ -684,6 +684,22 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
           include: { assignedTo: { select: { id: true, name: true } } },
         },
+        /*
+         * The sign-off request, as opposed to the sign-off.
+         *
+         * Approval records what a client said; ReviewCycle records that they
+         * were asked, by when, and which round it is. The Approvals tab needs
+         * both - a status alone cannot say whether anybody has been asked, and
+         * an approval on round one says nothing about round two.
+         */
+        reviewCycles: {
+          orderBy: { roundNumber: "desc" },
+          include: {
+            approverContact: { select: { id: true, name: true } },
+            project: { select: { id: true, name: true } },
+            revisions: { select: { id: true, status: true } },
+          },
+        },
         qaPlans: {
           orderBy: { createdAt: "desc" },
           include: { tests: { orderBy: { position: "asc" } } },
