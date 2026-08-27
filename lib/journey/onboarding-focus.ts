@@ -156,6 +156,31 @@ export const CATEGORY_LABELS: Record<OutstandingCategory, string> = {
   a2p: "A2P registration",
 };
 
+/**
+ * The same names in the plural, written out rather than derived.
+ *
+ * Adding an s to the singular gets four of these right and two wrong -
+ * "platform accesss" and "client dependencys" - and which four is not
+ * something a reader of the calling code can see. Two of them are irregular,
+ * so the map is the honest way to say it.
+ */
+export const CATEGORY_LABELS_PLURAL: Record<OutstandingCategory, string> = {
+  requirement: "Journey requirements",
+  dependency: "Client dependencies",
+  approval: "Approvals",
+  access: "Platform logins",
+  asset: "Brand assets",
+  intake: "Intake answers",
+  a2p: "A2P registration items",
+};
+
+/** "12 intake answers" - the right noun for the count. */
+export function countLabel(category: OutstandingCategory, count: number) {
+  const label = count === 1 ? CATEGORY_LABELS[category] : CATEGORY_LABELS_PLURAL[category];
+
+  return `${count} ${label.toLowerCase()}`;
+}
+
 export interface OutstandingItem {
   /** Stable within a client, so React keys and de-duplication both work. */
   key: string;

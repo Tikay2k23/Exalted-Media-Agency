@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  CATEGORY_LABELS,
+  CATEGORY_LABELS_PLURAL,
+  countLabel,
   EMPTY_INTAKE,
   intakeStateOf,
   onboardingFocus,
@@ -653,6 +656,44 @@ describe("waiting on client", () => {
 
   it("ignores the agency's own outstanding work", () => {
     assert.equal(waitingOnClient([item({ clientOwned: false })]), false);
+  });
+});
+
+/**
+ * Naming a count.
+ *
+ * The chase card folds a long tail behind "Show 16 more - 16 intake answers".
+ * Adding an s to the singular label gets five of the seven right, which is
+ * exactly the kind of wrong that ships: the two it breaks are the two nobody
+ * happened to test.
+ */
+describe("count labels", () => {
+  it("pluralises every category without inventing a word", () => {
+    const plurals = (["requirement", "dependency", "approval", "access", "asset", "intake", "a2p"] as const)
+      .map((category) => countLabel(category, 3));
+
+    for (const label of plurals) {
+      assert.doesNotMatch(label, /sss/, `"${label}" has too many s's`);
+      assert.doesNotMatch(label, /ys\b/, `"${label}" pluralises a y wrongly`);
+    }
+
+    assert.equal(countLabel("access", 3), "3 platform logins");
+    assert.equal(countLabel("dependency", 3), "3 client dependencies");
+    assert.equal(countLabel("intake", 16), "16 intake answers");
+  });
+
+  it("uses the singular for one", () => {
+    assert.equal(countLabel("access", 1), "1 platform access");
+    assert.equal(countLabel("dependency", 1), "1 client dependency");
+  });
+
+  it("has a plural for every category the union allows", () => {
+    for (const category of Object.keys(CATEGORY_LABELS) as (keyof typeof CATEGORY_LABELS)[]) {
+      assert.ok(
+        CATEGORY_LABELS_PLURAL[category]?.length > 0,
+        `${category} has no plural`,
+      );
+    }
   });
 });
 

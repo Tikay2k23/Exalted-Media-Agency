@@ -38,6 +38,7 @@ import type { JourneyClientDetail } from "@/lib/journey/client-detail";
 import type { ChaseGroup } from "@/lib/journey/contacts-to-chase";
 import {
   CATEGORY_LABELS,
+  countLabel,
   type FactTone,
   type FocusActionKey,
   type OutstandingItem,
@@ -220,6 +221,15 @@ export function ContactsToChaseDrawer({
   );
 }
 
+/**
+ * How much of one contact list to show before folding.
+ *
+ * Six is what fits above the ageing row without the card becoming a page of
+ * its own, and the list arrives in chase order - so the six shown are the six
+ * somebody would read out on the call.
+ */
+const VISIBLE = 6;
+
 function ChaseCard({
   group,
   clientId,
@@ -237,6 +247,7 @@ function ChaseCard({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const contact = group.contact;
 
@@ -256,6 +267,37 @@ function ChaseCard({
   }, [group.items, contact?.name, companyName]);
 
   const subject = `${companyName}: outstanding information`;
+
+  /*
+   * How much of the list to show before folding.
+   *
+   * Six is what fits beside the ageing row without the card becoming a page of
+   * its own, and the list is in chase order - so the six shown are the six a
+   * project manager would read out.
+   */
+  const shown = expanded ? group.items : group.items.slice(0, VISIBLE);
+  const hiddenCount = Math.max(0, group.items.length - VISIBLE);
+
+  /**
+   * "12 intake answers, 2 brand assets" - the shape of the tail, not a number.
+   *
+   * Derived from the whole list rather than from a sliced copy, so the memo
+   * has something stable to depend on: a fresh array each render would make it
+   * recompute every time and earn nothing.
+   */
+  const hiddenSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const item of group.items.slice(VISIBLE)) {
+      counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .map(([category, count]) =>
+        countLabel(category as OutstandingItem["category"], count),
+      )
+      .join(", ");
+  }, [group.items]);
 
   async function post(action: string, flagId: string, key: string) {
     setBusyKey(key);
@@ -316,7 +358,7 @@ function ChaseCard({
       </header>
 
       <ul className="mt-2.5 space-y-1.5">
-        {group.items.map((item) => (
+        {shown.map((item) => (
           <li key={item.key} className="flex items-start justify-between gap-2">
             <span className="min-w-0 text-xs leading-5 text-slate-700">
               {item.label}
@@ -330,6 +372,26 @@ function ChaseCard({
           </li>
         ))}
       </ul>
+
+      {/*
+        * The rest, behind a count.
+        *
+        * Everything raised against the account rather than a person lands on
+        * the primary contact, so this list runs to twenty-odd on a real
+        * account - a dozen unanswered intake questions under the two things
+        * somebody actually rang about. The list is already in chase order, so
+        * the first few are the ones worth reading; the tail is summarised by
+        * kind rather than truncated silently, and opens in place.
+        */}
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((open) => !open)}
+          className="mt-1.5 text-[11px] font-medium text-sky-700 transition hover:text-sky-800"
+        >
+          {expanded ? "Show fewer" : `Show ${hiddenCount} more - ${hiddenSummary}`}
+        </button>
+      ) : null}
 
       <dl className="mt-2.5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-2.5">
         <Ageing label="First asked" value={shortDay(group.firstRequestedAt) ?? "Not recorded"} />
