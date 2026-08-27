@@ -11,13 +11,12 @@ import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientGrowth } from "@/components/clients/client-growth";
-import { ClientHealth } from "@/components/clients/client-health";
 import { ClientOffboarding } from "@/components/clients/client-offboarding";
 import { ClientIntake } from "@/components/clients/client-intake";
 import { ClientInvoices } from "@/components/clients/client-invoices";
 import { ClientProjects } from "@/components/clients/client-projects";
 import { ClientApprovalWorkspace } from "@/components/clients/client-approval-workspace";
-import { ClientReporting } from "@/components/clients/client-reporting";
+import { ClientReportsHealth } from "@/components/clients/client-reports-health";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -40,16 +39,15 @@ import {
 } from "@/lib/approvals/approval-service";
 import { approvalGate } from "@/lib/quality/approval-gate";
 import {
-  daysSinceAssessment,
-  isComplaintOpen,
-  isRecoveryPlanLive,
-} from "@/lib/success/health-service";
-import {
-  OPTIMIZATION_DECISIONS,
-  REPORT_TYPES,
-  isOptimizationConcluded,
-  isReportLate,
-} from "@/lib/success/report-service";
+  goalProgress,
+  healthSummary,
+  nextReportingAction,
+  optimizationSummary,
+  renewalSummary,
+  reportSummary,
+} from "@/lib/success/reports-health";
+import { isComplaintOpen } from "@/lib/success/health-service";
+import { REPORT_TYPES } from "@/lib/success/report-service";
 import {
   EXPANSION_STATUSES,
   EXPANSION_TYPES,
@@ -281,6 +279,119 @@ export default async function ClientDetailPage({
     })
     // Approval-relevant events only: the rest belongs on the Activity tab.
     .filter((entry) => entry.kind !== "other");
+
+  /*
+   * Reports & Health, assembled from the five systems that already own it.
+   *
+   * Computed here so the four tiles, the panels and the next-action line all
+   * read one calculation - the page cannot show a healthy score beside an
+   * overdue report it forgot to count.
+   */
+  const reportRows = client.reports.map((report) => ({
+    id: report.id,
+    type: report.type as string,
+    status: report.status as string,
+    periodStart: report.periodStart.toISOString(),
+    periodEnd: report.periodEnd.toISOString(),
+    dueAt: report.dueAt?.toISOString() ?? null,
+    sentAt: report.sentAt?.toISOString() ?? null,
+    preparedByName: report.preparedBy?.name ?? null,
+    documentUrl: report.documentUrl,
+  }));
+
+  const optimizationRows = client.optimizations.map((entry) => ({
+    id: entry.id,
+    platform: entry.platform,
+    observedProblem: entry.observedProblem,
+    proposedChange: entry.proposedChange,
+    expectedMetric: entry.expectedMetric,
+    result: entry.result,
+    decision: entry.decision as string,
+    ownerName: entry.owner?.name ?? null,
+    startDate: entry.startDate?.toISOString() ?? null,
+    endDate: entry.endDate?.toISOString() ?? null,
+  }));
+
+  const reportsSummary = reportSummary(reportRows, approvalNow);
+  const optimizationsSummary = optimizationSummary(optimizationRows);
+  const openComplaintCount = client.complaints.filter((c) => isComplaintOpen(c.status)).length;
+  const latestAssessment = client.healthAssessments[0] ?? null;
+
+  const healthPicture = healthSummary({
+    assessment: latestAssessment
+      ? {
+          status: latestAssessment.status as string,
+          healthScore: latestAssessment.healthScore,
+          satisfactionScore: latestAssessment.satisfactionScore,
+          openComplaints: latestAssessment.openComplaints,
+          renewalProbability: latestAssessment.renewalProbability,
+          assessedAt: latestAssessment.assessedAt.toISOString(),
+        }
+      : null,
+    reports: reportsSummary,
+    optimizations: optimizationsSummary,
+    openComplaints: openComplaintCount,
+    overdueTasks: client.agencyTasks.filter(
+      (task) =>
+        !task.deletedAt
+        && !task.archivedAt
+        && !["DONE", "APPROVED", "CANCELLED"].includes(task.status)
+        && task.dueDate < approvalNow,
+    ).length,
+    now: approvalNow,
+  });
+
+  const goalPicture = goalProgress(
+    client.strategyGoals.map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      metric: goal.metric,
+      baseline: goal.baseline,
+      target: goal.target,
+      targetDate: goal.targetDate?.toISOString() ?? null,
+      status: goal.status as string,
+      ownerName: goal.owner?.name ?? null,
+      priority: goal.priority as string,
+    })),
+    approvalNow,
+  );
+
+  const renewalRecord = client.renewals[0] ?? null;
+  const renewalPicture = renewalSummary({
+    renewalDate: (renewalRecord?.renewalDate ?? client.renewalDate)?.toISOString() ?? null,
+    monthlyValue: client.monthlyValue ? Number(client.monthlyValue) : null,
+    contractStart: client.contractStartDate?.toISOString() ?? null,
+    contractEnd: client.contractEndDate?.toISOString() ?? null,
+    stage: (renewalRecord?.stage as string | undefined) ?? null,
+    now: approvalNow,
+  });
+
+  const reportsHealthProps = {
+    clientId: client.id,
+    companyName: client.companyName,
+    reports: reportsSummary,
+    reportRows,
+    optimizations: optimizationsSummary,
+    optimizationRows,
+    health: healthPicture,
+    goals: goalPicture,
+    renewal: renewalPicture,
+    next: nextReportingAction({
+      reports: reportsSummary,
+      health: healthPicture,
+      optimizations: optimizationsSummary,
+      goals: goalPicture,
+      renewal: renewalPicture,
+    }),
+    owners: options.users,
+    reportTypes: REPORT_TYPES.map((option) => ({ value: option.value, label: option.label })),
+    openComplaints: openComplaintCount,
+    permissions: {
+      canReport: can(actor, "reporting.client"),
+      canManageHealth: can(actor, "health.manage"),
+      canViewFinance,
+    },
+  };
 
   const approvalWorkspaceProps = {
     clientId: client.id,
@@ -1018,100 +1129,21 @@ export default async function ClientDetailPage({
 
           reports: (
             <div className="space-y-6">
-              {/* Reporting sits beside health because they answer the same question
-                  from two directions: what we told them, and how they are doing. */}
-              <ClientReporting
-                clientId={client.id}
-                canManage={can(actor, "reporting.client")}
-                currentUserId={actor.id}
-                reportTypes={REPORT_TYPES.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                }))}
-                decisions={OPTIMIZATION_DECISIONS.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                }))}
-                owners={options.users}
-                reports={client.reports.map((report) => ({
-                  id: report.id,
-                  type: report.type,
-                  status: report.status,
-                  periodStart: report.periodStart.toISOString(),
-                  periodEnd: report.periodEnd.toISOString(),
-                  dueAt: report.dueAt?.toISOString() ?? null,
-                  sentAt: report.sentAt?.toISOString() ?? null,
-                  dataValidated: report.dataValidatedAt !== null,
-                  dataSources: report.dataSources,
-                  knownLimitations: report.knownLimitations,
-                  recommendedActions: report.recommendedActions,
-                  documentUrl: report.documentUrl,
-                  preparedByName: report.preparedBy?.name ?? null,
-                  preparedById: report.preparedById,
-                  reviewedByName: report.reviewedBy?.name ?? null,
-                  acknowledged: report.clientAcknowledgedAt !== null,
-                  isLate: isReportLate(report),
-                }))}
-                optimizations={client.optimizations.map((item) => ({
-                  id: item.id,
-                  platform: item.platform,
-                  observedProblem: item.observedProblem,
-                  proposedChange: item.proposedChange,
-                  hypothesis: item.hypothesis,
-                  expectedMetric: item.expectedMetric,
-                  previousSetting: item.previousSetting,
-                  newSetting: item.newSetting,
-                  result: item.result,
-                  decision: item.decision,
-                  ownerName: item.owner?.name ?? null,
-                  startDate: item.startDate?.toISOString() ?? null,
-                  endDate: item.endDate?.toISOString() ?? null,
-                  isConcluded: isOptimizationConcluded(item.decision),
-                }))}
-              />
-              <ClientHealth
-                clientId={client.id}
-                canManage={can(actor, "health.manage")}
-                currentStatus={client.healthStatus}
-                daysSinceAssessment={daysSinceAssessment(
-                  client.healthAssessments[0]?.assessedAt ?? null,
-                )}
-                owners={options.users}
-                assessments={client.healthAssessments.map((item) => ({
-                  id: item.id,
-                  status: item.status,
-                  summary: item.summary,
-                  healthScore: item.healthScore,
-                  assessedByName: item.assessedBy?.name ?? null,
-                  assessedAt: item.assessedAt.toISOString(),
-                  openComplaints: item.openComplaints,
-                  cancellationThreat: item.cancellationThreat,
-                }))}
-                complaints={client.complaints.map((item) => ({
-                  id: item.id,
-                  title: item.title,
-                  description: item.description,
-                  status: item.status,
-                  ownerName: item.owner?.name ?? null,
-                  raisedAt: item.raisedAt.toISOString(),
-                  rootCause: item.rootCause,
-                  finalOutcome: item.finalOutcome,
-                  isOpen: isComplaintOpen(item.status),
-                }))}
-                plans={client.recoveryPlans.map((plan) => ({
-                  id: plan.id,
-                  status: plan.status,
-                  trigger: plan.trigger,
-                  objective: plan.objective,
-                  actions: plan.actions,
-                  ownerName: plan.owner?.name ?? null,
-                  reviewDate: plan.reviewDate?.toISOString() ?? null,
-                  outcome: plan.outcome,
-                  isLive: isRecoveryPlanLive(plan.status),
-                }))}
-              />
-              {/* The end of the journey, in the order it happens: what comes next
-                  commercially, then the exit if there is one. */}
+              {/*
+                * Reports & Health.
+                *
+                * One workspace replacing the reporting and health panels that
+                * used to stack here: they answered the same question from two
+                * directions and neither could see the other, so an account
+                * could show a healthy score beside a report nobody sent.
+                *
+                * The growth, offboarding and invoice sections below are not
+                * duplicates of it and stay where they are - this card links
+                * down to the growth workspace rather than restating it.
+                */}
+              <ClientReportsHealth {...reportsHealthProps} />
+
+              <div id="growth-workspace" className="scroll-mt-24">
               {(() => {
                 const record = client.renewals[0] ?? null;
                 const runway = renewalRunway(record?.renewalDate ?? client.renewalDate);
@@ -1197,6 +1229,7 @@ export default async function ClientDetailPage({
                   />
                 );
               })()}
+              </div>
               {(() => {
                 const record = client.offboarding;
 
