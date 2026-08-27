@@ -1,4 +1,6 @@
 import { type ChaseGroup } from "@/lib/journey/contacts-to-chase";
+import { type DeliveryFocus } from "@/lib/journey/delivery-focus";
+import { type RequirementRoute } from "@/lib/journey/requirement-routes";
 import {
   type JourneyAccount,
   type JourneyActivityEntry,
@@ -80,6 +82,14 @@ export interface DetailTask {
   title: string;
   status: string;
   dueDate: string;
+  /**
+   * Archived rather than deleted work.
+   *
+   * Carried so this shape satisfies TaskTiming and the journey cards can call
+   * the Work tab predicates rather than restating what open means.
+   */
+  archivedAt: string | null;
+  projectId: string | null;
   estimatedHours: number;
   actualHours: number | null;
   assigneeName: string | null;
@@ -150,9 +160,56 @@ export interface JourneyClientDetail {
    */
   onboarding: OnboardingDetail;
 
+  /**
+   * The delivery picture, on the same terms.
+   *
+   * Shares the blocking-requirement count with the next-best-action ladder so
+   * one card cannot announce readiness while the other still lists a gate.
+   */
+  delivery: DeliveryDetail;
+
   canMove: boolean;
   canOverride: boolean;
   canManageFlags: boolean;
+}
+
+/** One unmet gate, with somewhere to go about it. */
+export interface BlockingRequirement {
+  key: string;
+  label: string;
+  description: string;
+  owner: string;
+  isBlocking: boolean;
+  /** Why the gate says it is unmet, in the checker's own words. */
+  reason: string | null;
+  /** The screen that owns the record behind it. */
+  route: RequirementRoute;
+}
+
+/** A delivery project, as the card and its drawer read it. */
+export interface DeliveryProject {
+  id: string;
+  name: string;
+  status: string;
+  ownerName: string | null;
+  targetDate: string | null;
+  /** Milestones complete over milestones total, the figure Projects shows. */
+  progress: number;
+  taskCount: number;
+  completedTasks: number;
+  openTasks: number;
+  overdueTasks: number;
+  blockedTasks: number;
+  nextMilestone: { name: string; dueAt: string } | null;
+}
+
+export interface DeliveryDetail {
+  focus: DeliveryFocus;
+  /** Unmet blocking gates on the next stage, worst first. */
+  blocking: BlockingRequirement[];
+  projects: DeliveryProject[];
+  /** The blocker the card would open, when there is one. */
+  topBlocker: JourneyFlag | null;
 }
 
 export interface OnboardingDetail {
@@ -283,14 +340,25 @@ export interface WorkSummary {
   needsReview: number;
 }
 
+/**
+ * The status breakdown beside the delivery card.
+ *
+ * Archived work is excluded, the same way the Work tab and the delivery
+ * counters exclude it. Counting it here would let one card on this page report
+ * a blocked task while the card under it reported none - there are no archived
+ * tasks on this database yet, so the disagreement was waiting for whoever
+ * archived the first one.
+ */
 export function workSummary(tasks: DetailTask[]): WorkSummary {
+  const live = tasks.filter((task) => !task.archivedAt);
+
   return {
-    total: tasks.length,
-    completed: tasks.filter((task) => DONE_STATUSES.has(task.status)).length,
-    inProgress: tasks.filter((task) => task.status === "IN_PROGRESS").length,
-    blocked: tasks.filter((task) => task.status === "BLOCKED").length,
-    todo: tasks.filter((task) => task.status === "TODO" || task.status === "BACKLOG").length,
-    needsReview: tasks.filter(
+    total: live.length,
+    completed: live.filter((task) => DONE_STATUSES.has(task.status)).length,
+    inProgress: live.filter((task) => task.status === "IN_PROGRESS").length,
+    blocked: live.filter((task) => task.status === "BLOCKED").length,
+    todo: live.filter((task) => task.status === "TODO" || task.status === "BACKLOG").length,
+    needsReview: live.filter(
       (task) => task.status === "NEEDS_REVIEW" || task.status === "REVISION_REQUIRED",
     ).length,
   };

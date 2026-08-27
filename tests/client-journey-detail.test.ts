@@ -13,6 +13,7 @@ import {
   taskProgress,
   workSummary,
 } from "@/lib/journey/client-detail";
+import { deliveryFocus } from "@/lib/journey/delivery-focus";
 import { EMPTY_INTAKE, onboardingFocus } from "@/lib/journey/onboarding-focus";
 import {
   type JourneyAccount,
@@ -60,6 +61,8 @@ function task(overrides: Partial<DetailTask> = {}): DetailTask {
     title: "A task",
     status: "TODO",
     dueDate: daysAhead(3),
+    archivedAt: null,
+    projectId: null,
     estimatedHours: 4,
     actualHours: null,
     assigneeName: "Sarah Reyes",
@@ -153,6 +156,20 @@ function detail(overrides: Partial<JourneyClientDetail> = {}): JourneyClientDeta
       waitingOnClient: false,
       canReviewIntake: true,
       projectManager: { name: "Aileen Romero", seat: "PROJECT_MANAGER" },
+    },
+    delivery: {
+      focus: deliveryFocus({
+        tasks: [],
+        blockers: [],
+        waitingOnClient: 0,
+        blockingRequirements: 0,
+        nextStageName: "Internal Quality Assurance",
+        projects: [],
+        now: NOW,
+      }),
+      blocking: [],
+      projects: [],
+      topBlocker: null,
     },
     renewalDate: null,
     canMove: true,

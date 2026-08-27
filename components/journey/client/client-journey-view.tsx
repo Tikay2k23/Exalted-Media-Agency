@@ -38,6 +38,14 @@ import {
   JourneyFlagDialog,
 } from "@/components/journey/client/journey-dialogs";
 import {
+  BlockerDrawer,
+  BlockingRequirementsDrawer,
+  DeliveryFocusCard,
+  ProjectsDrawer,
+  RequirementDetailDrawer,
+  type WorkFilter,
+} from "@/components/journey/client/delivery-focus";
+import {
   ContactsToChaseDrawer,
   MissingInformationDrawer,
   OnboardingFocusCard,
@@ -82,6 +90,8 @@ import {
   deriveProgress,
   explainHealth,
 } from "@/lib/journey/journey-board";
+import { type DeliveryActionKey } from "@/lib/journey/delivery-focus";
+import { type BlockingRequirement } from "@/lib/journey/client-detail";
 import { type FocusActionKey } from "@/lib/journey/onboarding-focus";
 import {
   TOTAL_JOURNEY_STAGES,
@@ -145,7 +155,16 @@ export function ClientJourneyView({
   const [previewing, setPreviewing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   /** Which onboarding drawer is open, if any. */
-  const [drawer, setDrawer] = useState<"chase" | "missing" | "requirements" | null>(null);
+  const [drawer, setDrawer] = useState<
+    | "chase"
+    | "missing"
+    | "requirements"
+    | "blocking"
+    | "requirement"
+    | "projects"
+    | "blocker"
+    | null
+  >(null);
 
   /*
    * Refetch on the server rather than reload the browser: the point is fresh
@@ -202,6 +221,22 @@ export function ClientJourneyView({
       || state === "IN_PROGRESS"
       || state === "SUBMITTED";
   }, [account.stageKey, account.stagePosition, detail.onboarding.focus.intakeState]);
+
+  /*
+   * Whether the delivery card owns the focus slot.
+   *
+   * The build stage only, and only when onboarding is not already claiming it.
+   * Scoped this tightly on purpose: the last card to take over the slot on a
+   * looser test ended up putting onboarding advice on accounts in QA, and the
+   * per-stage focus is genuinely the better card everywhere it still applies -
+   * somebody in Internal QA wants defects and checklists, not a task count.
+   */
+  const deliveryLeads = useMemo(
+    () =>
+      journeyStageForStoredStage(account.stageKey, account.stagePosition).key
+      === "build_implementation",
+    [account.stageKey, account.stagePosition],
+  );
 
   /*
    * The score behind the health label.
@@ -545,6 +580,86 @@ export function ClientJourneyView({
     tabs?.setTab("services", focusTarget);
   }
 
+  /**
+   * The Work tab, arriving filtered.
+   *
+   * The metric names are the Work tab's own filter cards, so the number
+   * somebody clicked and the rows they land on are the same question asked
+   * twice rather than two questions that happen to agree today.
+   *
+   * Deliberately no journey-stage filter. A task carries no stage - not one of
+   * the client tasks on this database has even the template key stage
+   * automation writes - so a link claiming to narrow by stage would show an
+   * empty list and blame the client for having no work.
+   */
+  function openWork(metric?: WorkFilter) {
+    router.push(`/clients/${account.id}?tab=tasks`);
+    tabs?.setTab("tasks", metric ? `metric:${metric}` : undefined);
+  }
+
+  /** The requirement the View Requirement button opens: the one at the front. */
+  const topRequirement: BlockingRequirement | null = detail.delivery.blocking[0] ?? null;
+
+  /**
+   * Where the delivery card's buttons go.
+   *
+   * Every key in DeliveryActionKey appears here, and the switch is exhaustive,
+   * so adding a state with a new button stops compiling until it is wired.
+   */
+  function actOnDelivery(action: DeliveryActionKey) {
+    switch (action) {
+      case "view-blocker":
+        setDrawer("blocker");
+        return;
+
+      case "review-overdue":
+        openWork("overdue");
+        return;
+
+      case "contacts-to-chase":
+        // The same drawer the onboarding card opens - one chase list.
+        setDrawer("chase");
+        return;
+
+      case "tasks-and-delivery":
+        openWork();
+        return;
+
+      case "projects":
+        setDrawer("projects");
+        return;
+
+      case "complete-requirements":
+        setDrawer("blocking");
+        return;
+
+      case "view-requirement":
+        setDrawer(topRequirement ? "requirement" : "blocking");
+        return;
+
+      case "advance-stage":
+        // The one transition path: the same dialog Move Stage opens, which
+        // posts to /api/pipeline/move and runs the whole gate check server-side.
+        setAdvancing(true);
+        return;
+
+      case "review-readiness":
+        setShowAllRequirements(true);
+        document.getElementById("stage-requirements")?.scrollIntoView({ block: "start" });
+        return;
+    }
+  }
+
+  /** Take somebody to the record that satisfies a gate. */
+  function resolveRequirement(requirement: BlockingRequirement) {
+    setDrawer(null);
+
+    const { tab, metric } = requirement.route;
+
+    router.push(`/clients/${account.id}?tab=${tab}`);
+    tabs?.setTab(tab, metric ? `metric:${metric}` : undefined);
+  }
+
   function actOnFocus(action: FocusActionKey) {
     switch (action) {
       case "go-to-strategy":
@@ -634,11 +749,14 @@ export function ClientJourneyView({
      * "primary contact recorded" - have no task behind them at all, so the
      * list they landed on could hold nothing to do with what was blocking.
      */
+    /*
+     * Complete Requirements opens every gate holding the next stage, each
+     * with a route to the record that satisfies it. View Requirement beside
+     * it opens only the one at the front of the queue - the two buttons are
+     * different questions and used to be the same scroll.
+     */
     if (step.kind === "complete-requirements") {
-      setShowAllRequirements(true);
-      // Instant rather than smooth: this is a jump to a section on the same page,
-      // and an animated scroll only delays the thing somebody asked for.
-      document.getElementById("stage-requirements")?.scrollIntoView({ block: "start" });
+      setDrawer("blocking");
       return;
     }
 
@@ -938,7 +1056,9 @@ export function ClientJourneyView({
             canChangeOwner={false}
             onChangeOwner={() => router.push(`/clients/${account.id}?tab=contacts`)}
             onPrimary={onPrimary}
-            onViewRequirement={() => setShowAllRequirements(true)}
+            onViewRequirement={() =>
+              setDrawer(topRequirement ? "requirement" : "blocking")
+            }
           />
 
           <div className="xl:hidden">
@@ -1012,6 +1132,12 @@ export function ClientJourneyView({
             */}
           {onboardingLeads ? (
             <OnboardingFocusCard detail={detail} onAct={actOnFocus} />
+          ) : deliveryLeads ? (
+            <DeliveryFocusCard
+              detail={detail}
+              onAct={actOnDelivery}
+              onOpenWork={openWork}
+            />
           ) : (
             <StageFocusCard detail={detail} />
           )}
@@ -1069,6 +1195,48 @@ export function ClientJourneyView({
           detail={detail}
           onClose={() => setDrawer(null)}
           onChase={() => setDrawer("chase")}
+        />
+      ) : null}
+
+      {drawer === "blocking" ? (
+        <BlockingRequirementsDrawer
+          detail={detail}
+          onClose={() => setDrawer(null)}
+          onResolve={resolveRequirement}
+        />
+      ) : null}
+
+      {drawer === "requirement" && topRequirement ? (
+        <RequirementDetailDrawer
+          detail={detail}
+          requirement={topRequirement}
+          onClose={() => setDrawer(null)}
+          onResolve={resolveRequirement}
+        />
+      ) : null}
+
+      {drawer === "projects" ? (
+        <ProjectsDrawer
+          detail={detail}
+          onClose={() => setDrawer(null)}
+          onOpenProject={() => {
+            setDrawer(null);
+            openWork();
+          }}
+        />
+      ) : null}
+
+      {drawer === "blocker" && detail.delivery.topBlocker ? (
+        <BlockerDrawer
+          blocker={detail.delivery.topBlocker}
+          companyName={account.companyName}
+          canResolve={detail.canManageFlags}
+          onClose={() => setDrawer(null)}
+          onResolved={() => {
+            setDrawer(null);
+            onRefresh();
+          }}
+          clientId={account.id}
         />
       ) : null}
 

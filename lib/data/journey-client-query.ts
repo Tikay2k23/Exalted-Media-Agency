@@ -12,16 +12,26 @@ import {
   type StageForAccount,
   type StageRule,
 } from "@/lib/data/journey-queries";
+import {
+  isClosed as isClosedTask,
+  isOpen as isOpenTask,
+  isOverdue as isOverdueTask,
+} from "@/lib/clients/client-work";
 import { deriveIntakeProgress } from "@/lib/intake/question-catalogue";
 import {
+  type BlockingRequirement,
   type DetailContact,
   type DetailTask,
+  type DeliveryDetail,
   type JourneyClientDetail,
   type JourneyFlag,
   type OnboardingDetail,
   type TimelineMilestone,
 } from "@/lib/journey/client-detail";
 import { contactsToChase } from "@/lib/journey/contacts-to-chase";
+import { deliveryFocus } from "@/lib/journey/delivery-focus";
+import { requirementRoute } from "@/lib/journey/requirement-routes";
+import { getRequirementDefinition } from "@/lib/journey/stage-requirements";
 import {
   type JourneyAccount,
   type JourneyActivityEntry,
@@ -132,6 +142,7 @@ export async function getJourneyClientDetail(
               id: true,
               name: true,
               serviceType: true,
+              status: true,
               projectManagerId: true,
               targetLaunchDate: true,
               projectManager: { select: { name: true, teamRole: true } },
@@ -217,6 +228,10 @@ export async function getJourneyClientDetail(
               dueDate: true,
               estimatedHours: true,
               actualHours: true,
+              /* Archived work is not open work, and the delivery card counts */
+              /* with the same predicate the Work tab does. */
+              archivedAt: true,
+              projectId: true,
               assignedTo: { select: { name: true } },
             },
           },
@@ -279,6 +294,8 @@ export async function getJourneyClientDetail(
       title: task.title,
       status: task.status,
       dueDate: task.dueDate.toISOString(),
+      archivedAt: iso(task.archivedAt),
+      projectId: task.projectId,
       estimatedHours: task.estimatedHours,
       actualHours: task.actualHours,
       assigneeName: task.assignedTo?.name ?? null,
@@ -432,6 +449,73 @@ export async function getJourneyClientDetail(
           (a.targetLaunchDate?.getTime() ?? 0) - (b.targetLaunchDate?.getTime() ?? 0),
       )[0];
 
+    /*
+     * Delivery, from the same rows the onboarding block reads.
+     *
+     * Built here rather than in the card so the two cards on the page cannot
+     * disagree: the blocking count the next-best-action ladder quotes is the
+     * count the delivery card is handed, and neither recomputes it.
+     */
+    const blocking: BlockingRequirement[] = account.exitCriteria
+      .filter((requirement) => !requirement.satisfied && requirement.isBlocking)
+      .map((requirement) => {
+        const definition = getRequirementDefinition(requirement.key);
+
+        return {
+          key: requirement.key,
+          label: requirement.label,
+          description: definition?.description ?? "",
+          owner: requirement.owner,
+          isBlocking: requirement.isBlocking,
+          reason: requirement.reason,
+          route: requirementRoute(requirement.key),
+        };
+      });
+
+    const deliveryProjects = client.projects.map((project) => {
+      const projectTasks = client.agencyTasks.filter(
+        (task) => task.projectId === project.id,
+      );
+      const timing = projectTasks.map((task) => ({
+        status: task.status as string,
+        dueDate: task.dueDate.toISOString(),
+        archivedAt: iso(task.archivedAt),
+      }));
+
+      const milestones = project.milestones;
+      const done = milestones.filter((milestone) => milestone.completedAt).length;
+      // A milestone with no date cannot be the next one to aim at.
+      const upcoming =
+        milestones.find((milestone) => !milestone.completedAt && milestone.dueDate)
+        ?? null;
+
+      return {
+        id: project.id,
+        name: project.name,
+        status: project.status as string,
+        ownerName: project.projectManager?.name ?? null,
+        targetDate: iso(project.targetLaunchDate),
+        /*
+         * Milestones complete over milestones total - the same figure the
+         * Projects section on the Work tab shows. Recomputing it from task
+         * counts here would give the two views different percentages for one
+         * project, which is exactly the drift worth avoiding.
+         */
+        progress:
+          milestones.length === 0 ? 0 : Math.round((done / milestones.length) * 100),
+        taskCount: projectTasks.length,
+        completedTasks: timing.filter((task) => isClosedTask(task)).length,
+        openTasks: timing.filter((task) => isOpenTask(task)).length,
+        overdueTasks: timing.filter((task) => isOverdueTask(task, now)).length,
+        blockedTasks: timing.filter(
+          (task) => isOpenTask(task) && task.status === "BLOCKED",
+        ).length,
+        nextMilestone: upcoming
+          ? { name: upcoming.name, dueAt: (upcoming.dueDate as Date).toISOString() }
+          : null,
+      };
+    });
+
     const onboarding = buildOnboardingDetail({
       client,
       account,
@@ -442,10 +526,67 @@ export async function getJourneyClientDetail(
       now,
     });
 
+    /*
+     * The blocker the delivery card would open.
+     *
+     * Severity first, then age: two blockers of the same severity are chased
+     * oldest first, which is the order somebody would work them in.
+     */
+    const openBlockers = flags.filter(
+      (flag) => flag.kind === "BLOCKED" && !flag.resolvedAt && !flag.cancelledAt,
+    );
+    const severityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as const;
+    const rankedBlockers = [...openBlockers].sort((left, right) => {
+      const bySeverity =
+        (severityRank[left.severity ?? "LOW"] ?? 3)
+        - (severityRank[right.severity ?? "LOW"] ?? 3);
+
+      if (bySeverity !== 0) return bySeverity;
+
+      return Date.parse(left.raisedAt) - Date.parse(right.raisedAt);
+    });
+
+    const delivery: DeliveryDetail = {
+      focus: deliveryFocus({
+        tasks,
+        blockers: rankedBlockers.map((flag) => ({
+          id: flag.id,
+          reason: flag.reason,
+          severity: flag.severity,
+          // The impact decides, falling back to the kind, exactly as the gate
+          // and the health score read it.
+          blocksStage: flag.impact
+            ? flag.impact === "BLOCKS_STAGE"
+            : flag.kind === "BLOCKED",
+        })),
+        /*
+         * Raised client dependencies only.
+         *
+         * Not the whole onboarding outstanding list, which also carries every
+         * unanswered intake question. On an account in production whose form
+         * was never sent that came to twenty, and the delivery card reported
+         * "waiting on client: 20" about a stage that had nothing to do with
+         * the intake. What belongs here is what somebody actually asked the
+         * client for and is still waiting on.
+         */
+        waitingOnClient: onboarding.outstanding.filter(
+          (item) => item.category === "dependency" && item.clientOwned && !item.received,
+        ).length,
+        blockingRequirements: blocking.length,
+        nextStageName: account.nextStageName,
+        projects: deliveryProjects,
+        now,
+      }),
+      blocking,
+      projects: deliveryProjects,
+      topBlocker: rankedBlockers[0] ?? null,
+    };
+
     return {
       detail: {
         account,
         onboarding,
+        delivery,
         stages: stageSteps,
         flags,
         tasks,

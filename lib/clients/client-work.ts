@@ -64,19 +64,34 @@ export interface WorkTask {
   unmetDependencies: number;
 }
 
-export function isOpen(task: WorkTask) {
+/**
+ * The least a task has to expose to be judged open, late or due soon.
+ *
+ * Narrower than WorkTask on purpose. The journey cards count the same work
+ * as this page and must call the same predicates or the two drift, but they
+ * have no use for EOD entries or dependency links and should not be made to
+ * load them just to ask whether something is overdue.
+ */
+export interface TaskTiming {
+  status: string;
+  /** ISO. Every task has one - the schema requires it. */
+  dueDate: string;
+  archivedAt: string | null;
+}
+
+export function isOpen(task: TaskTiming) {
   return !task.archivedAt && OPEN_TASK_STATUSES.includes(task.status);
 }
 
-export function isClosed(task: WorkTask) {
+export function isClosed(task: TaskTiming) {
   return CLOSED_TASK_STATUSES.includes(task.status);
 }
 
-export function isOverdue(task: WorkTask, now: Date) {
+export function isOverdue(task: TaskTiming, now: Date) {
   return isOpen(task) && new Date(task.dueDate) < startOfDay(now);
 }
 
-export function isDueSoon(task: WorkTask, now: Date) {
+export function isDueSoon(task: TaskTiming, now: Date) {
   if (!isOpen(task) || isOverdue(task, now)) return false;
 
   const due = new Date(task.dueDate);

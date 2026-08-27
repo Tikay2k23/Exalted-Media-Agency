@@ -235,7 +235,32 @@ export function ClientWork({
   const tabs = useClientTab();
   const [, startTransition] = useTransition();
 
-  const [metric, setMetric] = useState<WorkMetricKey | null>(null);
+  /*
+   * The filter somebody arrived here to see.
+   *
+   * The journey delivery card sends "metric:overdue" through the tab
+   * controller when its overdue counter is clicked, so the number they
+   * pressed and the rows they land on are the same question. Read as initial
+   * state rather than in an effect because ClientTabs renders only the active
+   * panel - this component mounts on arrival with the focus already set, so
+   * an effect would render the unfiltered table first and replace it.
+   */
+  const [metric, setMetric] = useState<WorkMetricKey | null>(() => {
+    const focus = tabs?.focus;
+    const key = focus?.startsWith("metric:") ? focus.slice(7) : null;
+    const known: WorkMetricKey[] = [
+      "active",
+      "dueSoon",
+      "overdue",
+      "blocked",
+      "needsReview",
+      "completedThisMonth",
+    ];
+
+    // An unrecognised key filters nothing rather than filtering everything out.
+    return known.find((candidate) => candidate === key) ?? null;
+  });
+
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [status, setStatus] = useState("");
