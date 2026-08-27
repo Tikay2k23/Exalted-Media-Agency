@@ -320,7 +320,42 @@ describe("outstanding priority", () => {
     );
   });
 
-  it("breaks ties by age, oldest first", () => {
+  it("puts the most overdue first among items of equal priority", () => {
+    /*
+     * Priority treats overdue as a yes or no, so these three scored the same
+     * and fell through to whichever was raised first - which is no order at
+     * all for a set raised in one sitting, as a chase list usually is.
+     */
+    const sorted = sortOutstanding([
+      item({ key: "mild", overdue: true, dueAt: day(-1), requestedAt: day(-1) }),
+      item({ key: "worst", overdue: true, dueAt: day(-30), requestedAt: day(-1) }),
+      item({ key: "middling", overdue: true, dueAt: day(-9), requestedAt: day(-1) }),
+    ]);
+
+    assert.deepEqual(sorted.map((entry) => entry.key), ["worst", "middling", "mild"]);
+  });
+
+  it("orders what is not yet late by the nearest deadline", () => {
+    const sorted = sortOutstanding([
+      item({ key: "later", dueAt: day(30) }),
+      item({ key: "sooner", dueAt: day(2) }),
+      item({ key: "undated", dueAt: null }),
+    ]);
+
+    // A date beats no date: it is the only thing either can be judged on.
+    assert.deepEqual(sorted.map((entry) => entry.key), ["sooner", "later", "undated"]);
+  });
+
+  it("still ranks an overdue item above one merely due sooner than others", () => {
+    const sorted = sortOutstanding([
+      item({ key: "duetomorrow", dueAt: day(1) }),
+      item({ key: "latebyaday", overdue: true, dueAt: day(-1) }),
+    ]);
+
+    assert.deepEqual(sorted.map((entry) => entry.key), ["latebyaday", "duetomorrow"]);
+  });
+
+  it("breaks ties by age when neither carries a date", () => {
     const sorted = sortOutstanding([
       item({ key: "new", label: "New", requestedAt: day(-1) }),
       item({ key: "old", label: "Old", requestedAt: day(-30) }),

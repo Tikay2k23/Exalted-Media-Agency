@@ -211,6 +211,24 @@ export function sortOutstanding(items: OutstandingItem[]): OutstandingItem[] {
 
     if (byPriority !== 0) return byPriority;
 
+    /*
+     * Then by the date it was due, earliest first.
+     *
+     * Priority treats overdue as a yes or no, so a thing nine days late and a
+     * thing one day late scored the same and fell through to whichever was
+     * asked for first - which, for anything raised in the same sitting, is no
+     * order at all. Equal priority means both are overdue or neither is, so
+     * one rule covers both readings: the most overdue first, and after them
+     * the one whose deadline is nearest.
+     *
+     * An item with a date beats one without, because a date is the only thing
+     * either of them can be judged on.
+     */
+    const due = (item: OutstandingItem) =>
+      item.dueAt ? Date.parse(item.dueAt) : Number.MAX_SAFE_INTEGER;
+
+    if (due(left) !== due(right)) return due(left) - due(right);
+
     // Then oldest first: the thing asked for three weeks ago goes above the
     // thing asked for yesterday, which is the order somebody would chase in.
     const leftAge = left.requestedAt ? Date.parse(left.requestedAt) : Number.MAX_SAFE_INTEGER;
