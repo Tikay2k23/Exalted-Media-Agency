@@ -38,6 +38,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Modal } from "@/components/journey/client/journey-dialogs";
 import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -204,6 +205,15 @@ export interface ReportsHealthProps {
   reportTypes: { value: string; label: string }[];
   /** Open complaints, for the health card's context. */
   openComplaints: number;
+  /**
+   * The renewal and growth workspace, rendered whole when somebody opens it.
+   *
+   * A slot rather than a rebuild: it is the existing component with its
+   * existing props, so opportunities, testimonials and referrals keep the one
+   * implementation they already had. It used to stack under this page, which
+   * is what made the tab read as the old design.
+   */
+  growthWorkspace: React.ReactNode;
   permissions: {
     canReport: boolean;
     canManageHealth: boolean;
@@ -214,7 +224,9 @@ export interface ReportsHealthProps {
 export function ClientReportsHealth(props: ReportsHealthProps) {
   const { reports, optimizations, health, next, permissions } = props;
   const router = useRouter();
-  const [dialog, setDialog] = useState<"prepare" | "reports" | "log" | "complete" | null>(null);
+  const [dialog, setDialog] = useState<
+    "prepare" | "reports" | "log" | "complete" | "growth" | null
+  >(null);
   const [completing, setCompleting] = useState<OptimizationRow | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -390,7 +402,7 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
       {/* ------------------------------------------------------- lower row */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-3">
         <HealthPanel {...props} />
-        <RenewalPanel {...props} />
+        <RenewalPanel {...props} onOpenGrowth={() => setDialog("growth")} />
         <GoalsPanel {...props} />
       </div>
 
@@ -428,6 +440,21 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
           owners={props.owners}
           onClose={() => setDialog(null)}
         />
+      ) : null}
+
+      {dialog === "growth" ? (
+        <Modal
+          eyebrow={props.companyName}
+          title="Renewal & Growth"
+          onClose={() => setDialog(null)}
+          footer={
+            <Button type="button" size="sm" variant="secondary" onClick={() => setDialog(null)}>
+              Close
+            </Button>
+          }
+        >
+          {props.growthWorkspace}
+        </Modal>
       ) : null}
 
       {dialog === "complete" && completing ? (
@@ -716,7 +743,11 @@ function HealthPanel({ health, openComplaints, clientId, permissions }: ReportsH
   );
 }
 
-function RenewalPanel({ renewal, permissions, clientId }: ReportsHealthProps) {
+function RenewalPanel({
+  renewal,
+  permissions,
+  onOpenGrowth,
+}: ReportsHealthProps & { onOpenGrowth: () => void }) {
   return (
     <Panel icon={CalendarDays} title="Renewal & Growth" className="scroll-mt-24">
       {renewal.renewalDate === null ? (
@@ -781,14 +812,14 @@ function RenewalPanel({ renewal, permissions, clientId }: ReportsHealthProps) {
         * decision with its own record; this card says when the conversation is
         * due and sends somebody to the place that holds it.
         */}
-      <TabLink
-        tab="reports"
-        clientId={clientId}
+      <button
+        type="button"
+        onClick={onOpenGrowth}
         className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800"
       >
-        Open growth workspace
+        View growth strategy
         <ArrowUpRight className="h-3 w-3" aria-hidden />
-      </TabLink>
+      </button>
     </Panel>
   );
 }

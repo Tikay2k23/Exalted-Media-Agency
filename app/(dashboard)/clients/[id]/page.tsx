@@ -366,6 +366,99 @@ export default async function ClientDetailPage({
     now: approvalNow,
   });
 
+  /*
+   * The renewal and growth workspace, handed to the card as a slot.
+   *
+   * It used to stack under the summary, which is what made the tab read as
+   * the old page. It is the same component with the same props - the card
+   * opens it behind View growth strategy rather than printing it below.
+   */
+  const growthWorkspace = (() => {
+    const record = client.renewals[0] ?? null;
+    const runway = renewalRunway(record?.renewalDate ?? client.renewalDate);
+
+    return (
+      <ClientGrowth
+        clientId={client.id}
+        canManage={can(actor, "renewals.manage")}
+        canCreateLeads={can(actor, "renewals.manage")}
+        owners={options.users}
+        renewalStages={RENEWAL_STAGES.map((o) => ({ value: o.value, label: o.label }))}
+        expansionTypes={EXPANSION_TYPES.map((o) => ({ value: o.value, label: o.label }))}
+        expansionStatuses={EXPANSION_STATUSES.map((o) => ({
+          value: o.value,
+          label: o.label,
+        }))}
+        testimonialFormats={TESTIMONIAL_FORMATS.map((o) => ({
+          value: o.value,
+          label: o.label,
+        }))}
+        testimonialStatuses={TESTIMONIAL_STATUSES.map((o) => ({
+          value: o.value,
+          label: o.label,
+        }))}
+        testimonialPermissions={TESTIMONIAL_PERMISSIONS.map((o) => ({
+          key: o.key,
+          label: o.label,
+        }))}
+        renewal={{
+          exists: record !== null,
+          stage: record?.stage ?? "NOT_STARTED",
+          renewalDate:
+            (record?.renewalDate ?? client.renewalDate)?.toISOString() ?? null,
+          currentPackage: record?.currentPackage ?? null,
+          recommendedPackage: record?.recommendedPackage ?? null,
+          currentValue: record?.currentValue === null || record === null
+            ? null
+            : Number(record.currentValue),
+          renewalValue: record?.renewalValue === null || record === null
+            ? null
+            : Number(record.renewalValue),
+          clientInterest: record?.clientInterest ?? null,
+          nextAction: record?.nextAction ?? null,
+          outcomeNote: record?.outcomeNote ?? null,
+          ownerName: record?.owner?.name ?? null,
+          daysUntil: runway.daysUntil,
+          window: runway.window,
+          overdue: runway.overdue,
+          isSettled: record ? isRenewalSettled(record.stage) : false,
+        }}
+        expansions={client.expansionOpportunities.map((item) => ({
+          id: item.id,
+          type: item.type,
+          status: item.status,
+          title: item.title,
+          description: item.description,
+          estimatedValue:
+            item.estimatedValue === null ? null : Number(item.estimatedValue),
+          ownerName: item.owner?.name ?? null,
+          outcomeNote: item.outcomeNote,
+          isDecided: isExpansionDecided(item.status),
+        }))}
+        testimonials={client.testimonials.map((item) => ({
+          id: item.id,
+          format: item.format,
+          status: item.status,
+          content: item.content,
+          publishingChannels: item.publishingChannels,
+          permissions: grantedPermissions(item),
+          blockers: describePublishingBlockers(item),
+          canPublish: canPublishTestimonial(item),
+        }))}
+        referrals={client.referralsGiven.map((item) => ({
+          id: item.id,
+          contactName: item.contactName,
+          businessName: item.businessName,
+          status: item.status,
+          permissionGranted: item.permissionGranted,
+          outcome: item.outcome,
+          leadId: item.leadId,
+          assignedToName: item.assignedTo?.name ?? null,
+        }))}
+      />
+    );
+  })();
+
   const reportsHealthProps = {
     clientId: client.id,
     companyName: client.companyName,
@@ -386,6 +479,7 @@ export default async function ClientDetailPage({
     owners: options.users,
     reportTypes: REPORT_TYPES.map((option) => ({ value: option.value, label: option.label })),
     openComplaints: openComplaintCount,
+    growthWorkspace,
     permissions: {
       canReport: can(actor, "reporting.client"),
       canManageHealth: can(actor, "health.manage"),
@@ -601,6 +695,7 @@ export default async function ClientDetailPage({
           ) : null,
 
           contacts: (
+            <div className="space-y-6">
             <ClientAccount
               clientId={client.id}
               company={{
@@ -693,6 +788,71 @@ export default async function ClientDetailPage({
               canEditFinance={canEditFinance}
               serverNow={new Date().toISOString()}
             />
+
+              {/*
+                * Billing and offboarding moved here from Reports & Health.
+                *
+                * They are commercial and lifecycle records, not measurement,
+                * and this tab already owns the contract value and billing
+                * cadence they sit beside. On Reports they were three panels
+                * stacked under the summary, which read as the old page.
+                */}
+              {/* Money is owner business. The project manager still learns that payment
+                  is outstanding through the stage gate, without seeing any amounts. */}
+              {canViewFinance ? (
+                <ClientInvoices
+                  clientId={client.id}
+                  canEdit={canEditFinance}
+                  invoices={client.invoices.map((invoice) => ({
+                    id: invoice.id,
+                    invoiceNumber: invoice.invoiceNumber,
+                    status: invoice.status,
+                    amountDue: Number(invoice.amountDue),
+                    amountPaid: Number(invoice.amountPaid),
+                    currency: invoice.currency,
+                    issuedAt: invoice.issuedAt?.toISOString() ?? null,
+                    dueAt: invoice.dueAt?.toISOString() ?? null,
+                    paidAt: invoice.paidAt?.toISOString() ?? null,
+                    failureReason: invoice.failureReason,
+                  }))}
+                />
+              ) : null}
+              {(() => {
+                const record = client.offboarding;
+
+                return (
+                  <ClientOffboarding
+                    clientId={client.id}
+                    canManage={can(actor, "offboarding.manage")}
+                    owners={options.users}
+                    reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
+                    offboarding={{
+                      exists: record !== null,
+                      status: record?.status ?? "REQUESTED",
+                      reason: record?.reason ?? "OTHER",
+                      reasonDetail: record?.reasonDetail ?? null,
+                      remainingWork: record?.remainingWork ?? null,
+                      lessonsLearned: record?.lessonsLearned ?? null,
+                      ownerName: null,
+                      steps: OFFBOARDING_STEPS.map((step) => ({
+                        key: step.key,
+                        label: step.label,
+                        why: step.why,
+                        done: record
+                          ? step.key === "remainingWorkCleared"
+                            ? Boolean(record.remainingWork?.trim())
+                            : record[step.key] !== null
+                          : false,
+                      })),
+                      outstanding: record
+                        ? outstandingOffboardingSteps(record).map((step) => step.label)
+                        : OFFBOARDING_STEPS.map((step) => step.label),
+                      complete: record ? isOffboardingComplete(record) : false,
+                    }}
+                  />
+                );
+              })()}
+            </div>
           ),
 
           services: (() => {
@@ -1127,166 +1287,20 @@ export default async function ClientDetailPage({
            */
           quality: <ClientApprovalWorkspace {...approvalWorkspaceProps} />,
 
-          reports: (
-            <div className="space-y-6">
-              {/*
-                * Reports & Health.
-                *
-                * One workspace replacing the reporting and health panels that
-                * used to stack here: they answered the same question from two
-                * directions and neither could see the other, so an account
-                * could show a healthy score beside a report nobody sent.
-                *
-                * The growth, offboarding and invoice sections below are not
-                * duplicates of it and stay where they are - this card links
-                * down to the growth workspace rather than restating it.
-                */}
-              <ClientReportsHealth {...reportsHealthProps} />
-
-              <div id="growth-workspace" className="scroll-mt-24">
-              {(() => {
-                const record = client.renewals[0] ?? null;
-                const runway = renewalRunway(record?.renewalDate ?? client.renewalDate);
-
-                return (
-                  <ClientGrowth
-                    clientId={client.id}
-                    canManage={can(actor, "renewals.manage")}
-                    canCreateLeads={can(actor, "renewals.manage")}
-                    owners={options.users}
-                    renewalStages={RENEWAL_STAGES.map((o) => ({ value: o.value, label: o.label }))}
-                    expansionTypes={EXPANSION_TYPES.map((o) => ({ value: o.value, label: o.label }))}
-                    expansionStatuses={EXPANSION_STATUSES.map((o) => ({
-                      value: o.value,
-                      label: o.label,
-                    }))}
-                    testimonialFormats={TESTIMONIAL_FORMATS.map((o) => ({
-                      value: o.value,
-                      label: o.label,
-                    }))}
-                    testimonialStatuses={TESTIMONIAL_STATUSES.map((o) => ({
-                      value: o.value,
-                      label: o.label,
-                    }))}
-                    testimonialPermissions={TESTIMONIAL_PERMISSIONS.map((o) => ({
-                      key: o.key,
-                      label: o.label,
-                    }))}
-                    renewal={{
-                      exists: record !== null,
-                      stage: record?.stage ?? "NOT_STARTED",
-                      renewalDate:
-                        (record?.renewalDate ?? client.renewalDate)?.toISOString() ?? null,
-                      currentPackage: record?.currentPackage ?? null,
-                      recommendedPackage: record?.recommendedPackage ?? null,
-                      currentValue: record?.currentValue === null || record === null
-                        ? null
-                        : Number(record.currentValue),
-                      renewalValue: record?.renewalValue === null || record === null
-                        ? null
-                        : Number(record.renewalValue),
-                      clientInterest: record?.clientInterest ?? null,
-                      nextAction: record?.nextAction ?? null,
-                      outcomeNote: record?.outcomeNote ?? null,
-                      ownerName: record?.owner?.name ?? null,
-                      daysUntil: runway.daysUntil,
-                      window: runway.window,
-                      overdue: runway.overdue,
-                      isSettled: record ? isRenewalSettled(record.stage) : false,
-                    }}
-                    expansions={client.expansionOpportunities.map((item) => ({
-                      id: item.id,
-                      type: item.type,
-                      status: item.status,
-                      title: item.title,
-                      description: item.description,
-                      estimatedValue:
-                        item.estimatedValue === null ? null : Number(item.estimatedValue),
-                      ownerName: item.owner?.name ?? null,
-                      outcomeNote: item.outcomeNote,
-                      isDecided: isExpansionDecided(item.status),
-                    }))}
-                    testimonials={client.testimonials.map((item) => ({
-                      id: item.id,
-                      format: item.format,
-                      status: item.status,
-                      content: item.content,
-                      publishingChannels: item.publishingChannels,
-                      permissions: grantedPermissions(item),
-                      blockers: describePublishingBlockers(item),
-                      canPublish: canPublishTestimonial(item),
-                    }))}
-                    referrals={client.referralsGiven.map((item) => ({
-                      id: item.id,
-                      contactName: item.contactName,
-                      businessName: item.businessName,
-                      status: item.status,
-                      permissionGranted: item.permissionGranted,
-                      outcome: item.outcome,
-                      leadId: item.leadId,
-                      assignedToName: item.assignedTo?.name ?? null,
-                    }))}
-                  />
-                );
-              })()}
-              </div>
-              {(() => {
-                const record = client.offboarding;
-
-                return (
-                  <ClientOffboarding
-                    clientId={client.id}
-                    canManage={can(actor, "offboarding.manage")}
-                    owners={options.users}
-                    reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
-                    offboarding={{
-                      exists: record !== null,
-                      status: record?.status ?? "REQUESTED",
-                      reason: record?.reason ?? "OTHER",
-                      reasonDetail: record?.reasonDetail ?? null,
-                      remainingWork: record?.remainingWork ?? null,
-                      lessonsLearned: record?.lessonsLearned ?? null,
-                      ownerName: null,
-                      steps: OFFBOARDING_STEPS.map((step) => ({
-                        key: step.key,
-                        label: step.label,
-                        why: step.why,
-                        done: record
-                          ? step.key === "remainingWorkCleared"
-                            ? Boolean(record.remainingWork?.trim())
-                            : record[step.key] !== null
-                          : false,
-                      })),
-                      outstanding: record
-                        ? outstandingOffboardingSteps(record).map((step) => step.label)
-                        : OFFBOARDING_STEPS.map((step) => step.label),
-                      complete: record ? isOffboardingComplete(record) : false,
-                    }}
-                  />
-                );
-              })()}
-              {/* Money is owner business. The project manager still learns that payment
-                  is outstanding through the stage gate, without seeing any amounts. */}
-              {canViewFinance ? (
-                <ClientInvoices
-                  clientId={client.id}
-                  canEdit={canEditFinance}
-                  invoices={client.invoices.map((invoice) => ({
-                    id: invoice.id,
-                    invoiceNumber: invoice.invoiceNumber,
-                    status: invoice.status,
-                    amountDue: Number(invoice.amountDue),
-                    amountPaid: Number(invoice.amountPaid),
-                    currency: invoice.currency,
-                    issuedAt: invoice.issuedAt?.toISOString() ?? null,
-                    dueAt: invoice.dueAt?.toISOString() ?? null,
-                    paidAt: invoice.paidAt?.toISOString() ?? null,
-                    failureReason: invoice.failureReason,
-                  }))}
-                />
-              ) : null}
-            </div>
-          ),
+          /*
+           * Reports & Health: one page, and only this page.
+           *
+           * Five panels used to stack under this tab - reporting, health,
+           * growth, offboarding and invoices. Replacing the first two and
+           * leaving the other three below the new summary was the mistake:
+           * scrolling still showed the old page, because it was still there.
+           *
+           * Nothing was thrown away. Growth is handed to the card as a slot
+           * and opens behind View growth strategy; billing and offboarding
+           * moved to Account, which already owns the contract value they sit
+           * beside. Reporting and health are gone, replaced.
+           */
+          reports: <ClientReportsHealth {...reportsHealthProps} />,
 
           files: (
             <div className="space-y-6">
