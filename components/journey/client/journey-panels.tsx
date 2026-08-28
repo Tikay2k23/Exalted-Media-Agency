@@ -111,13 +111,29 @@ export function NeedsAttentionPanel({
 /* Client information                                                         */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * One field: the label above, the value under it, always.
+ *
+ * Never label-left/value-right. A two-column row looks tidy until a value is
+ * long enough to wrap, and then the column widths fight each other down the
+ * whole card. Stacked, every value starts at the same x and nothing shifts.
+ */
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="py-[5px]">
-      <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
-      <div className="mt-0.5 break-words text-xs font-medium text-slate-800">{value}</div>
+    <div className="py-2 first:pt-0 last:pb-0">
+      <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-slate-400">
+        {label}
+      </p>
+      <div className="mt-1 break-words text-[13px] font-semibold leading-5 text-slate-900">
+        {value}
+      </div>
     </div>
   );
+}
+
+/** Nothing recorded. Said plainly, in the colour of a gap rather than a fault. */
+function NotSet({ children = "Not assigned" }: { children?: string }) {
+  return <span className="font-medium text-amber-700">{children}</span>;
 }
 
 /**
@@ -160,7 +176,10 @@ export function ClientContextPanel({
   return (
     <Card icon={Building2} title="Client Context">
       <div className="divide-y divide-slate-100">
-        <InfoRow label="Primary Contact" value={primary?.name ?? account.clientName} />
+        <InfoRow
+          label="Primary Contact"
+          value={primary?.name ?? account.clientName ?? <NotSet />}
+        />
 
         {/*
           * The account's manager, not whoever sits in a project's manager
@@ -169,31 +188,23 @@ export function ClientContextPanel({
           */}
         <InfoRow
           label="Project Manager"
-          value={
-            detail.onboarding.projectManager?.name ?? (
-              <span className="text-amber-700">Not assigned</span>
-            )
-          }
+          value={detail.onboarding.projectManager?.name ?? <NotSet />}
         />
 
-        <InfoRow
-          label="Authorised Approver"
-          value={
-            approver ? (
-              approver.name
-            ) : (
-              <span className="text-amber-700">Not assigned</span>
-            )
-          }
-        />
+        <InfoRow label="Authorised Approver" value={approver?.name ?? <NotSet />} />
 
         <InfoRow
           label="Service"
           value={
             services.length === 0 ? (
-              <span className="text-slate-400">None recorded</span>
+              <NotSet>No active service</NotSet>
             ) : (
-              <span className="flex flex-wrap items-baseline justify-end gap-1.5">
+              /*
+                * Left, like every other value. This carried a justify-end from
+                * the card it replaced, which pushed the service alone to the
+                * far edge while the four values above it started at the left.
+                */
+              <span className="flex flex-wrap items-baseline gap-1.5">
                 {onOpenTab ? (
                   <button
                     type="button"
@@ -203,10 +214,12 @@ export function ClientContextPanel({
                     {services[0]}
                   </button>
                 ) : (
-                  services[0]
+                  <span className="text-sky-700">{services[0]}</span>
                 )}
                 {services.length > 1 ? (
-                  <span className="text-[11px] text-slate-500">+{services.length - 1}</span>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    +{services.length - 1}
+                  </span>
                 ) : null}
               </span>
             )
@@ -216,28 +229,32 @@ export function ClientContextPanel({
         <InfoRow
           label="Target Launch"
           value={
-            detail.targetLaunchDate ? (
-              formatDay(detail.targetLaunchDate)
-            ) : (
-              <span className="text-slate-400">Not set</span>
-            )
+            detail.targetLaunchDate ? formatDay(detail.targetLaunchDate) : <NotSet>Not set</NotSet>
           }
         />
       </div>
 
+      {/*
+        * A real action rather than a line of blue text at the bottom of a
+        * list, where it read as one more field.
+        */}
       {onOpenTab ? (
         <button
           type="button"
           onClick={() => onOpenTab("contacts")}
-          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800"
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-sky-700 transition hover:border-slate-300 hover:bg-slate-50"
         >
           Open full client profile
-          <ArrowRight className="h-3 w-3" aria-hidden />
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
         </button>
       ) : null}
     </Card>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Recent activity                                                            */
+/* -------------------------------------------------------------------------- */
 
 const DOT_TONE: Record<JourneyActivityEntry["kind"], string> = {
   stage: "bg-sky-500",
