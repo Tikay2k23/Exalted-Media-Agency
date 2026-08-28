@@ -695,7 +695,10 @@ export function ClientStrategy({
             </CardIcon>
           }
           action={canEdit ? <EditButton onClick={() => setEditing("audience")} /> : null}
-          footer={audiences.length > 0 ? <CardLink tab="reports">View details</CardLink> : null}
+          /*
+            * No footer link: this pointed at Reports, which has never held
+            * audiences. The card shows them and Edit opens the full text.
+            */
         >
           {audiences.length === 0 ? (
             <EmptyPanel>Target audience has not been defined.</EmptyPanel>
@@ -729,7 +732,7 @@ export function ClientStrategy({
             </CardIcon>
           }
           action={canEdit ? <EditButton onClick={() => setEditing("valueProp")} /> : null}
-          footer={valueProp.statement ? <CardLink tab="reports">View details</CardLink> : null}
+          /* Same - the value proposition lives here and nowhere else. */
         >
           {!valueProp.statement && valueProp.differentiators.length === 0 ? (
             <EmptyPanel>No value proposition documented.</EmptyPanel>

@@ -856,6 +856,8 @@ export default async function ClientDetailPage({
               {/* Money is owner business. The project manager still learns that payment
                   is outstanding through the stage gate, without seeing any amounts. */}
               {canViewFinance ? (
+                /* Named, because the quick actions above scroll to it. */
+                <div id="client-invoices" className="scroll-mt-24">
                 <ClientInvoices
                   clientId={client.id}
                   canEdit={canEditFinance}
@@ -872,6 +874,7 @@ export default async function ClientDetailPage({
                     failureReason: invoice.failureReason,
                   }))}
                 />
+                </div>
               ) : null}
               {(() => {
                 const record = client.offboarding;

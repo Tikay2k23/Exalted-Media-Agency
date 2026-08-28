@@ -33,7 +33,6 @@ import {
 } from "@/components/clients/account-editors";
 import { Monogram, money } from "@/components/clients/client-bits";
 import { ClientOverviewFooter } from "@/components/clients/client-overview-footer";
-import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatEnumLabel } from "@/lib/utils";
 
@@ -1004,23 +1003,27 @@ export function ClientAccount({
               disabledReason="No mobile number available"
             />
 
-            {/* Invoices and payments live together on Reports. */}
+            {/*
+              * Billing is on this tab, below, beside the contract value it
+              * belongs with. These used to cross to Reports and would now
+              * land on a page that no longer carries it.
+              */}
             {canSeeFinance ? (
               <>
-                <TabLink
-                  tab="reports"
+                <a
+                  href="#client-invoices"
                   className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   <Receipt className="h-4 w-4" aria-hidden />
                   View Invoices
-                </TabLink>
-                <TabLink
-                  tab="reports"
+                </a>
+                <a
+                  href="#client-invoices"
                   className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   <Wallet className="h-4 w-4" aria-hidden />
                   View Payments
-                </TabLink>
+                </a>
               </>
             ) : null}
 
@@ -1037,16 +1040,19 @@ export function ClientAccount({
             ) : (
               /*
                 * No file stored, so there is nothing to download. The button
-                * becomes the thing somebody can actually do about that, rather
-                * than a link to a 404.
+                * becomes the thing somebody can actually do about that: the
+                * contract dialog is where the link is recorded. Without the
+                * right to edit it stays a statement of fact.
                 */
-              <TabLink
-                tab="reports"
-                className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
+              <button
+                type="button"
+                disabled={!canEditFinance}
+                onClick={() => setEditing("commercials")}
+                className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-medium text-slate-500 transition enabled:hover:bg-slate-50 disabled:cursor-not-allowed"
               >
                 <Upload className="h-4 w-4" aria-hidden />
-                No contract uploaded
-              </TabLink>
+                {canEditFinance ? "Add contract link" : "No contract uploaded"}
+              </button>
             )}
           </div>
         </Card>

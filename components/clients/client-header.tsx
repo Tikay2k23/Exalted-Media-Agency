@@ -237,7 +237,7 @@ export function ClientHeader({
                     { label: "QA and approvals", tab: "quality" as const },
                     { label: "Reports and health", tab: "reports" as const },
                     ...(canManage
-                      ? [{ label: "Start offboarding", tab: "reports" as const }]
+                      ? [{ label: "Start offboarding", tab: "contacts" as const }]
                       : []),
                     { label: "Integrations", tab: "integrations" as const },
                   ].map((item) => (

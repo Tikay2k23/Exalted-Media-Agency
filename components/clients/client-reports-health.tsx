@@ -627,6 +627,7 @@ function OptimizationPanel({
     <Panel
       icon={Wrench}
       title="Optimization Log"
+      id="optimization-log"
       className="scroll-mt-24"
       action={
         permissions.canReport ? (
