@@ -1,4 +1,4 @@
-import { OffboardingReason, OffboardingStatus } from "@prisma/client";
+import { ClientStatus, OffboardingReason, OffboardingStatus } from "@prisma/client";
 
 import { logActivity } from "@/lib/activity";
 import { type AuthContext } from "@/lib/authz";
@@ -154,7 +154,7 @@ async function loadClient(actor: AuthContext, clientId: string) {
       deletedAt: null,
       ...(can(actor, "clients.view.all") ? {} : { assignedUserId: actor.id }),
     },
-    select: { id: true, companyName: true, assignedUserId: true },
+    select: { id: true, companyName: true, assignedUserId: true, status: true },
   });
 }
 
@@ -287,11 +287,51 @@ export async function saveOffboarding(input: SaveOffboardingInput) {
       : {}),
   };
 
-  const record = existing
-    ? await prisma.offboardingRecord.update({ where: { id: existing.id }, data })
-    : await prisma.offboardingRecord.create({
-        data: { ...data, clientId: client.id, cancellationRequestedAt: new Date() },
-      });
+  /*
+   * Completing offboarding ends the engagement, so the account stops being
+   * an active one.
+   *
+   * It did not before. The offboarding record said COMPLETE and the client
+   * stayed ACTIVE, so a finished account kept appearing on the board, in the
+   * directory, in the portfolio counts and on somebody's list of accounts to
+   * chase - with no way out, because nothing else ever set this.
+   *
+   * COMPLETED is the terminal status the enum already had, and isActive()
+   * already excluded it, so nothing needed inventing for this to work.
+   *
+   * One transaction: an account whose offboarding completed but whose status
+   * did not is the state this is fixing, and doing it in two writes would
+   * reintroduce it on any failure between them.
+   */
+  const finishing = status === OffboardingStatus.COMPLETE;
+
+  const [record] = await prisma.$transaction([
+    existing
+      ? prisma.offboardingRecord.update({ where: { id: existing.id }, data })
+      : prisma.offboardingRecord.create({
+          data: { ...data, clientId: client.id, cancellationRequestedAt: new Date() },
+        }),
+    ...(finishing && client.status !== ClientStatus.COMPLETED
+      ? [
+          prisma.client.update({
+            where: { id: client.id },
+            data: { status: ClientStatus.COMPLETED },
+          }),
+        ]
+      : []),
+  ]);
+
+  if (finishing && client.status !== ClientStatus.COMPLETED) {
+    await logActivity({
+      actorId: actor.id,
+      action: `${client.companyName} is offboarded and no longer an active account`,
+      entityType: "CLIENT",
+      entityId: client.id,
+      fieldName: "status",
+      previousValue: client.status,
+      newValue: ClientStatus.COMPLETED,
+    });
+  }
 
   await logActivity({
     actorId: actor.id,

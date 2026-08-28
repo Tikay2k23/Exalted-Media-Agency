@@ -412,7 +412,14 @@ model LeadCallLog {
 
 model Client {
   id             String       @id @default(cuid())
+  /// The person the agency deals with - "Tom Brennan".
+  ///
+  /// Not a duplicate of companyName and never interchangeable with it: these
+  /// differ on every row, and reading one where the other was meant puts a
+  /// person's name where a business belongs on invoices and reports.
   clientName     String
+  /// The business - "Cedar Ridge Landscaping". This is the account's name
+  /// everywhere it is displayed.
   companyName    String
   contactEmail   String
   contactPhone   String?
