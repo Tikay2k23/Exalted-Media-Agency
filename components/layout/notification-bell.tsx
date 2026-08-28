@@ -173,18 +173,36 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
       }
     }
 
+    /*
+     * Repositioning read layout on every scroll event, on the capture phase,
+     * and blocked the scroll while it did it. One measurement per frame is
+     * all the panel can actually use, and passive tells the browser it may
+     * scroll without waiting to find out whether this cancels it.
+     */
+    let frame = 0;
+
+    const onScrollOrResize = () => {
+      if (frame) return;
+
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        position();
+      });
+    };
+
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     // Reposition rather than drift: rotating a phone or scrolling the page
     // moves the bell, and the panel has to follow it.
-    window.addEventListener("resize", position);
-    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
+    window.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
 
     return () => {
+      if (frame) window.cancelAnimationFrame(frame);
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("resize", position);
-      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, { capture: true });
     };
   }, [isOpen, position]);
 

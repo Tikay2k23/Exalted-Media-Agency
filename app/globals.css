@@ -76,3 +76,28 @@
     background: rgba(14, 165, 233, 0.22);
   }
 }
+
+/*
+ * Reduced motion.
+ *
+ * The application uses Tailwind's `transition` on a great many controls, and
+ * nothing was honouring the operating system setting - somebody who asks for
+ * less movement got every hover fade, every dropdown, every drawer.
+ *
+ * Near-zero rather than zero: `animation: none` cancels animations that have
+ * an end state, so an element mid-transition can be left where it was rather
+ * than where it belongs. 0.01ms finishes on the next frame and still runs the
+ * completion handlers a component may be waiting on.
+ *
+ * Behaviour is unchanged either way - this only removes the movement.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

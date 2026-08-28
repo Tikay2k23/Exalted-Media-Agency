@@ -2,6 +2,7 @@ import {
   type ClientStatus,
   type Department,
   type EmployeeTask,
+  EmployeeTaskStatus,
   Prisma,
   Role,
   ServiceType,
@@ -731,6 +732,21 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           },
         },
         agencyTasks: {
+          /*
+            * Deleted tasks were being loaded, thrown away by the Work tab in
+            * the browser, and counted by the summary numbers that were not.
+            * Filtered here, where both readers get the same answer.
+            */
+          where: { deletedAt: null },
+          /*
+            * Bounded. This include was the client record: 402 tasks on a
+            * seeded account came to 471 KB, 98% of a 479 KB payload, shipped
+            * on every tab whether or not anybody opened Work.
+            *
+            * The counts beside it no longer come from this array, so trimming
+            * the list cannot change a number - see taskTotals below.
+            */
+          take: 250,
           include: {
             /*
              * Everything the Work tab shows about a task, read once here rather
@@ -763,6 +779,8 @@ export async function getClientDetail(user: AppUser, clientId: string) {
           orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
         },
         stageHistory: {
+          /* Also unbounded, and the same shape of problem at a smaller scale. */
+          take: 100,
           include: {
             fromStage: true,
             toStage: true,
@@ -785,10 +803,44 @@ export async function getClientDetail(user: AppUser, clientId: string) {
       return null;
     }
 
+    /*
+     * The task numbers, counted by the database.
+     *
+     * They used to be counted in JavaScript over every task ever created on
+     * the account, which meant downloading the whole history to render "2
+     * overdue". Now the list can be bounded without the summary lying, and
+     * the counts are exact whatever the take is.
+     */
+    const [total, overdue, blocked, open] = await Promise.all([
+      prisma.employeeTask.count({ where: { clientId: client.id, deletedAt: null } }),
+      prisma.employeeTask.count({
+        where: {
+          clientId: client.id,
+          deletedAt: null,
+          status: { notIn: [EmployeeTaskStatus.DONE, EmployeeTaskStatus.APPROVED, EmployeeTaskStatus.CANCELLED] },
+          dueDate: { lt: new Date() },
+        },
+      }),
+      prisma.employeeTask.count({
+        where: { clientId: client.id, deletedAt: null, status: EmployeeTaskStatus.BLOCKED },
+      }),
+      prisma.employeeTask.count({
+        where: {
+          clientId: client.id,
+          deletedAt: null,
+          status: { notIn: [EmployeeTaskStatus.DONE, EmployeeTaskStatus.APPROVED, EmployeeTaskStatus.CANCELLED] },
+        },
+      }),
+    ]);
+
     return {
       ...client,
-      openTaskCount: countOpenAgencyTasks(client.agencyTasks),
-      overdueTaskCount: countOverdueAgencyTasks(client.agencyTasks),
+      openTaskCount: open,
+      overdueTaskCount: overdue,
+      /* Exact, whatever the take above is, for anything that counts rather than lists. */
+      taskTotals: { total, overdue, blocked, open },
+      /* True when the list above is a window onto a longer history. */
+      tasksTruncated: total > client.agencyTasks.length,
     };
   } catch (error) {
     console.error("[queries] Failed to load client detail.", error);

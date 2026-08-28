@@ -441,13 +441,8 @@ export default async function ClientDetailPage({
     reports: reportsSummary,
     optimizations: optimizationsSummary,
     openComplaints: openComplaintCount,
-    overdueTasks: client.agencyTasks.filter(
-      (task) =>
-        !task.deletedAt
-        && !task.archivedAt
-        && !["DONE", "APPROVED", "CANCELLED"].includes(task.status)
-        && task.dueDate < approvalNow,
-    ).length,
+    /* The database's count, so a bounded task list cannot change the number. */
+    overdueTasks: client.taskTotals.overdue,
     now: approvalNow,
   });
 
@@ -522,7 +517,6 @@ export default async function ClientDetailPage({
         })
       : null;
 
-  const liveTasks = client.agencyTasks.filter((task) => task.status !== "CANCELLED");
 
   const computedHealth = accountHealth({
     journey: journeyScore ? { score: journeyScore.score, label: journeyScore.label } : null,
@@ -531,12 +525,14 @@ export default async function ClientDetailPage({
       score: approvalGateState.healthScore,
       blockers: approvalGateState.blockers,
     },
+    /*
+     * Counted by the database, not by measuring an array the page happens to
+     * be holding. The task list is a bounded window; these are the account.
+     */
     delivery: {
-      total: liveTasks.length,
-      overdue: liveTasks.filter(
-        (task) => task.status !== "DONE" && task.dueDate.getTime() < healthNow.getTime(),
-      ).length,
-      blocked: liveTasks.filter((task) => task.status === "BLOCKED").length,
+      total: client.taskTotals.total,
+      overdue: client.taskTotals.overdue,
+      blocked: client.taskTotals.blocked,
     },
     performance: {
       reportsDue: reportRows.length,

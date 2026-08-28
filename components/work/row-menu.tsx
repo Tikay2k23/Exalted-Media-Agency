@@ -62,13 +62,14 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
 
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
+    /* Passive: this only closes the menu, so it never cancels the scroll. */
+    window.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
 
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("scroll", onScrollOrResize, { capture: true });
       window.removeEventListener("resize", onScrollOrResize);
     };
   }, [open]);
