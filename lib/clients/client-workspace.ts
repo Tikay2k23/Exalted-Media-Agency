@@ -97,6 +97,7 @@ export type AttentionKey =
   | "report-overdue"
   | "open-defect"
   | "renewal-approaching"
+  | "account-at-risk"
   | "no-next-action";
 
 export interface AttentionReason {
@@ -310,6 +311,24 @@ export function attentionReasons(client: ClientRow, now: Date): AttentionReason[
       detail: `${client.overdueReportCount} past its date`,
       tab: "reports",
       weight: 55,
+    });
+  }
+
+  /*
+   * A red account, on the page that can do something about it.
+   *
+   * The colour is only ever set by recording an assessment, so this is not a
+   * new opinion about the account - it is the one somebody wrote down, put
+   * where they will see it. Above renewal, because an account at risk of
+   * leaving is the reason a renewal goes badly.
+   */
+  if (client.healthStatus === "RED") {
+    reasons.push({
+      key: "account-at-risk",
+      label: "Account health is red",
+      detail: "Assessed as at risk",
+      tab: "reports",
+      weight: 58,
     });
   }
 

@@ -237,6 +237,7 @@ const ATTENTION_ICONS: Record<AttentionKey, typeof Users> = {
   "open-defect": Bug,
   "report-overdue": ChartNoAxesColumn,
   "renewal-approaching": CalendarDays,
+  "account-at-risk": ActivityIcon,
   "no-activity": Clock,
   "no-next-action": Flag,
 };

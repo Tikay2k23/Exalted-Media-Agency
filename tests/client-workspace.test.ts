@@ -145,6 +145,25 @@ describe("what needs attention", () => {
     );
   });
 
+  it("surfaces a red account, and only once somebody has assessed it", () => {
+    /*
+     * The colour is only ever written by recording an assessment, so this
+     * cannot fire on an account nobody has looked at - which is the whole
+     * difference between a warning and a guess.
+     */
+    assert.equal(
+      attentionReasons(client({ healthStatus: "NOT_ASSESSED" }), NOW).some(
+        (reason) => reason.key === "account-at-risk",
+      ),
+      false,
+    );
+
+    const red = attentionReasons(client({ healthStatus: "RED" }), NOW);
+
+    assert.equal(red.some((reason) => reason.key === "account-at-risk"), true);
+    assert.equal(red.find((reason) => reason.key === "account-at-risk")?.tab, "reports");
+  });
+
   it("sends each reason to the tab that can actually fix it", () => {
     const messy = client({
       criticalAccessMissing: 1,
