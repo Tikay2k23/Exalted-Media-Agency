@@ -36,9 +36,13 @@
    * Pixels, not the original 8em. In em this measures whatever font-size it
    * inherits, and the demo it came from set that globally - which is exactly
    * the global CSS this must not copy.
+   *
+   * 88 rather than the reference 128: at full size it dominated the screen it
+   * was meant to sit quietly in the middle of. The artwork is unchanged - the
+   * viewBox still scales the whole 128 drawing into whatever this is.
    */
-  width: 128px;
-  height: 128px;
+  width: 88px;
+  height: 88px;
   /*
    * Never shrink.
    *
@@ -162,8 +166,8 @@
 /* A little smaller where the screen is, so it never dominates a phone. */
 @media (max-width: 480px) {
   .pl {
-    width: 96px;
-    height: 96px;
+    width: 72px;
+    height: 72px;
   }
 }
 
