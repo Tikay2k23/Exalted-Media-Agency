@@ -225,15 +225,6 @@ export interface ReportsHealthProps {
   reportTypes: { value: string; label: string }[];
   /** Open complaints, for the health card's context. */
   openComplaints: number;
-  /**
-   * The renewal and growth workspace, rendered whole when somebody opens it.
-   *
-   * A slot rather than a rebuild: it is the existing component with its
-   * existing props, so opportunities, testimonials and referrals keep the one
-   * implementation they already had. It used to stack under this page, which
-   * is what made the tab read as the old design.
-   */
-  growthWorkspace: React.ReactNode;
   /*
    * The health workspace, for the same reason.
    *
@@ -259,7 +250,6 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
     | "reports"
     | "log"
     | "complete"
-    | "growth"
     | "health"
     | "optimizations"
     | null
@@ -444,7 +434,7 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
       {/* ------------------------------------------------------- lower row */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-3">
         <HealthPanel {...props} onOpenHealth={() => setDialog("health")} />
-        <RenewalPanel {...props} onOpenGrowth={() => setDialog("growth")} />
+        <RenewalPanel {...props} />
         <GoalsPanel {...props} />
       </div>
 
@@ -523,21 +513,6 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
           }
         >
           {props.healthWorkspace}
-        </Modal>
-      ) : null}
-
-      {dialog === "growth" ? (
-        <Modal
-          eyebrow={props.companyName}
-          title="Renewal & Growth"
-          onClose={() => setDialog(null)}
-          footer={
-            <Button type="button" size="sm" variant="secondary" onClick={() => setDialog(null)}>
-              Close
-            </Button>
-          }
-        >
-          {props.growthWorkspace}
         </Modal>
       ) : null}
 
@@ -857,11 +832,7 @@ function HealthPanel({
   );
 }
 
-function RenewalPanel({
-  renewal,
-  permissions,
-  onOpenGrowth,
-}: ReportsHealthProps & { onOpenGrowth: () => void }) {
+function RenewalPanel({ renewal, permissions, clientId }: ReportsHealthProps) {
   return (
     <Panel icon={CalendarDays} title="Renewal & Growth" id="renewal-growth" className="scroll-mt-24">
       {renewal.renewalDate === null ? (
@@ -926,14 +897,14 @@ function RenewalPanel({
         * decision with its own record; this card says when the conversation is
         * due and sends somebody to the place that holds it.
         */}
-      <button
-        type="button"
-        onClick={onOpenGrowth}
+      <TabLink
+        tab="renewal"
+        clientId={clientId}
         className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800"
       >
-        View growth strategy
+        Open renewal & growth
         <ArrowUpRight className="h-3 w-3" aria-hidden />
-      </button>
+      </TabLink>
     </Panel>
   );
 }

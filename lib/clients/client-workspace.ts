@@ -75,6 +75,13 @@ export function healthFromStatus(
 }
 
 /** Where an attention item sends you when you click it. */
+/**
+ * The tabs of a client record.
+ *
+ * Seven are primary and always visible. The rest are the secondary
+ * workspaces behind More: needed to run an account, not needed hourly, and
+ * they would push the ones that are off the edge of the strip.
+ */
 export type ClientTab =
   | "overview"
   | "contacts"
@@ -85,7 +92,10 @@ export type ClientTab =
   | "reports"
   | "files"
   | "activity"
-  | "integrations";
+  | "integrations"
+  | "billing"
+  | "renewal"
+  | "offboarding";
 
 export type AttentionKey =
   | "overdue-work"

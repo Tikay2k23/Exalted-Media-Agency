@@ -65,13 +65,55 @@ const PRIMARY: { key: ClientTab; label: string }[] = [
   { key: "reports", label: "Reports" },
 ];
 
-const SECONDARY: { key: ClientTab; label: string }[] = [
-  { key: "files", label: "Files & Access" },
-  { key: "activity", label: "Activity & Notes" },
-  { key: "integrations", label: "Integrations" },
+/**
+ * What sits behind More, in three groups.
+ *
+ * Grouped rather than listed because the six are not one kind of thing:
+ * running the account, billing it, and ending it are separate jobs, and a flat
+ * list of six makes somebody read all of them to find the one they meant.
+ *
+ * The order is the order an account passes through them.
+ */
+const SECONDARY_GROUPS: { heading: string; tabs: { key: ClientTab; label: string }[] }[] = [
+  {
+    heading: "Operations",
+    tabs: [
+      { key: "files", label: "Files & Access" },
+      { key: "activity", label: "Activity & Notes" },
+      { key: "integrations", label: "Integrations" },
+    ],
+  },
+  {
+    heading: "Commercial",
+    tabs: [
+      { key: "billing", label: "Billing & Payments" },
+      { key: "renewal", label: "Renewal & Growth" },
+    ],
+  },
+  {
+    heading: "Lifecycle",
+    tabs: [{ key: "offboarding", label: "Offboarding" }],
+  },
 ];
 
+const SECONDARY = SECONDARY_GROUPS.flatMap((group) => group.tabs);
+
 export const ALL_CLIENT_TABS = [...PRIMARY, ...SECONDARY];
+
+/**
+ * A short word on a menu entry, drawn from the account's own records.
+ *
+ * Only ever real: the caller computes these from rows it has already loaded,
+ * and a tab with nothing to say carries nothing. A badge that appears on every
+ * account teaches people to stop reading badges.
+ */
+export type TabBadges = Partial<Record<ClientTab, { label: string; tone: "rose" | "amber" | "slate" }>>;
+
+const BADGE_TONES = {
+  rose: "bg-rose-50 text-rose-700",
+  amber: "bg-amber-50 text-amber-800",
+  slate: "bg-slate-100 text-slate-600",
+} as const;
 
 function TabButton({
   label,
@@ -103,9 +145,11 @@ function TabButton({
 export function ClientTabs({
   initial,
   panels,
+  badges = {},
 }: {
   initial: ClientTab;
   panels: Partial<Record<ClientTab, ReactNode>>;
+  badges?: TabBadges;
 }) {
   const [active, setActive] = useState<ClientTab>(initial);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -194,20 +238,16 @@ export function ClientTabs({
               />
             ))}
 
-            {/* On wide screens the rest sit inline rather than behind More. */}
-            <span className="hidden gap-1 2xl:flex">
-              {SECONDARY.map((tab) => (
-                <TabButton
-                  key={tab.key}
-                  label={tab.label}
-                  isActive={active === tab.key}
-                  onSelect={() => setTab(tab.key)}
-                />
-              ))}
-            </span>
           </div>
 
-          <div className="relative shrink-0 2xl:hidden">
+          {/*
+            * More at every width.
+            *
+            * Three of these used to sit inline on a wide screen. Six cannot:
+            * the strip becomes thirteen tabs, which is the clutter the menu
+            * exists to prevent, and the seven that matter stop standing out.
+            */}
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setMoreOpen((open) => !open)}
@@ -218,6 +258,14 @@ export function ClientTabs({
               }`}
             >
               {inMore ? activeLabel : "More"}
+              {/*
+                * One dot when something behind the menu needs attention, so a
+                * closed menu is not silence. Which item it is stays inside -
+                * the strip is not the place to enumerate them.
+                */}
+              {!inMore && SECONDARY.some((tab) => badges[tab.key]?.tone === "rose") ? (
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-label="Needs attention" />
+              ) : null}
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
 
@@ -229,20 +277,43 @@ export function ClientTabs({
                   onClick={() => setMoreOpen(false)}
                   className="fixed inset-0 z-10 cursor-default"
                 />
-                <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
-                  {SECONDARY.map((tab) => (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setTab(tab.key)}
-                      className={`block w-full rounded-lg px-2.5 py-2 text-left text-xs transition ${
-                        active === tab.key
-                          ? "bg-slate-950 font-semibold text-white"
-                          : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
+                <div className="absolute right-0 z-20 mt-1 w-60 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                  {SECONDARY_GROUPS.map((group, index) => (
+                    <div key={group.heading}>
+                      {index > 0 ? <div className="my-1 border-t border-slate-100" /> : null}
+                      <p className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        {group.heading}
+                      </p>
+                      {group.tabs.map((tab) => {
+                        const badge = badges[tab.key];
+
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setTab(tab.key)}
+                            className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                              active === tab.key
+                                ? "bg-slate-950 font-semibold text-white"
+                                : "text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>{tab.label}</span>
+                            {badge ? (
+                              <span
+                                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                  active === tab.key
+                                    ? "bg-white/15 text-white"
+                                    : BADGE_TONES[badge.tone]
+                                }`}
+                              >
+                                {badge.label}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ))}
                 </div>
               </>

@@ -9,6 +9,7 @@ import { ClientJourneyView } from "@/components/journey/client/client-journey-vi
 import { ClientWork } from "@/components/clients/client-work";
 import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
+import { ClientActivity } from "@/components/clients/client-activity";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientGrowth } from "@/components/clients/client-growth";
 import { ClientHealth } from "@/components/clients/client-health";
@@ -19,7 +20,7 @@ import { ClientProjects } from "@/components/clients/client-projects";
 import { ClientApprovalWorkspace } from "@/components/clients/client-approval-workspace";
 import { ClientReportsHealth } from "@/components/clients/client-reports-health";
 import { ClientStatusSelect } from "@/components/clients/client-status-select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 } from "@/components/ui/table";
 import {
@@ -53,6 +54,7 @@ import {
   isRecoveryPlanLive,
 } from "@/lib/success/health-service";
 import { accountHealth } from "@/lib/success/account-health";
+import { moreBadges } from "@/lib/clients/more-badges";
 import { journeyHealth } from "@/lib/journey/journey-health";
 import { stageClock } from "@/lib/journey/client-detail";
 import { REPORT_TYPES } from "@/lib/success/report-service";
@@ -94,7 +96,7 @@ import { can, canAccessAssignedRecord, canManageClients, teamRoleLabels } from "
 import {
 } from "@/lib/workflow/handoff-engine";
 import { requireUser } from "@/lib/session";
-import { formatDateTime, formatEnumLabel } from "@/lib/utils";
+import { formatEnumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -182,6 +184,39 @@ export default async function ClientDetailPage({
     select: {
       id: true,
       action: true,
+      createdAt: true,
+      actor: { select: { name: true } },
+    },
+  });
+
+  /*
+   * The fuller record, for the Activity & Notes workspace.
+   *
+   * Wider than the twenty rows the Overview shows, and not only the rows
+   * logged against the client: work is logged against the task, so a page
+   * that only read CLIENT rows would show an account where no task ever
+   * moved. The task ids come from the rows this page already loaded.
+   */
+  const clientTaskIds = client.agencyTasks.map((task) => task.id);
+
+  const activityFeed = await prisma.activityLog.findMany({
+    where: {
+      OR: [
+        { entityType: "CLIENT", entityId: id },
+        ...(clientTaskIds.length > 0
+          ? [{ entityType: "EMPLOYEE_TASK" as const, entityId: { in: clientTaskIds } }]
+          : []),
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      action: true,
+      entityType: true,
+      fieldName: true,
+      previousValue: true,
+      newValue: true,
       createdAt: true,
       actor: { select: { name: true } },
     },
@@ -600,11 +635,12 @@ export default async function ClientDetailPage({
   );
 
   /*
-   * The renewal and growth workspace, handed to the card as a slot.
+   * The renewal and growth workspace, which is now its own place under More.
    *
-   * It used to stack under the summary, which is what made the tab read as
-   * the old page. It is the same component with the same props - the card
-   * opens it behind View growth strategy rather than printing it below.
+   * It has moved twice: it used to stack under Reports, then opened in a
+   * modal from the summary card there. Both made the full workspace something
+   * you reached through a page about measurement. Reports keeps the summary
+   * and links here.
    */
   const growthWorkspace = (() => {
     const record = client.renewals[0] ?? null;
@@ -733,7 +769,6 @@ export default async function ClientDetailPage({
       "Close rate",
     ],
     actorId: actor.id,
-    growthWorkspace,
     healthWorkspace,
     permissions: {
       canReport: can(actor, "reporting.client"),
@@ -899,6 +934,35 @@ export default async function ClientDetailPage({
 
       <ClientTabs
         initial={initialTab}
+        badges={moreBadges({
+          /*
+            * Counted from the rows this page already holds, so the badge and
+            * the panel behind it cannot disagree.
+            */
+          missingCriticalAccess: client.accessRecords.filter(
+            (record) =>
+              record.isCritical
+              && !["GRANTED", "TESTED", "NOT_APPLICABLE"].includes(record.status),
+          ).length,
+          accessIssues: client.accessRecords.filter((record) =>
+            ["INSUFFICIENT_PERMISSIONS", "FAILED"].includes(record.status),
+          ).length,
+          /* Null, not zero: a seat that cannot see money is not owed nothing. */
+          overdueInvoices: canViewFinance
+            ? client.invoices.filter(
+                (invoice) =>
+                  invoice.status !== "PAID"
+                  && invoice.dueAt !== null
+                  && invoice.dueAt.getTime() < healthNow.getTime(),
+              ).length
+            : null,
+          daysToRenewal: renewalRunway(
+            client.renewals[0]?.renewalDate ?? client.renewalDate,
+            healthNow,
+          ).daysUntil,
+          offboardingInFlight:
+            client.offboarding !== null && !isOffboardingComplete(client.offboarding),
+        })}
         panels={{
           overview: row ? (
             <ClientOverview
@@ -951,7 +1015,6 @@ export default async function ClientDetailPage({
           ) : null,
 
           contacts: (
-            <div className="space-y-6">
             <ClientAccount
               clientId={client.id}
               company={{
@@ -1044,75 +1107,101 @@ export default async function ClientDetailPage({
               canEditFinance={canEditFinance}
               serverNow={new Date().toISOString()}
             />
-
-              {/*
-                * Billing and offboarding moved here from Reports & Health.
-                *
-                * They are commercial and lifecycle records, not measurement,
-                * and this tab already owns the contract value and billing
-                * cadence they sit beside. On Reports they were three panels
-                * stacked under the summary, which read as the old page.
-                */}
-              {/* Money is owner business. The project manager still learns that payment
-                  is outstanding through the stage gate, without seeing any amounts. */}
-              {canViewFinance ? (
-                /* Named, because the quick actions above scroll to it. */
-                <div id="client-invoices" className="scroll-mt-24">
-                <ClientInvoices
-                  clientId={client.id}
-                  canEdit={canEditFinance}
-                  invoices={client.invoices.map((invoice) => ({
-                    id: invoice.id,
-                    invoiceNumber: invoice.invoiceNumber,
-                    status: invoice.status,
-                    amountDue: Number(invoice.amountDue),
-                    amountPaid: Number(invoice.amountPaid),
-                    currency: invoice.currency,
-                    issuedAt: invoice.issuedAt?.toISOString() ?? null,
-                    dueAt: invoice.dueAt?.toISOString() ?? null,
-                    paidAt: invoice.paidAt?.toISOString() ?? null,
-                    failureReason: invoice.failureReason,
-                  }))}
-                />
-                </div>
-              ) : null}
-              {(() => {
-                const record = client.offboarding;
-
-                return (
-                  <ClientOffboarding
-                    clientId={client.id}
-                    canManage={can(actor, "offboarding.manage")}
-                    owners={options.users}
-                    reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
-                    offboarding={{
-                      exists: record !== null,
-                      status: record?.status ?? "REQUESTED",
-                      reason: record?.reason ?? "OTHER",
-                      reasonDetail: record?.reasonDetail ?? null,
-                      remainingWork: record?.remainingWork ?? null,
-                      lessonsLearned: record?.lessonsLearned ?? null,
-                      ownerName: null,
-                      steps: OFFBOARDING_STEPS.map((step) => ({
-                        key: step.key,
-                        label: step.label,
-                        why: step.why,
-                        done: record
-                          ? step.key === "remainingWorkCleared"
-                            ? Boolean(record.remainingWork?.trim())
-                            : record[step.key] !== null
-                          : false,
-                      })),
-                      outstanding: record
-                        ? outstandingOffboardingSteps(record).map((step) => step.label)
-                        : OFFBOARDING_STEPS.map((step) => step.label),
-                      complete: record ? isOffboardingComplete(record) : false,
-                    }}
-                  />
-                );
-              })()}
-            </div>
           ),
+
+          /*
+           * Billing & Payments, behind More.
+           *
+           * The same invoice rows Account reads its contract value from -
+           * one commercial record, shown where the money work happens rather
+           * than copied into a second one. Hidden entirely without the
+           * finance permission, which the component checks again server-side
+           * before it will change anything.
+           */
+          billing: canViewFinance ? (
+            /* Named, because the Account quick actions link straight to it. */
+            <div id="client-invoices" className="scroll-mt-24">
+              <ClientInvoices
+                clientId={client.id}
+                canEdit={canEditFinance}
+                invoices={client.invoices.map((invoice) => ({
+                  id: invoice.id,
+                  invoiceNumber: invoice.invoiceNumber,
+                  status: invoice.status,
+                  amountDue: Number(invoice.amountDue),
+                  amountPaid: Number(invoice.amountPaid),
+                  currency: invoice.currency,
+                  issuedAt: invoice.issuedAt?.toISOString() ?? null,
+                  dueAt: invoice.dueAt?.toISOString() ?? null,
+                  paidAt: invoice.paidAt?.toISOString() ?? null,
+                  failureReason: invoice.failureReason,
+                }))}
+              />
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Billing & Payments</CardTitle>
+                <CardDescription>
+                  Amounts on this account are owner business. The stage gate still tells you
+                  whether payment is outstanding, without showing what it is.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          ),
+
+          /*
+           * Renewal & Growth, behind More.
+           *
+           * Reports keeps its summary card; this is the workspace it
+           * summarises. Same component, same endpoints - it opened in a modal
+           * from that card, which made the full workspace something you could
+           * only reach through a page about measurement.
+           */
+          renewal: growthWorkspace,
+
+          /*
+           * Offboarding, behind More.
+           *
+           * Ending an account is its own job with its own checklist, and it
+           * sat under Account beside the billing details, where nobody
+           * looking to close a client would think to go.
+           */
+          offboarding: (() => {
+            const record = client.offboarding;
+
+            return (
+              <ClientOffboarding
+                clientId={client.id}
+                canManage={can(actor, "offboarding.manage")}
+                owners={options.users}
+                reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
+                offboarding={{
+                  exists: record !== null,
+                  status: record?.status ?? "REQUESTED",
+                  reason: record?.reason ?? "OTHER",
+                  reasonDetail: record?.reasonDetail ?? null,
+                  remainingWork: record?.remainingWork ?? null,
+                  lessonsLearned: record?.lessonsLearned ?? null,
+                  ownerName: null,
+                  steps: OFFBOARDING_STEPS.map((step) => ({
+                    key: step.key,
+                    label: step.label,
+                    why: step.why,
+                    done: record
+                      ? step.key === "remainingWorkCleared"
+                        ? Boolean(record.remainingWork?.trim())
+                        : record[step.key] !== null
+                      : false,
+                  })),
+                  outstanding: record
+                    ? outstandingOffboardingSteps(record).map((step) => step.label)
+                    : OFFBOARDING_STEPS.map((step) => step.label),
+                  complete: record ? isOffboardingComplete(record) : false,
+                }}
+              />
+            );
+          })(),
 
           services: (() => {
             const form = client.intakeForm;
@@ -1582,47 +1671,44 @@ export default async function ClientDetailPage({
             </div>
           ),
 
+          /*
+           * Activity & Notes, behind More.
+           *
+           * The tab used to show one free-text field and the stage list, while
+           * the activity log every service in this application writes to was
+           * not on the page at all. Same rows, now shown, filterable and
+           * searchable, with the note system that already existed attached.
+           */
           activity: (
-            <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Notes</CardTitle>
-                    <CardDescription>Context and delivery details for the account.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="leading-7 text-slate-600">{client.notes ?? "No notes added yet."}</p>
-                  </CardContent>
-                </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Stage History</CardTitle>
-                  <CardDescription>Every stage change is stored for accountability.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {client.stageHistory.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">
-                            {entry.fromStage?.name ?? "Created"} to {entry.toStage.name}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {entry.changedBy?.name ?? "System"}
-                          </p>
-                        </div>
-                        <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          {formatDateTime(entry.changedAt)}
-                        </p>
-                      </div>
-                      {entry.note ? <p className="mt-3 text-sm text-slate-600">{entry.note}</p> : null}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
+            <ClientActivity
+              clientId={client.id}
+              canAddNote={canManageClient}
+              entries={activityFeed.map((entry) => ({
+                id: entry.id,
+                action: entry.action,
+                entityType: entry.entityType as string,
+                fieldName: entry.fieldName,
+                previousValue: entry.previousValue,
+                newValue: entry.newValue,
+                actorName: entry.actor?.name ?? null,
+                createdAt: entry.createdAt.toISOString(),
+              }))}
+              notes={client.clientNotes.map((note) => ({
+                id: note.id,
+                body: note.body,
+                category: note.category as string,
+                authorName: note.author?.name ?? null,
+                createdAt: note.createdAt.toISOString(),
+              }))}
+              stageHistory={client.stageHistory.map((entry) => ({
+                id: entry.id,
+                fromStage: entry.fromStage?.name ?? null,
+                toStage: entry.toStage.name,
+                changedByName: entry.changedBy?.name ?? null,
+                changedAt: entry.changedAt.toISOString(),
+                note: entry.note,
+              }))}
+            />
           ),
 
           integrations: (
