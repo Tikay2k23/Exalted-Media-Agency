@@ -71,16 +71,20 @@ function Panel({
   title,
   action,
   className,
+  id,
   children,
 }: {
   icon: typeof FileText;
   title: string;
   action?: React.ReactNode;
   className?: string;
+  /* The anchor the summary tiles and the next-action button scroll to. */
+  id?: string;
   children: React.ReactNode;
 }) {
   return (
     <section
+      id={id}
       className={cn(
         "flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white",
         className,
@@ -214,6 +218,14 @@ export interface ReportsHealthProps {
    * is what made the tab read as the old design.
    */
   growthWorkspace: React.ReactNode;
+  /*
+   * The health workspace, for the same reason.
+   *
+   * Recording an assessment, raising a complaint and writing a recovery
+   * plan have one implementation and it is this one. The card measures
+   * health and opens the place that records it.
+   */
+  healthWorkspace: React.ReactNode;
   permissions: {
     canReport: boolean;
     canManageHealth: boolean;
@@ -225,7 +237,7 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
   const { reports, optimizations, health, next, permissions } = props;
   const router = useRouter();
   const [dialog, setDialog] = useState<
-    "prepare" | "reports" | "log" | "complete" | "growth" | null
+    "prepare" | "reports" | "log" | "complete" | "growth" | "health" | null
   >(null);
   const [completing, setCompleting] = useState<OptimizationRow | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -401,7 +413,7 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
 
       {/* ------------------------------------------------------- lower row */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-3">
-        <HealthPanel {...props} />
+        <HealthPanel {...props} onOpenHealth={() => setDialog("health")} />
         <RenewalPanel {...props} onOpenGrowth={() => setDialog("growth")} />
         <GoalsPanel {...props} />
       </div>
@@ -440,6 +452,21 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
           owners={props.owners}
           onClose={() => setDialog(null)}
         />
+      ) : null}
+
+      {dialog === "health" ? (
+        <Modal
+          eyebrow={props.companyName}
+          title="Client health"
+          onClose={() => setDialog(null)}
+          footer={
+            <Button type="button" size="sm" variant="secondary" onClick={() => setDialog(null)}>
+              Close
+            </Button>
+          }
+        >
+          {props.healthWorkspace}
+        </Modal>
       ) : null}
 
       {dialog === "growth" ? (
@@ -657,9 +684,14 @@ function OptimizationPanel({
   );
 }
 
-function HealthPanel({ health, openComplaints, clientId, permissions }: ReportsHealthProps) {
+function HealthPanel({
+  health,
+  openComplaints,
+  permissions,
+  onOpenHealth,
+}: ReportsHealthProps & { onOpenHealth: () => void }) {
   return (
-    <Panel icon={Gauge} title="Client Health" className="scroll-mt-24">
+    <Panel icon={Gauge} title="Client Health" id="client-health" className="scroll-mt-24">
       {health.score === null ? (
         <Quiet>Not enough information to calculate health yet.</Quiet>
       ) : (
@@ -721,18 +753,18 @@ function HealthPanel({ health, openComplaints, clientId, permissions }: ReportsH
       )}
 
       {/*
-        * Assessing health, creating a recovery plan and reading complaints all
-        * live on the Journey and health workspaces that already own them. This
-        * card measures; it does not become a second place to record.
+        * This card measures; the workspace behind it records. Assessments,
+        * complaints and recovery plans have one implementation and it opens
+        * here - Journey shows the score it produces but cannot write one.
         */}
-      <TabLink
-        tab="journey"
-        clientId={clientId}
+      <button
+        type="button"
+        onClick={onOpenHealth}
         className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800"
       >
-        {permissions.canManageHealth ? "Assess health in Journey" : "View health in Journey"}
+        {permissions.canManageHealth ? "Assess health" : "View assessment history"}
         <ArrowUpRight className="h-3 w-3" aria-hidden />
-      </TabLink>
+      </button>
 
       {openComplaints > 0 ? (
         <p className="mt-1 text-[11px] text-rose-600">
@@ -749,7 +781,7 @@ function RenewalPanel({
   onOpenGrowth,
 }: ReportsHealthProps & { onOpenGrowth: () => void }) {
   return (
-    <Panel icon={CalendarDays} title="Renewal & Growth" className="scroll-mt-24">
+    <Panel icon={CalendarDays} title="Renewal & Growth" id="renewal-growth" className="scroll-mt-24">
       {renewal.renewalDate === null ? (
         <Quiet>No renewal date configured.</Quiet>
       ) : (
@@ -826,7 +858,7 @@ function RenewalPanel({
 
 function GoalsPanel({ goals, clientId }: ReportsHealthProps) {
   return (
-    <Panel icon={Target} title="Results / Goal Progress" className="scroll-mt-24">
+    <Panel icon={Target} title="Results / Goal Progress" id="goal-progress" className="scroll-mt-24">
       {goals.length === 0 ? (
         <Quiet>No measurable goals configured in Strategy.</Quiet>
       ) : (

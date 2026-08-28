@@ -167,6 +167,7 @@ export function PrepareReportDialog({
             knownLimitations: String(formData.get("knownLimitations") ?? ""),
             recommendedActions: String(formData.get("recommendedActions") ?? ""),
             documentUrl: String(formData.get("documentUrl") ?? ""),
+            dataValidated: formData.get("dataValidated") === "on",
           })
         }
       >
@@ -232,6 +233,25 @@ export function PrepareReportDialog({
           <Input name="documentUrl" placeholder="https://" />
         </Field>
 
+        {/*
+          * Not decoration: review refuses an unvalidated report, so a draft
+          * created without this can never be submitted and there is nowhere
+          * else to tick it afterwards. It can be left unticked deliberately -
+          * the draft is then parked until somebody has checked the figures.
+          */}
+        <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-2.5 py-2">
+          <input
+            type="checkbox"
+            name="dataValidated"
+            defaultChecked
+            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300"
+          />
+          <span className="text-[11px] leading-4 text-slate-600">
+            The figures were checked against their sources. Review will not accept the report
+            until somebody confirms this.
+          </span>
+        </label>
+
         <ErrorLine message={error} />
 
         <Button type="submit" size="sm" disabled={busy} className="w-full gap-1.5">
@@ -273,6 +293,8 @@ export function ReportsDialog({
   const router = useRouter();
   const { busy, error, send } = useMutation(() => router.refresh());
   const [filter, setFilter] = useState<string>("all");
+  /* Which report is having changes requested, if any. */
+  const [rejecting, setRejecting] = useState<string | null>(null);
 
   const filters = ["all", "DRAFT", "IN_REVIEW", "APPROVED", "SENT"];
   const shown =
@@ -390,7 +412,50 @@ export function ReportsDialog({
                       {step.label}
                     </Button>
                   ) : null}
+
+                  {/*
+                    * A reviewer who can approve has to be able to say no.
+                    * Sending it back is the other half of reviewing, and the
+                    * endpoint insists on a note so the author knows what to fix.
+                    */}
+                  {canManage && report.status === "IN_REVIEW" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2.5 text-[11px]"
+                      onClick={() => setRejecting(rejecting === report.id ? null : report.id)}
+                    >
+                      Request changes
+                    </Button>
+                  ) : null}
                 </div>
+
+                {rejecting === report.id ? (
+                  <form
+                    className="mt-2 space-y-1.5 rounded-lg border border-slate-200 p-2"
+                    action={(formData) =>
+                      void send(`/api/reports/${report.id}/review`, {
+                        action: "requestChanges",
+                        note: String(formData.get("note") ?? ""),
+                      }).then((ok) => {
+                        /* Only on success - a refused note has to stay on
+                           screen next to the reason it was refused. */
+                        if (ok) setRejecting(null);
+                      })
+                    }
+                  >
+                    <Textarea
+                      name="note"
+                      rows={2}
+                      required
+                      placeholder="What needs changing before this goes to the client"
+                    />
+                    <Button type="submit" size="sm" disabled={busy} className="h-7 px-2.5 text-[11px]">
+                      Send back to the author
+                    </Button>
+                  </form>
+                ) : null}
               </section>
             );
           })}

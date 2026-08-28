@@ -11,6 +11,7 @@ import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientGrowth } from "@/components/clients/client-growth";
+import { ClientHealth } from "@/components/clients/client-health";
 import { ClientOffboarding } from "@/components/clients/client-offboarding";
 import { ClientIntake } from "@/components/clients/client-intake";
 import { ClientInvoices } from "@/components/clients/client-invoices";
@@ -46,7 +47,11 @@ import {
   renewalSummary,
   reportSummary,
 } from "@/lib/success/reports-health";
-import { isComplaintOpen } from "@/lib/success/health-service";
+import {
+  daysSinceAssessment,
+  isComplaintOpen,
+  isRecoveryPlanLive,
+} from "@/lib/success/health-service";
 import { REPORT_TYPES } from "@/lib/success/report-service";
 import {
   EXPANSION_STATUSES,
@@ -367,6 +372,56 @@ export default async function ClientDetailPage({
   });
 
   /*
+   * The health workspace, handed to the card as a slot.
+   *
+   * Recording an assessment, raising a complaint and writing a recovery plan
+   * only ever lived here. The summary card measures health; it cannot also be
+   * the only place that shows it, or the colour has nobody's name against it
+   * again. Same component, same endpoints, opened from the Client Health card.
+   */
+  const healthWorkspace = (
+    <ClientHealth
+      clientId={client.id}
+      canManage={can(actor, "health.manage")}
+      currentStatus={client.healthStatus}
+      daysSinceAssessment={daysSinceAssessment(client.healthAssessments[0]?.assessedAt ?? null)}
+      owners={options.users}
+      assessments={client.healthAssessments.map((item) => ({
+        id: item.id,
+        status: item.status,
+        summary: item.summary,
+        healthScore: item.healthScore,
+        assessedByName: item.assessedBy?.name ?? null,
+        assessedAt: item.assessedAt.toISOString(),
+        openComplaints: item.openComplaints,
+        cancellationThreat: item.cancellationThreat,
+      }))}
+      complaints={client.complaints.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        status: item.status,
+        ownerName: item.owner?.name ?? null,
+        raisedAt: item.raisedAt.toISOString(),
+        rootCause: item.rootCause,
+        finalOutcome: item.finalOutcome,
+        isOpen: isComplaintOpen(item.status),
+      }))}
+      plans={client.recoveryPlans.map((plan) => ({
+        id: plan.id,
+        status: plan.status,
+        trigger: plan.trigger,
+        objective: plan.objective,
+        actions: plan.actions,
+        ownerName: plan.owner?.name ?? null,
+        reviewDate: plan.reviewDate?.toISOString() ?? null,
+        outcome: plan.outcome,
+        isLive: isRecoveryPlanLive(plan.status),
+      }))}
+    />
+  );
+
+  /*
    * The renewal and growth workspace, handed to the card as a slot.
    *
    * It used to stack under the summary, which is what made the tab read as
@@ -480,6 +535,7 @@ export default async function ClientDetailPage({
     reportTypes: REPORT_TYPES.map((option) => ({ value: option.value, label: option.label })),
     openComplaints: openComplaintCount,
     growthWorkspace,
+    healthWorkspace,
     permissions: {
       canReport: can(actor, "reporting.client"),
       canManageHealth: can(actor, "health.manage"),
