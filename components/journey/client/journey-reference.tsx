@@ -361,6 +361,8 @@ export function StageDetailsPanel({
   healthLabel,
   waitingSince,
   now,
+  blockingItems,
+  onHealthDetails,
 }: {
   account: JourneyAccount;
   clock: StageClock;
@@ -369,6 +371,10 @@ export function StageDetailsPanel({
   healthLabel: string;
   waitingSince: string | null;
   now: Date;
+  /** Required exit items still outstanding, counted from the requirements. */
+  blockingItems: number;
+  /** Opens the journey health breakdown that already exists. */
+  onHealthDetails?: () => void;
 }) {
   const targetExit =
     clock.targetDays === null
@@ -409,7 +415,24 @@ export function StageDetailsPanel({
         <Row label="Exit Criteria">
           {groups.required.length} required item{groups.required.length === 1 ? "" : "s"}
         </Row>
-        <Row label="Health">{healthLabel}</Row>
+        <Row label="Health">
+          {/*
+            * The journey's own health, not a second opinion computed here.
+            * The label is passed in from the one calculation, and the link
+            * opens the same breakdown the rail used to print in full.
+            */}
+          {onHealthDetails ? (
+            <button
+              type="button"
+              onClick={onHealthDetails}
+              className="font-medium text-sky-700 hover:underline"
+            >
+              {healthLabel}
+            </button>
+          ) : (
+            healthLabel
+          )}
+        </Row>
         {secondaryStatus ? (
           <Row label="Secondary Status">
             <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
@@ -433,11 +456,24 @@ export function StageDetailsPanel({
             {clock.effectiveDays} day{clock.effectiveDays === 1 ? "" : "s"}
           </Row>
         ) : null}
-        {waitingSince ? (
-          <Row label="Waiting Since">
-            {formatDate(waitingSince)}
-            {waitingDays !== null ? ` (${waitingDays} day${waitingDays === 1 ? "" : "s"})` : ""}
+        {/*
+          * The two numbers somebody working the stage actually acts on: what
+          * is still in the way, and how long the client has had it.
+          */}
+        <Row label="Blocking Items">
+          <span className={blockingItems > 0 ? "font-semibold text-rose-600" : undefined}>
+            {blockingItems}
+          </span>
+        </Row>
+        {waitingDays !== null ? (
+          <Row label="Waiting on Client">
+            <span className={waitingDays >= 3 ? "text-amber-700" : undefined}>
+              {waitingDays} day{waitingDays === 1 ? "" : "s"}
+            </span>
           </Row>
+        ) : null}
+        {waitingSince ? (
+          <Row label="Waiting Since">{formatDate(waitingSince)}</Row>
         ) : null}
       </dl>
     </Panel>

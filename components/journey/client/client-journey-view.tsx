@@ -4,8 +4,9 @@ import {
   ArrowLeft,
   ArrowRight,
   CircleAlert,
-  Clock,
+  ClipboardCheck,
   ExternalLink,
+  Clock,
   Gauge,
   MoreVertical,
   PauseCircle,
@@ -52,7 +53,7 @@ import {
   RequirementsDrawer,
 } from "@/components/journey/client/onboarding-focus";
 import {
-  ClientInformationPanel,
+  ClientContextPanel,
   NeedsAttentionPanel,
 } from "@/components/journey/client/journey-panels";
 import { Button } from "@/components/ui/button";
@@ -73,13 +74,12 @@ import { journeyHealth } from "@/lib/journey/journey-health";
 import {
   ClientDependenciesCard,
   type QuickAction,
-  QuickActionsCard,
+  QuickActionsBar,
   UpcomingStageCard,
 } from "./journey-rail";
 import {
   JourneyCard,
   JourneyFooter,
-  JourneyHealthPanel,
   StageDetailsPanel,
   StageHistoryStrip,
   type TimelineStep,
@@ -299,110 +299,6 @@ export function ClientJourneyView({
    * shown a button that would refuse them. Advancing leads when the gate is
    * open, because that is the whole point of the page.
    */
-  const quickActions = useMemo<QuickAction[]>(() => {
-    const actions: QuickAction[] = [];
-    const ready = isReadyToAdvance(detail);
-
-    if (detail.canMove && account.nextStageId) {
-      actions.push({
-        key: "advance",
-        label: ready ? `Advance to ${account.nextStageName}` : "Advance stage",
-        icon: ArrowUpRight,
-        primary: ready,
-        onSelect: () => setAdvancing(true),
-      });
-    }
-
-    if (detail.canManageFlags) {
-      const waiting = detail.flags.some((flag) => flag.kind === "WAITING_ON_CLIENT");
-
-      actions.push({
-        key: "waiting",
-        label: waiting ? "Update what the client owes" : "Record what the client owes",
-        icon: MailQuestion,
-        onSelect: () => setFlagKind("WAITING_ON_CLIENT"),
-      });
-
-      actions.push({
-        key: "blocked",
-        label: detail.flags.some((flag) => flag.kind === "BLOCKED")
-          ? "Update the blocker"
-          : "Add a blocker",
-        icon: Plus,
-        onSelect: () => setFlagKind("BLOCKED"),
-      });
-    }
-
-    /*
-     * Only when the journey is actually in trouble. A recovery plan offered on
-     * a healthy account is paperwork, and an action that is always there stops
-     * meaning anything when it matters.
-     */
-    if (scored.status === "AT_RISK" || scored.status === "BLOCKED") {
-      actions.push({
-        key: "recovery",
-        label: "Create recovery plan",
-        icon: LifeBuoy,
-        onSelect: () => setRecovering(true),
-      });
-    }
-
-    actions.push({
-      key: "note",
-      label: "Add a note",
-      icon: StickyNote,
-      onSelect: () => router.push(`/clients/${account.id}?tab=activity`),
-    });
-
-    /*
-     * These three live in the More menu on the standalone journey page, and
-     * that menu sits inside the header the client tab hides - so embedding the
-     * view quietly took them away. They belong in Quick Actions anyway: it is
-     * the one place on the tab for acting on the journey.
-     */
-    if (detail.canManageFlags) {
-      actions.push({
-        key: "revisions",
-        label: "Request revisions",
-        icon: Repeat2,
-        onSelect: () => setFlagKind("REVISIONS_REQUIRED"),
-      });
-
-      actions.push(
-        openPause
-          ? {
-              key: "resume",
-              label: "Resume journey",
-              icon: PauseCircle,
-              onSelect: () => void resumeJourney(openPause.id),
-            }
-          : {
-              key: "pause",
-              label: "Pause journey",
-              icon: PauseCircle,
-              onSelect: () => setFlagKind("PAUSED"),
-            },
-      );
-    }
-
-    actions.push({
-      key: "automation",
-      label: "View automation log",
-      icon: ScrollText,
-      onSelect: () => setLogOpen(true),
-    });
-
-    return actions;
-  }, [
-    detail,
-    account.id,
-    account.nextStageId,
-    account.nextStageName,
-    router,
-    scored.status,
-    openPause,
-    resumeJourney,
-  ]);
 
   const groups = useMemo(
     () => requirementGroups(account.requirements),
@@ -610,13 +506,218 @@ export function ClientJourneyView({
    * automation writes - so a link claiming to narrow by stage would show an
    * empty list and blame the client for having no work.
    */
-  function openWork(metric?: WorkFilter) {
-    router.push(`/clients/${account.id}?tab=tasks`);
-    tabs?.setTab("tasks", metric ? `metric:${metric}` : undefined);
-  }
+  /*
+   * Stable, because the quick actions memo depends on it. Redefined every
+   * render it would rebuild that list every render, which is the whole cost
+   * the memo exists to avoid.
+   */
+  const openWork = useCallback(
+    (metric?: WorkFilter) => {
+      router.push(`/clients/${account.id}?tab=tasks`);
+      tabs?.setTab("tasks", metric ? `metric:${metric}` : undefined);
+    },
+    [router, account.id, tabs],
+  );
 
   /** The requirement the View Requirement button opens: the one at the front. */
   const topRequirement: BlockingRequirement | null = detail.delivery.blocking[0] ?? null;
+
+  const quickActions = useMemo<QuickAction[]>(() => {
+    const actions: QuickAction[] = [];
+    const ready = isReadyToAdvance(detail);
+    const waiting = detail.flags.some(
+      (flag) => flag.kind === "WAITING_ON_CLIENT" && !flag.resolvedAt,
+    );
+    const revising = detail.flags.some(
+      (flag) => flag.kind === "REVISIONS_REQUIRED" && !flag.resolvedAt,
+    );
+    /*
+     * Revisions belong to the stages where somebody is reviewing something -
+     * client review, QA - or to an account already in revision. Offered in
+     * Access Collection it is an action against nothing.
+     */
+    const revisionsApply =
+      revising
+      || account.stageKey === "client_review"
+      || account.stageKey === "revisions_required"
+      || account.stageKey === "internal_qa";
+
+    /*
+     * What the bar offers follows the stage, because a row of every possible
+     * action is a row nobody reads.
+     *
+     * Advance is only ever a front-row button when the stage will actually
+     * accept it. Offering it against outstanding requirements teaches people
+     * that the primary action on this page usually fails - so while anything
+     * blocks, finishing the requirements is the action and advancing moves
+     * behind More, where it is still one click away for somebody who means it.
+     */
+    if (detail.canMove && account.nextStageId) {
+      actions.push({
+        key: "advance",
+        label: ready ? `Advance to ${account.nextStageName}` : "Advance stage",
+        icon: ArrowUpRight,
+        primary: ready,
+        group: ready ? "primary" : "more",
+        onSelect: () => setAdvancing(true),
+      });
+    }
+
+    if (!ready && groups.outstanding.length > 0) {
+      actions.push({
+        key: "requirements",
+        label: "Complete requirements",
+        icon: ClipboardCheck,
+        primary: true,
+        group: "primary",
+        onSelect: () => setDrawer(topRequirement ? "requirement" : "blocking"),
+      });
+    }
+
+    /* Waiting on the client makes chasing them the thing to do. */
+    if (waiting) {
+      actions.push({
+        key: "chase",
+        label: "Contacts to chase",
+        icon: MailQuestion,
+        primary: !ready && groups.outstanding.length === 0,
+        group: "primary",
+        onSelect: () => setDrawer("chase"),
+      });
+    }
+
+    /* A revision in flight is the work, so the way into it comes forward. */
+    if (revising) {
+      actions.push({
+        key: "revision-work",
+        label: "Open revision work",
+        icon: Repeat2,
+        group: "primary",
+        onSelect: () => openWork("blocked"),
+      });
+    }
+
+    if (detail.canManageFlags) {
+      /* Recording a blocker is always to hand: it is how a stage says why. */
+      actions.push({
+        key: "blocked",
+        label: detail.flags.some((flag) => flag.kind === "BLOCKED" && !flag.resolvedAt)
+          ? "Update the blocker"
+          : "Add blocker",
+        icon: Plus,
+        group: "primary",
+        onSelect: () => setFlagKind("BLOCKED"),
+      });
+
+      actions.push({
+        key: "waiting",
+        label: waiting ? "Update what the client owes" : "Record what the client owes",
+        icon: MailQuestion,
+        group: "more",
+        onSelect: () => setFlagKind("WAITING_ON_CLIENT"),
+      });
+    }
+
+    /*
+     * Only when the journey is actually in trouble. A recovery plan offered on
+     * a healthy account is paperwork, and an action that is always there stops
+     * meaning anything when it matters.
+     */
+    if (scored.status === "AT_RISK" || scored.status === "BLOCKED") {
+      actions.push({
+        key: "recovery",
+        label: "Create recovery plan",
+        icon: LifeBuoy,
+        group: "more",
+        onSelect: () => setRecovering(true),
+      });
+    }
+
+    /* Always available, and always the same note system the Account tab uses. */
+    actions.push({
+      key: "note",
+      label: "Add note",
+      icon: StickyNote,
+      group: "primary",
+      onSelect: () => {
+        router.push(`/clients/${account.id}?tab=activity`);
+        tabs?.setTab("activity");
+      },
+    });
+
+    /*
+     * These three live in the More menu on the standalone journey page, and
+     * that menu sits inside the header the client tab hides - so embedding the
+     * view quietly took them away. They belong in Quick Actions anyway: it is
+     * the one place on the tab for acting on the journey.
+     */
+    if (detail.canManageFlags) {
+      /*
+       * Requesting revisions only makes sense once there is something to
+       * revise - a client review, or work that came back. Before that it is
+       * an action against nothing, so it stays out of the bar entirely.
+       */
+      if (revisionsApply) {
+        actions.push({
+          key: "revisions",
+          label: "Request revisions",
+          icon: Repeat2,
+          group: "primary",
+          onSelect: () => setFlagKind("REVISIONS_REQUIRED"),
+        });
+      }
+
+      actions.push(
+        openPause
+          ? {
+              key: "resume",
+              label: "Resume journey",
+              icon: PauseCircle,
+              group: "more" as const,
+              onSelect: () => void resumeJourney(openPause.id),
+            }
+          : {
+              key: "pause",
+              label: "Pause journey",
+              icon: PauseCircle,
+              group: "more" as const,
+              onSelect: () => setFlagKind("PAUSED"),
+            },
+      );
+    }
+
+    actions.push({
+      key: "automation",
+      label: "View automation log",
+      icon: ScrollText,
+      group: "more",
+      onSelect: () => setLogOpen(true),
+    });
+
+    actions.push({
+      key: "history",
+      label: "View full stage history",
+      icon: ScrollText,
+      group: "more",
+      onSelect: () => router.push(`/journey/${account.id}/history`),
+    });
+
+    return actions;
+  }, [
+    detail,
+    account.id,
+    account.stageKey,
+    groups.outstanding.length,
+    topRequirement,
+    openWork,
+    tabs,
+    account.nextStageId,
+    account.nextStageName,
+    router,
+    scored.status,
+    openPause,
+    resumeJourney,
+  ]);
 
   /**
    * Where the delivery card's buttons go.
@@ -1099,6 +1200,21 @@ export function ClientJourneyView({
         * you read rather than operate. History sits underneath, where somebody
         * goes looking for it.
         */}
+      {/*
+        * Two bands, not one long column with a rail down the side of it.
+        *
+        * The page used to be a single grid: content on the left, six stacked
+        * cards on the right, top to bottom. The rail always won - Needs
+        * Attention, Stage Details, Quick Actions, Health, Focus and the whole
+        * client record add up to far more than the content beside them - so
+        * the middle of the page ran out of things to say and left a hole the
+        * height of three cards.
+        *
+        * So the rail holds the three things you read while working a stage,
+        * and everything you operate moved into the content: the actions
+        * across the top, the focus card across the middle. What is left below
+        * spans the full width, because by then there is no rail to sit beside.
+        */}
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
         <div id="journey-timeline" className="min-w-0 scroll-mt-24 space-y-4">
           <JourneyCard
@@ -1117,42 +1233,56 @@ export function ClientJourneyView({
             }
           />
 
+          {/* Needs Attention leads on a narrow screen, where there is no rail. */}
           <div className="xl:hidden">
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={actOnCard} />
           </div>
 
+          <QuickActionsBar actions={quickActions} />
+
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <div id="stage-requirements" className="min-w-0 scroll-mt-4">
-            <StageRequirementsCard
-              detail={detail}
-              expanded={showAllRequirements}
-              onToggle={() => setShowAllRequirements((open) => !open)}
-            />
+              <StageRequirementsCard
+                detail={detail}
+                expanded={showAllRequirements}
+                onToggle={() => setShowAllRequirements((open) => !open)}
+              />
             </div>
             <WorkSummaryCard detail={detail} now={now} clientId={account.id} />
           </div>
 
-          <div className="grid min-w-0 gap-4 lg:grid-cols-3">
-            <ClientDependenciesCard
-              flags={detail.flags}
-              now={now}
-              canAct={detail.canManageFlags}
-              onFollowUp={(flag) => void followUpOn(flag.id)}
+          {/*
+            * The focus card, across the content rather than down the rail.
+            *
+            * Which one it is follows the journey: onboarding while onboarding
+            * is what is happening, the delivery focus once it is not, and the
+            * stage's own focus otherwise. An account in Internal QA should not
+            * be looking at a form that was signed off weeks ago.
+            */}
+          {onboardingLeads ? (
+            <OnboardingFocusCard detail={detail} onAct={actOnFocus} />
+          ) : deliveryLeads ? (
+            <DeliveryFocusCard
+              detail={detail}
+              onAct={actOnDelivery}
+              onOpenWork={openWork}
             />
-            <MilestonesCard milestones={detail.milestones} />
-            <UpcomingStageCard
-              nextStageName={account.nextStageName}
-              nextStageKey={account.nextStageKey}
-              onPreview={() => setPreviewing(true)}
-            />
-          </div>
+          ) : (
+            <StageFocusCard detail={detail} />
+          )}
 
-          <StageHistoryStrip
-            entries={historyEntries}
-            onViewAll={() => router.push(`/journey/${account.id}/history`)}
+          <ClientDependenciesCard
+            flags={detail.flags}
+            now={now}
+            canAct={detail.canManageFlags}
+            onFollowUp={(flag) => void followUpOn(flag.id)}
           />
         </div>
 
+        {/*
+          * The rail: what you read, not what you do. Three cards, and it now
+          * ends at roughly the same place the content beside it does.
+          */}
         <div className="min-w-0 space-y-4">
           <div className="hidden xl:block">
             <NeedsAttentionPanel cards={cards} busy={busyCard} onAct={actOnCard} />
@@ -1166,46 +1296,34 @@ export function ClientJourneyView({
             healthLabel={HEALTH_LABELS[health.health]}
             waitingSince={waitingSince}
             now={now}
+            blockingItems={groups.outstanding.length}
+            onHealthDetails={() => setHealthOpen(true)}
           />
 
-          <QuickActionsCard actions={quickActions} />
-
-          <JourneyHealthPanel
-            health={scored}
-            statusLabel={HEALTH_LABELS[health.health]}
-            onAssess={() => setHealthOpen(true)}
-            onDetails={() => setHealthOpen(true)}
-          />
-
-          {/*
-            * Onboarding owns this slot while onboarding is what is happening.
-            *
-            * Past the onboarding stages the per-stage focus is the more useful
-            * card - somebody looking at an account in Internal QA wants
-            * defects and checklists, not a form that was signed off weeks ago.
-            * Which is also what "stop emphasising intake once onboarding is
-            * complete" asks for.
-            */}
-          {onboardingLeads ? (
-            <OnboardingFocusCard detail={detail} onAct={actOnFocus} />
-          ) : deliveryLeads ? (
-            <DeliveryFocusCard
-              detail={detail}
-              onAct={actOnDelivery}
-              onOpenWork={openWork}
-            />
-          ) : (
-            <StageFocusCard detail={detail} />
-          )}
-          <ClientInformationPanel
+          <ClientContextPanel
             detail={detail}
-            onOpenJourney={() => actOnFocus("view-journey")}
             onOpenTab={(tab) => {
               router.push(`/clients/${account.id}?tab=${tab}`);
               tabs?.setTab(tab);
             }}
           />
         </div>
+      </div>
+
+      {/*
+        * Below the rail, so these get the whole width instead of two thirds.
+        */}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+        <MilestonesCard milestones={detail.milestones} />
+        <UpcomingStageCard
+          nextStageName={account.nextStageName}
+          nextStageKey={account.nextStageKey}
+          onPreview={() => setPreviewing(true)}
+        />
+        <StageHistoryStrip
+          entries={historyEntries}
+          onViewAll={() => router.push(`/journey/${account.id}/history`)}
+        />
       </div>
 
       <JourneyFooter

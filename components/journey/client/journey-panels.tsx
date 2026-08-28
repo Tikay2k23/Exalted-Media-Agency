@@ -5,7 +5,6 @@ import {
   Building2,
   CircleAlert,
   Clock,
-  ExternalLink,
   Loader2,
   Mail,
   TriangleAlert,
@@ -128,76 +127,45 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * duplicating it here would make two places to read and eventually two places
  * that disagree.
  */
-export function ClientInformationPanel({
+/**
+ * Client Context.
+ *
+ * The five things worth knowing while working inside the journey, and nothing
+ * else. This was "Essential Client Info" - email, phone, services, start date,
+ * launch date, stage, manager, approver, twelve rows of it - sitting at the
+ * bottom of the right rail, where it was both the least urgent thing on the
+ * page and one of the tallest.
+ *
+ * The rest of it was never deleted: it is the Account tab, which is where
+ * somebody goes to read a client record rather than to work a stage, and the
+ * button at the bottom of this card opens it.
+ */
+export function ClientContextPanel({
   detail,
-  onOpenJourney,
   onOpenTab,
 }: {
   detail: JourneyClientDetail;
-  /** Jump to the journey itself, which the stage row offers. */
-  onOpenJourney?: () => void;
   /** Move to another tab of the client record without a full navigation. */
   onOpenTab?: (tab: "contacts" | "services") => void;
 }) {
   const { account } = detail;
   const primary = detail.contacts.find((contact) => contact.isPrimary) ?? detail.contacts[0];
   /*
-   * The approver comes from the existing contact role rather than a second
-   * field. Somebody marked as the approver is who signs off; there is no
-   * separate authorised-approver record to keep in step with this one.
+   * The approver is the contact somebody marked as one, not a second field
+   * kept in step with the first.
    */
   const approver = detail.contacts.find((contact) => contact.isApprover) ?? null;
   const services = account.services.map((service) => formatEnumLabel(service));
 
   return (
-    <Card icon={Building2} title="Essential Client Info">
+    <Card icon={Building2} title="Client Context">
       <div className="divide-y divide-slate-100">
         <InfoRow label="Primary Contact" value={primary?.name ?? account.clientName} />
-        <InfoRow
-          label="Email"
-          value={
-            primary?.email ? (
-              <a href={`mailto:${primary.email}`} className="text-sky-700 hover:underline">
-                {primary.email}
-              </a>
-            ) : (
-              <span className="text-slate-400">Not recorded</span>
-            )
-          }
-        />
-        <InfoRow
-          label="Phone"
-          value={
-            primary?.phone ? (
-              // tel: reaches whatever the machine already uses to dial.
-              <a href={`tel:${primary.phone.replace(/[^+\d]/g, "")}`} className="text-sky-700 hover:underline">
-                {primary.phone}
-              </a>
-            ) : (
-              <span className="text-slate-400">Not recorded</span>
-            )
-          }
-        />
-        <InfoRow
-          label="Authorised Approver"
-          value={
-            approver ? (
-              <span className="flex flex-wrap items-baseline gap-1.5">
-                {approver.name}
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
-                  Confirmed
-                </span>
-              </span>
-            ) : (
-              <span className="text-slate-400">Not assigned</span>
-            )
-          }
-        />
+
         {/*
           * The account's manager, not whoever sits in a project's manager
-          * column. That column will accept anybody, and on at least one live
-          * account it holds a creative specialist - naming them the project
-          * manager here would be exactly the wrong answer to "who owns this".
+          * column - that column will accept anybody, and on at least one live
+          * account it holds a creative specialist.
           */}
         <InfoRow
           label="Project Manager"
@@ -207,33 +175,25 @@ export function ClientInformationPanel({
             )
           }
         />
+
         <InfoRow
-          label="Current Journey Stage"
+          label="Authorised Approver"
           value={
-            onOpenJourney ? (
-              <button
-                type="button"
-                onClick={onOpenJourney}
-                className="text-left text-sky-700 hover:underline"
-              >
-                {account.stageName}
-              </button>
+            approver ? (
+              approver.name
             ) : (
-              account.stageName
+              <span className="text-amber-700">Not assigned</span>
             )
           }
         />
+
         <InfoRow
-          label="Services"
+          label="Service"
           value={
             services.length === 0 ? (
               <span className="text-slate-400">None recorded</span>
             ) : (
-              /*
-               * The primary plus a count, rather than a list that wraps to
-               * four lines on an account that bought everything.
-               */
-              <span className="flex flex-wrap items-baseline gap-1.5">
+              <span className="flex flex-wrap items-baseline justify-end gap-1.5">
                 {onOpenTab ? (
                   <button
                     type="button"
@@ -246,26 +206,15 @@ export function ClientInformationPanel({
                   services[0]
                 )}
                 {services.length > 1 ? (
-                  <span className="text-[11px] text-slate-500">
-                    +{services.length - 1} more
-                  </span>
+                  <span className="text-[11px] text-slate-500">+{services.length - 1}</span>
                 ) : null}
               </span>
             )
           }
         />
+
         <InfoRow
-          label="Project Start Date"
-          value={
-            detail.projectStartDate ? (
-              formatDay(detail.projectStartDate)
-            ) : (
-              <span className="text-slate-400">Not set</span>
-            )
-          }
-        />
-        <InfoRow
-          label="Target Launch Date"
+          label="Target Launch"
           value={
             detail.targetLaunchDate ? (
               formatDay(detail.targetLaunchDate)
@@ -274,50 +223,21 @@ export function ClientInformationPanel({
             )
           }
         />
-        <InfoRow
-          label="Renewal Date"
-          value={
-            detail.renewalDate ? (
-              formatDay(detail.renewalDate)
-            ) : (
-              <span className="text-slate-400">Not set</span>
-            )
-          }
-        />
       </div>
 
-      {/*
-        * Account, not the client root.
-        *
-        * Everything above this button is contact and ownership information,
-        * and Account is where that is edited. Landing somebody on Overview and
-        * letting them find it themselves is a click this card can spend.
-        */}
       {onOpenTab ? (
-        <Button
-          size="sm"
-          variant="secondary"
-          className="mt-3 h-8 w-full gap-1.5 text-[11px]"
+        <button
+          type="button"
           onClick={() => onOpenTab("contacts")}
+          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800"
         >
-          Open Full Client Profile
+          Open full client profile
           <ArrowRight className="h-3 w-3" aria-hidden />
-        </Button>
-      ) : (
-        <Link href={`/clients/${account.id}?tab=contacts`} className="mt-3 block">
-          <Button size="sm" variant="secondary" className="h-8 w-full gap-1.5 text-[11px]">
-            Open Full Client Profile
-            <ExternalLink className="h-3 w-3" aria-hidden />
-          </Button>
-        </Link>
-      )}
+        </button>
+      ) : null}
     </Card>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Recent activity                                                            */
-/* -------------------------------------------------------------------------- */
 
 const DOT_TONE: Record<JourneyActivityEntry["kind"], string> = {
   stage: "bg-sky-500",

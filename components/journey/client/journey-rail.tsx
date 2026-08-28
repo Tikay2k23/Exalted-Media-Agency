@@ -14,7 +14,7 @@ import {
   ArrowRight,
   CalendarClock,
   CheckCircle2,
-  ChevronRight,
+  ChevronDown,
   ClipboardCheck,
   Gauge,
   MailQuestion,
@@ -22,7 +22,7 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { getStageTaskTemplates } from "@/lib/automation/stage-automation";
@@ -172,6 +172,15 @@ export interface QuickAction {
   /** The one action worth doing first, drawn as the primary. */
   primary?: boolean;
   disabled?: boolean;
+  /**
+   * Where it belongs on the bar.
+   *
+   * "more" is not "less important" - it is "not what this stage is asking
+   * for". Pausing a journey matters enormously on the day you need it and is
+   * noise on every other day, and a row of eight buttons is a row nobody
+   * reads.
+   */
+  group?: "primary" | "more";
 }
 
 /**
@@ -180,35 +189,111 @@ export interface QuickAction {
  * Assembled by the caller from what the viewer may do and what the account is
  * waiting on, so a stage with nothing outstanding does not offer to chase it.
  */
-export function QuickActionsCard({ actions }: { actions: QuickAction[] }) {
+/**
+ * Quick Actions, across the top of the journey rather than down its side.
+ *
+ * This was a list in the right-hand rail, and it was the single biggest reason
+ * that rail ran a screen and a half longer than the content beside it: eight
+ * stacked buttons, most of which did not apply to the stage being looked at.
+ *
+ * Horizontal, and only what this stage is asking for. The rest is behind More,
+ * which is a menu of real actions rather than an overflow bin - every one of
+ * them was already here and already wired.
+ */
+export function QuickActionsBar({ actions }: { actions: QuickAction[] }) {
+  const [open, setOpen] = useState(false);
+
+  const primary = actions.filter((action) => action.group !== "more");
+  const overflow = actions.filter((action) => action.group === "more");
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!(event.target as HTMLElement).closest("[data-quick-more]")) setOpen(false);
+    }
+
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   if (actions.length === 0) return null;
 
   return (
-    <Panel title="Quick Actions" icon={Sparkles}>
-      <ul className="space-y-1.5">
-        {actions.map((action) => (
-          <li key={action.key}>
+    <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
+          Quick Actions
+        </span>
+
+        {primary.map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            onClick={action.onSelect}
+            disabled={action.disabled}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+              action.primary
+                ? "border-slate-900 bg-slate-900 text-white hover:bg-slate-800"
+                : "border-slate-200 text-slate-700 hover:bg-slate-50",
+            )}
+          >
+            <action.icon className="h-3.5 w-3.5" aria-hidden />
+            {action.label}
+          </button>
+        ))}
+
+        {overflow.length > 0 ? (
+          <div className="relative" data-quick-more>
             <button
               type="button"
-              onClick={action.onSelect}
-              disabled={action.disabled}
-              className={cn(
-                "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs font-medium transition disabled:opacity-50",
-                action.primary
-                  ? "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                  : "border-slate-200 text-slate-700 hover:bg-slate-50",
-              )}
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              aria-haspopup="menu"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              <span className="flex items-center gap-2">
-                <action.icon className="h-3.5 w-3.5" aria-hidden />
-                {action.label}
-              </span>
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+              More
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
             </button>
-          </li>
-        ))}
-      </ul>
-    </Panel>
+
+            {open ? (
+              <div
+                role="menu"
+                className="absolute right-0 z-20 mt-1 w-60 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+              >
+                {overflow.map((action) => (
+                  <button
+                    key={action.key}
+                    type="button"
+                    role="menuitem"
+                    disabled={action.disabled}
+                    onClick={() => {
+                      setOpen(false);
+                      action.onSelect();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <action.icon className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
