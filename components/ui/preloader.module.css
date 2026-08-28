@@ -1,0 +1,186 @@
+/*
+ * The application preloader.
+ *
+ * A CSS module rather than rules in globals.css: the class names and the two
+ * keyframes below are generic enough to collide with something else one day,
+ * and a module scopes both. Nothing here touches a global selector - no *, no
+ * body, no :root - so it cannot reach anything outside this component.
+ */
+
+.screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /*
+   * No background of its own. It sits on whatever surface it is placed over,
+   * which is the application's own.
+   */
+  min-height: 60vh;
+  width: 100%;
+}
+
+.fullScreen {
+  min-height: 100vh;
+}
+
+.pl,
+.worm {
+  animation-duration: 3s;
+  animation-iteration-count: infinite;
+}
+
+.pl {
+  animation-name: bump;
+  animation-timing-function: linear;
+  /*
+   * Pixels, not the original 8em. In em this measures whatever font-size it
+   * inherits, and the demo it came from set that globally - which is exactly
+   * the global CSS this must not copy.
+   */
+  width: 128px;
+  height: 128px;
+  /*
+   * Never shrink.
+   *
+   * As a flex item the SVG shrinks by default, and in a narrow container it
+   * collapsed to zero width while keeping its height - measured at 0x96 in a
+   * narrow viewport. It is a fixed-size indicator, not something to fit.
+   */
+  flex: none;
+  /*
+   * Faded in rather than out.
+   *
+   * A load that finishes in 40ms should not flash a spinner, and this is the
+   * honest way to prevent it: the loader is invisible for its first fraction
+   * of a second and costs nothing when the content beats it.
+   *
+   * There is no fade-out, because React unmounts this the moment the content
+   * is ready. Holding it on screen afterwards to animate it away would be the
+   * artificial delay this is meant not to have.
+   */
+  animation-name: bump, appear;
+  animation-duration: 3s, 200ms;
+  animation-timing-function: linear, ease-out;
+  animation-iteration-count: infinite, 1;
+  animation-delay: 0s, 120ms;
+  animation-fill-mode: none, backwards;
+}
+
+.ring {
+  /*
+   * Light only, deliberately.
+   *
+   * The reference CSS pairs this with a dark-mode variant. This application
+   * has no dark mode - no theme system, no dark: classes, and a light
+   * background it keeps whatever the operating system asks for - so a
+   * prefers-color-scheme rule here would lighten the ring against a
+   * background that stayed light, and make it harder to see rather than
+   * easier. It belongs here the day the application gains a dark theme.
+   */
+  stroke: hsla(223, 10%, 10%, 0.1);
+  transition: stroke 0.3s;
+}
+
+.worm {
+  animation-name: worm;
+  animation-timing-function: cubic-bezier(0.42, 0.17, 0.75, 0.83);
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bump {
+  from,
+  42%,
+  46%,
+  51%,
+  55%,
+  59%,
+  63%,
+  67%,
+  71%,
+  74%,
+  78%,
+  81%,
+  85%,
+  88%,
+  92%,
+  to {
+    transform: translate(0, 0);
+  }
+
+  44% {
+    transform: translate(1.33%, 6.75%);
+  }
+
+  53% {
+    transform: translate(-16.67%, -0.54%);
+  }
+
+  61% {
+    transform: translate(3.66%, -2.46%);
+  }
+
+  69% {
+    transform: translate(-0.59%, 15.27%);
+  }
+
+  76% {
+    transform: translate(-1.92%, -4.68%);
+  }
+
+  83% {
+    transform: translate(9.38%, 0.96%);
+  }
+
+  90% {
+    transform: translate(-4.55%, 1.98%);
+  }
+}
+
+@keyframes worm {
+  from {
+    stroke-dashoffset: 10;
+  }
+
+  25% {
+    stroke-dashoffset: 295;
+  }
+
+  to {
+    stroke-dashoffset: 1165;
+  }
+}
+
+/* A little smaller where the screen is, so it never dominates a phone. */
+@media (max-width: 480px) {
+  .pl {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+/*
+ * Reduced motion.
+ *
+ * The indicator stays visible and still says the application is working - it
+ * simply stops moving. The worm keeps its dash pattern, so what is left is
+ * the shape rather than a blank circle.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .pl,
+  .worm {
+    animation: none;
+  }
+
+  .pl {
+    opacity: 1;
+  }
+}
