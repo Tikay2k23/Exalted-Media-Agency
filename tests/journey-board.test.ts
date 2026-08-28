@@ -931,11 +931,11 @@ describe("board metrics", () => {
     assert.equal(boardMetrics([account()], NOW).satisfaction, null);
 
     const scored = boardMetrics(
-      [account({ satisfactionScore: 4 }), account({ id: "b", satisfactionScore: 5 })],
+      [account({ satisfactionScore: 40 }), account({ id: "b", satisfactionScore: 50 })],
       NOW,
     );
 
-    assert.equal(scored.satisfaction, 4.5);
+    assert.equal(scored.satisfaction, 45);
     assert.equal(scored.satisfactionResponses, 2);
   });
 

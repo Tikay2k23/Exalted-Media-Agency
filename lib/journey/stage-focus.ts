@@ -394,8 +394,8 @@ export function stageSignals(
         ...(account.satisfactionScore !== null
           ? [{
               label: "Satisfaction",
-              value: `${account.satisfactionScore} / 5`,
-              tone: (account.satisfactionScore >= 4 ? "good" : "warn") as SignalTone,
+              value: `${account.satisfactionScore} / 100`,
+              tone: (account.satisfactionScore >= 70 ? "good" : "warn") as SignalTone,
             }]
           : []),
         ...(account.renewalDate
@@ -421,8 +421,8 @@ export function stageSignals(
         ...(account.satisfactionScore !== null
           ? [{
               label: "Satisfaction",
-              value: `${account.satisfactionScore} / 5`,
-              tone: (account.satisfactionScore >= 4 ? "good" : "warn") as SignalTone,
+              value: `${account.satisfactionScore} / 100`,
+              tone: (account.satisfactionScore >= 70 ? "good" : "warn") as SignalTone,
             }]
           : []),
       ];

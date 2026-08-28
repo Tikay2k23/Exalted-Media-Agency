@@ -544,7 +544,7 @@ export function JourneyWorkspace({
           },
           {
             label: "Client Satisfaction",
-            value: metrics.satisfaction === null ? "-" : `${metrics.satisfaction} / 5`,
+            value: metrics.satisfaction === null ? "-" : `${metrics.satisfaction} / 100`,
             caption:
               metrics.satisfactionResponses === 0
                 ? "No scores recorded yet"

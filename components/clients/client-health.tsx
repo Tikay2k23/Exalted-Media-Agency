@@ -327,6 +327,9 @@ export function ClientHealth({
                   healthScore: formData.get("healthScore")
                     ? Number(formData.get("healthScore"))
                     : null,
+                  satisfactionScore: formData.get("satisfactionScore")
+                    ? Number(formData.get("satisfactionScore"))
+                    : null,
                   renewalProbability: formData.get("renewalProbability")
                     ? Number(formData.get("renewalProbability"))
                     : null,
@@ -337,7 +340,7 @@ export function ClientHealth({
             }
             className="space-y-3 rounded-2xl border border-slate-200 p-4"
           >
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Status</span>
                 <Select name="status" defaultValue={currentStatus === "NOT_ASSESSED" ? "GREEN" : currentStatus}>
@@ -357,6 +360,17 @@ export function ClientHealth({
                   Renewal likelihood 0–100
                 </span>
                 <Input type="number" name="renewalProbability" min={0} max={100} />
+              </label>
+              {/*
+                * The only place satisfaction can be recorded. Reports & Health
+                * and the Journey board both read it, and until this field
+                * existed neither could ever have a number to read.
+                */}
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-slate-600">
+                  Client satisfaction 0–100
+                </span>
+                <Input type="number" name="satisfactionScore" min={0} max={100} />
               </label>
             </div>
             <label className="block space-y-1.5">

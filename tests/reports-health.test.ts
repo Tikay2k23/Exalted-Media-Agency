@@ -63,7 +63,7 @@ const goal = (overrides: Partial<GoalRow> = {}): GoalRow => ({
 const assessment = (overrides: Partial<HealthAssessment> = {}): HealthAssessment => ({
   status: "HEALTHY",
   healthScore: 82,
-  satisfactionScore: 9,
+  satisfactionScore: 85,
   openComplaints: 0,
   renewalProbability: 80,
   assessedAt: day(-10),
@@ -269,11 +269,11 @@ describe("health summary", () => {
 
   it("reads a low satisfaction score as a risk and a high one as a strength", () => {
     assert.ok(
-      health({ assessment: assessment({ satisfactionScore: 4 }) })
+      health({ assessment: assessment({ satisfactionScore: 40 }) })
         .risks.some((r) => /satisfaction/i.test(r)),
     );
     assert.ok(
-      health({ assessment: assessment({ satisfactionScore: 9 }) })
+      health({ assessment: assessment({ satisfactionScore: 90 }) })
         .strengths.some((s) => /satisfaction/i.test(s)),
     );
   });

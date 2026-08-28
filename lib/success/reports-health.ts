@@ -263,11 +263,18 @@ export function healthSummary(input: {
     strengths.push("No open complaints");
   }
 
+  /*
+   * Out of 100, because that is the only scale the column is written on:
+   * the assessment endpoint refuses anything outside 0-100, and the two
+   * scores beside it in the same form are percentages. Reading the same
+   * number as 9 out of 10 here and 72 out of 5 on Journey was three
+   * screens disagreeing about one column.
+   */
   if (assessment?.satisfactionScore !== null && assessment?.satisfactionScore !== undefined) {
-    if (assessment.satisfactionScore >= 8) {
-      strengths.push(`Satisfaction recorded at ${assessment.satisfactionScore} of 10`);
-    } else if (assessment.satisfactionScore <= 5) {
-      risks.push(`Satisfaction recorded at ${assessment.satisfactionScore} of 10`);
+    if (assessment.satisfactionScore >= 80) {
+      strengths.push(`Satisfaction recorded at ${assessment.satisfactionScore} of 100`);
+    } else if (assessment.satisfactionScore <= 50) {
+      risks.push(`Satisfaction recorded at ${assessment.satisfactionScore} of 100`);
     }
   }
 
