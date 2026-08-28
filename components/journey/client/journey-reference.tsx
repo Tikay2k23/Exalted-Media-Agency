@@ -12,7 +12,6 @@
 
 import {
   ArrowRight,
-  CalendarClock,
   Check,
   ChevronRight,
   ClipboardCheck,
@@ -591,19 +590,50 @@ export function JourneyHealthPanel({
 /* Stage history                                                              */
 /* -------------------------------------------------------------------------- */
 
+/** The dot's colour says what kind of event it was, without a word for it. */
+const HISTORY_TONE: Record<string, string> = {
+  stage: "bg-sky-500",
+  override: "bg-rose-500",
+  blocker: "bg-amber-500",
+  approval: "bg-emerald-500",
+  asset: "bg-violet-500",
+  milestone: "bg-slate-400",
+  other: "bg-slate-300",
+};
+
+export interface HistoryEntry {
+  id: string;
+  label: string;
+  at: string;
+  actorName: string | null;
+  kind: string;
+}
+
 /**
- * The recent events across the bottom, as the reference lays them out.
+ * Recent journey events, newest first, down the page.
  *
- * Four abreast on a wide screen and stacked on a narrow one - the point is the
- * sequence, and a four-column grid squeezed onto a phone loses it.
+ * This was four cards abreast. Read left to right, a sequence stops looking
+ * like one: the eye has no reason to go in that order, and the fourth column
+ * on a wide screen is as prominent as the first, so the newest event did not
+ * read as the newest. A column reads in the order the events happened.
+ *
+ * Nothing is clickable, and that is deliberate rather than unfinished. The
+ * query behind this returns only rows logged against the client itself, so
+ * every event's "related record" is the client whose page you are already on.
+ * Making them links would send somebody back where they started. The events
+ * that do own a record - a defect, a task - are logged against that record and
+ * are not in this feed.
  */
-export function StageHistoryStrip({
+export function StageHistoryTimeline({
   entries,
   onViewAll,
 }: {
-  entries: { id: string; label: string; at: string; actorName: string | null }[];
+  entries: HistoryEntry[];
   onViewAll: () => void;
 }) {
+  /* Five: enough to see a sequence, not enough to become the page. */
+  const shown = entries.slice(0, 5);
+
   return (
     <Panel
       title="Stage History"
@@ -618,35 +648,51 @@ export function StageHistoryStrip({
         </button>
       }
     >
-      {entries.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="text-xs text-slate-500">Nothing has happened on this journey yet.</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {entries.slice(0, 4).map((entry) => (
-            <li key={entry.id} className="flex items-start gap-2">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[11px] font-medium leading-4 text-slate-800">
-                  {entry.label}
-                </span>
-                <span className="block text-[10px] text-slate-400">
-                  {formatDateTime(entry.at)}
-                  {entry.actorName ? ` by ${entry.actorName}` : ""}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
+        <ol className="space-y-0">
+          {shown.map((entry, index) => {
+            const last = index === shown.length - 1;
+
+            return (
+              <li key={entry.id} className="flex gap-2.5">
+                {/*
+                  * The rail: a dot, and a line that reaches the next one. The
+                  * line is on the item above rather than between items, so the
+                  * last event ends cleanly instead of trailing into nothing.
+                  */}
+                <div className="flex shrink-0 flex-col items-center">
+                  <span
+                    className={cn(
+                      "mt-1 h-2 w-2 shrink-0 rounded-full",
+                      HISTORY_TONE[entry.kind] ?? HISTORY_TONE.other,
+                    )}
+                    aria-hidden
+                  />
+                  {last ? null : <span className="w-px flex-1 bg-slate-200" aria-hidden />}
+                </div>
+
+                <div className={cn("min-w-0 flex-1", last ? "pb-0" : "pb-3")}>
+                  <p className="text-xs font-medium leading-4 text-slate-800">{entry.label}</p>
+                  <p className="mt-0.5 text-[10px] leading-4 text-slate-400">
+                    {formatDateTime(entry.at)}
+                    {entry.actorName ? (
+                      <>
+                        {" "}
+                        <span aria-hidden>·</span> by {entry.actorName}
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       )}
     </Panel>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Footer                                                                     */
-/* -------------------------------------------------------------------------- */
 
 export function JourneyFooter({
   timezone,

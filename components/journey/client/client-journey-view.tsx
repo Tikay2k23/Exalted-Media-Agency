@@ -81,7 +81,7 @@ import {
   JourneyCard,
   JourneyFooter,
   StageDetailsPanel,
-  StageHistoryStrip,
+  StageHistoryTimeline,
   type TimelineStep,
 } from "./journey-reference";
 import {
@@ -355,11 +355,13 @@ export function ClientJourneyView({
 
   const historyEntries = useMemo(
     () =>
-      detail.activity.slice(0, 4).map((entry) => ({
+      /* Five, newest first - the order the query already returns them in. */
+      detail.activity.slice(0, 5).map((entry) => ({
         id: entry.id,
         label: entry.action,
         at: entry.createdAt,
         actorName: entry.actorName,
+        kind: entry.kind,
       })),
     [detail.activity],
   );
@@ -1320,7 +1322,7 @@ export function ClientJourneyView({
           nextStageKey={account.nextStageKey}
           onPreview={() => setPreviewing(true)}
         />
-        <StageHistoryStrip
+        <StageHistoryTimeline
           entries={historyEntries}
           onViewAll={() => router.push(`/journey/${account.id}/history`)}
         />
