@@ -140,18 +140,24 @@ export default async function ClientDetailPage({
   const { id } = await params;
   const query = await searchParams;
 
-  const [client, options] = await Promise.all([
+  /*
+   * Everything that only needs the id and the signed-in user, at once.
+   *
+   * These ran one after another: the client, then the permission context,
+   * then the directory row and the board cards, then two activity queries,
+   * then the journey, then the EOD entries. Seven round trips deep, and only
+   * one of the dependencies was real - the activity feed needs the task ids.
+   *
+   * The permission context in particular waited on a 174ms client query to
+   * ask a question that only needs user.id.
+   */
+  const [client, options, actor] = await Promise.all([
     getClientDetail(user, id),
     getSharedOptions(),
+    loadAuthContext(user.id),
   ]);
 
-  if (!client) {
-    notFound();
-  }
-
-  const actor = await loadAuthContext(user.id);
-
-  if (!actor) {
+  if (!client || !actor) {
     notFound();
   }
 
@@ -172,55 +178,84 @@ export default async function ClientDetailPage({
    * and an Overview that answered them differently made the two pages
    * contradict each other on the same eleven accounts.
    */
-  const [row, metricCards] = await Promise.all([
-    getClientRow(actor, id),
-    getJourneySummaryCards(actor, new Date()),
-  ]);
-
-  const activity = await prisma.activityLog.findMany({
-    where: { entityType: "CLIENT", entityId: id },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    select: {
-      id: true,
-      action: true,
-      createdAt: true,
-      actor: { select: { name: true } },
-    },
-  });
-
   /*
-   * The fuller record, for the Activity & Notes workspace.
+   * The second wave, also at once.
    *
-   * Wider than the twenty rows the Overview shows, and not only the rows
-   * logged against the client: work is logged against the task, so a page
-   * that only read CLIENT rows would show an account where no task ever
-   * moved. The task ids come from the rows this page already loaded.
+   * The activity feed is the only one with a real dependency - it reads the
+   * task ids the client query returned - so it is the only reason this is a
+   * second wave rather than part of the first.
    */
   const clientTaskIds = client.agencyTasks.map((task) => task.id);
 
-  const activityFeed = await prisma.activityLog.findMany({
-    where: {
-      OR: [
-        { entityType: "CLIENT", entityId: id },
-        ...(clientTaskIds.length > 0
-          ? [{ entityType: "EMPLOYEE_TASK" as const, entityId: { in: clientTaskIds } }]
-          : []),
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    select: {
-      id: true,
-      action: true,
-      entityType: true,
-      fieldName: true,
-      previousValue: true,
-      newValue: true,
-      createdAt: true,
-      actor: { select: { name: true } },
-    },
-  });
+  const [row, metricCards, activity, activityFeed, journeyLoad, clientEod] = await Promise.all([
+    getClientRow(actor, id),
+    getJourneySummaryCards(actor, new Date()),
+    prisma.activityLog.findMany({
+      where: { entityType: "CLIENT", entityId: id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        action: true,
+        createdAt: true,
+        actor: { select: { name: true } },
+      },
+    }),
+    /*
+     * The fuller record, for the Activity & Notes workspace.
+     *
+     * Wider than the twenty rows the Overview shows, and not only the rows
+     * logged against the client: work is logged against the task, so a page
+     * that only read CLIENT rows would show an account where no task ever
+     * moved.
+     */
+    prisma.activityLog.findMany({
+      where: {
+        OR: [
+          { entityType: "CLIENT", entityId: id },
+          ...(clientTaskIds.length > 0
+            ? [{ entityType: "EMPLOYEE_TASK" as const, entityId: { in: clientTaskIds } }]
+            : []),
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        fieldName: true,
+        previousValue: true,
+        newValue: true,
+        createdAt: true,
+        actor: { select: { name: true } },
+      },
+    }),
+    getJourneyClientDetail(actor, id),
+    /*
+     * The EOD entries the Work drawer shows. Read from the same rows My Work
+     * writes - the tab shows them, it does not keep its own. Capped because
+     * the drawer is a recent history, not an archive.
+     */
+    prisma.employeeTaskEodEntry.findMany({
+      where: { task: { clientId: id, deletedAt: null } },
+      orderBy: { entryDate: "desc" },
+      take: 40,
+      select: {
+        id: true,
+        entryDate: true,
+        summary: true,
+        blockers: true,
+        nextSteps: true,
+        hoursSpent: true,
+        createdAt: true,
+        task: { select: { id: true, title: true } },
+        author: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  const { detail: journeyDetail } = journeyLoad;
 
   /*
    * The Approvals gate, computed once from the rows the tab already loads.
@@ -470,12 +505,6 @@ export default async function ClientDetailPage({
     stage: (renewalRecord?.stage as string | undefined) ?? null,
     now: approvalNow,
   });
-
-  /*
-   * The journey's own picture, fetched here because account health reads it.
-   * One call, shared by the health calculation and the Journey tab below.
-   */
-  const { detail: journeyDetail } = await getJourneyClientDetail(actor, id);
 
   /*
    * Account health, read off the systems that already answered.
@@ -813,29 +842,6 @@ export default async function ClientDetailPage({
     },
   };
 
-  /*
-   * End-of-day updates across this account's work.
-   *
-   * Read from the same entries My Work writes - the Work tab shows them, it
-   * does not keep its own. Capped because the drawer is a recent history, not
-   * an archive.
-   */
-  const clientEod = await prisma.employeeTaskEodEntry.findMany({
-    where: { task: { clientId: id, deletedAt: null } },
-    orderBy: { entryDate: "desc" },
-    take: 40,
-    select: {
-      id: true,
-      entryDate: true,
-      summary: true,
-      blockers: true,
-      nextSteps: true,
-      hoursSpent: true,
-      createdAt: true,
-      task: { select: { id: true, title: true } },
-      author: { select: { name: true } },
-    },
-  });
 
   /*
    * The journey workspace, read through the same query the Journey page uses.

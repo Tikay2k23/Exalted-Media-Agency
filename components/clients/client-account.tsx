@@ -13,6 +13,7 @@ import {
   Upload,
   Wallet,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AccountDialog } from "@/components/clients/account-dialog";
@@ -341,6 +342,7 @@ export function ClientAccount({
   >(null);
   const [contactForm, setContactForm] = useState<ContactValues | null>(null);
   const [confirming, setConfirming] = useState<null | { contact: AccountContact; kind: "deactivate" }>(null);
+  const router = useRouter();
   const [rowError, setRowError] = useState<string | null>(null);
 
   const now = new Date(serverNow);
@@ -409,7 +411,15 @@ export function ClientAccount({
         return;
       }
 
-      window.location.reload();
+      /*
+       * A router refresh, not a browser reload.
+       *
+       * This threw the whole document away and started again - script,
+       * styles, every server query, the scroll position and any open state -
+       * to show one edited contact row. refresh() re-runs the server
+       * components and patches the result in: same data, no restart.
+       */
+      router.refresh();
     })();
   }
 
