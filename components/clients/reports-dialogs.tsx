@@ -20,6 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  OPTIMIZATION_PRIORITIES,
+  type OptimizationDetail,
+} from "@/lib/success/optimization-status";
 import type { OptimizationRow, ReportRow } from "@/lib/success/reports-health";
 import { cn, formatEnumLabel } from "@/lib/utils";
 
@@ -477,10 +481,21 @@ export function ReportsDialog({
 export function LogOptimizationDialog({
   clientId,
   owners,
+  services,
+  tasks,
+  metrics,
+  existing,
   onClose,
 }: {
   clientId: string;
   owners: { id: string; name: string }[];
+  /** This client's services, so the list cannot name one they do not buy. */
+  services: { value: string; label: string }[];
+  /** Existing tasks on this client. Selecting one links it; none is created. */
+  tasks: { id: string; title: string }[];
+  metrics: string[];
+  /** Set when editing, which posts to the same endpoint with an id. */
+  existing?: OptimizationDetail | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -489,10 +504,25 @@ export function LogOptimizationDialog({
     onClose();
   });
 
+  /*
+   * One key for this open form.
+   *
+   * `busy` stops the second click of a double-click, but not a second tab, a
+   * retried request or a browser that fires the submit twice. The key does:
+   * the column is unique, so a repeat is handed the first record instead of
+   * creating a twin. Stable for as long as the dialog is open, and a new one
+   * next time it is opened - which is a new intention.
+   */
+  const [submissionKey] = useState(() =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+
   return (
     <Modal
       eyebrow="Optimization"
-      title="Log an optimization"
+      title={existing ? "Edit optimization" : "Log an optimization"}
       onClose={onClose}
       footer={
         <Button type="button" size="sm" variant="secondary" onClick={onClose}>
@@ -504,6 +534,10 @@ export function LogOptimizationDialog({
         className="space-y-3"
         action={(formData) =>
           void send(`/api/clients/${clientId}/optimizations`, {
+            optimizationId: existing?.id ?? "",
+            /* Editing already targets a row by id, so only a new one needs this. */
+            idempotencyKey: existing ? "" : submissionKey,
+            title: String(formData.get("title") ?? ""),
             platform: String(formData.get("platform") ?? ""),
             observedProblem: String(formData.get("observedProblem") ?? ""),
             proposedChange: String(formData.get("proposedChange") ?? ""),
@@ -513,44 +547,66 @@ export function LogOptimizationDialog({
             previousSetting: String(formData.get("previousSetting") ?? ""),
             newSetting: String(formData.get("newSetting") ?? ""),
             startDate: String(formData.get("startDate") ?? ""),
+            endDate: String(formData.get("endDate") ?? ""),
             ownerId: String(formData.get("ownerId") ?? ""),
+            priority: String(formData.get("priority") ?? "MEDIUM"),
+            serviceType: String(formData.get("serviceType") ?? ""),
+            taskId: String(formData.get("taskId") ?? ""),
+            notes: String(formData.get("notes") ?? ""),
           })
         }
       >
+        <Field label="Optimization name">
+          <Input
+            name="title"
+            required
+            maxLength={200}
+            defaultValue={existing?.title ?? ""}
+            placeholder="Improve mobile page speed"
+          />
+        </Field>
+
+        <Field label="Reason / problem" hint="What this is meant to solve.">
+          <Textarea
+            name="observedProblem"
+            required
+            rows={2}
+            defaultValue={existing?.observedProblem ?? ""}
+            placeholder="Slow load times on mobile"
+          />
+        </Field>
+
         <Field label="What is being changed">
           <Input
             name="proposedChange"
             required
             maxLength={2000}
-            placeholder="Improve mobile page speed"
+            defaultValue={existing?.proposedChange ?? ""}
+            placeholder="Compress hero images and defer third-party scripts"
           />
         </Field>
 
-        <Field label="Why" hint="The problem this is meant to solve.">
+        <Field label="Expected result" hint="What success would look like.">
           <Textarea
-            name="observedProblem"
-            required
+            name="hypothesis"
             rows={2}
-            placeholder="Slow load times on mobile"
+            defaultValue={existing?.hypothesis ?? ""}
+            placeholder="Increase mobile conversion rate by 10%"
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Platform">
-            <Input name="platform" required maxLength={120} placeholder="Website" />
+          <Field label="Priority">
+            <Select name="priority" defaultValue={existing?.priority ?? "MEDIUM"}>
+              {OPTIMIZATION_PRIORITIES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
           </Field>
-          <Field label="Expected result">
-            <Input name="expectedMetric" maxLength={200} placeholder="+10% conversion rate" />
-          </Field>
-        </div>
-
-        <Field label="Evidence" hint="What made this worth doing.">
-          <Textarea name="evidence" rows={2} placeholder="Mobile LCP at 4.2s in the last audit" />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-2">
           <Field label="Owner">
-            <Select name="ownerId" defaultValue="">
+            <Select name="ownerId" defaultValue={existing?.ownerId ?? ""}>
               <option value="">Unassigned</option>
               {owners.map((user) => (
                 <option key={user.id} value={user.id}>
@@ -559,25 +615,114 @@ export function LogOptimizationDialog({
               ))}
             </Select>
           </Field>
-          <Field label="Start date">
-            <Input type="date" name="startDate" defaultValue={isoDate(new Date())} />
-          </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Setting before">
-            <Input name="previousSetting" maxLength={1000} />
+          <Field label="Platform">
+            <Input
+              name="platform"
+              required
+              maxLength={120}
+              defaultValue={existing?.platform ?? ""}
+              placeholder="Website"
+            />
           </Field>
-          <Field label="Setting after">
-            <Input name="newSetting" maxLength={1000} />
+          <Field label="Related service" hint="Only what this client buys.">
+            <Select name="serviceType" defaultValue={existing?.serviceType ?? ""}>
+              <option value="">Not service specific</option>
+              {services.map((service) => (
+                <option key={service.value} value={service.value}>
+                  {service.label}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
+
+        <Field label="Related metric" hint="What will be read to judge this.">
+          <Input
+            name="expectedMetric"
+            maxLength={200}
+            list="optimization-metrics"
+            defaultValue={existing?.expectedMetric ?? ""}
+            placeholder="Conversion rate"
+          />
+          <datalist id="optimization-metrics">
+            {metrics.map((metric) => (
+              <option key={metric} value={metric} />
+            ))}
+          </datalist>
+        </Field>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Start date">
+            <Input
+              type="date"
+              name="startDate"
+              defaultValue={existing?.startDate ? isoDate(new Date(existing.startDate)) : ""}
+            />
+          </Field>
+          <Field label="Target review date">
+            <Input
+              type="date"
+              name="endDate"
+              defaultValue={existing?.endDate ? isoDate(new Date(existing.endDate)) : ""}
+            />
+          </Field>
+        </div>
+
+        {/*
+          * Links an existing task; never creates one. An optimization is what
+          * we are trying to improve and a task is the work - the task system
+          * already owns the second, and duplicating it here would put the same
+          * job in two places with two states.
+          */}
+        <Field label="Related task" hint="Optional. Links existing work; creates none.">
+          <Select name="taskId" defaultValue={existing?.task?.id ?? ""}>
+            <option value="">No linked task</option>
+            {tasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.title}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="Evidence" hint="What made this worth doing.">
+          <Textarea
+            name="evidence"
+            rows={2}
+            defaultValue={existing?.evidence ?? ""}
+            placeholder="Mobile LCP at 4.2s in the last audit"
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Setting before">
+            <Input
+              name="previousSetting"
+              maxLength={1000}
+              defaultValue={existing?.previousSetting ?? ""}
+            />
+          </Field>
+          <Field label="Setting after">
+            <Input
+              name="newSetting"
+              maxLength={1000}
+              defaultValue={existing?.newSetting ?? ""}
+            />
+          </Field>
+        </div>
+
+        <Field label="Notes">
+          <Textarea name="notes" rows={2} defaultValue={existing?.notes ?? ""} />
+        </Field>
 
         <ErrorLine message={error} />
 
         <Button type="submit" size="sm" disabled={busy} className="w-full gap-1.5">
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-          {busy ? "Logging..." : "Log optimization"}
+          {busy ? "Saving..." : existing ? "Save changes" : "Log optimization"}
         </Button>
       </form>
     </Modal>

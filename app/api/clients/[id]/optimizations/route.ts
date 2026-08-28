@@ -58,6 +58,14 @@ export async function POST(
       result: parsed.data.result,
       decision: parsed.data.decision,
       ownerId: parsed.data.ownerId,
+      title: parsed.data.title,
+      priority: parsed.data.priority,
+      serviceType: parsed.data.serviceType || null,
+      taskId: parsed.data.taskId,
+      idempotencyKey: parsed.data.idempotencyKey,
+      metricBefore: parsed.data.metricBefore,
+      metricAfter: parsed.data.metricAfter,
+      notes: parsed.data.notes,
     });
 
     if (!result.ok) {
@@ -68,7 +76,12 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { ok: true, optimizationId: result.optimization.id },
+      {
+        ok: true,
+        optimizationId: result.optimization.id,
+        /* True when a double-click was handed the first record back. */
+        deduplicated: "deduplicated" in result,
+      },
       { status: 201 },
     );
   } catch (error) {

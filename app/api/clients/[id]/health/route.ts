@@ -50,6 +50,9 @@ export async function POST(
       paymentStatus: parsed.data.paymentStatus,
       performanceStatus: parsed.data.performanceStatus,
       clientParticipation: parsed.data.clientParticipation,
+      factors: parsed.data.factors,
+      strengths: parsed.data.strengths,
+      risks: parsed.data.risks,
     });
 
     if (!result.ok) {

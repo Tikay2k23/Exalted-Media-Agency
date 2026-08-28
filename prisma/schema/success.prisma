@@ -36,6 +36,13 @@ enum RecoveryPlanStatus {
   CANCELLED
 }
 
+enum OptimizationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 enum OptimizationDecision {
   PENDING
   KEEP
@@ -114,6 +121,12 @@ model ClientHealthAssessment {
   cancellationThreat  Boolean      @default(false)
   renewalProbability  Int?
   summary             String?
+  /// The category scores the overall number came from, as they read on the
+  /// day. Kept so an old assessment can still be explained after the systems
+  /// it read have moved on.
+  factorsJson         Json?
+  strengths           String?
+  risks               String?
   assessedById        String?
   assessedAt          DateTime     @default(now())
   createdAt           DateTime     @default(now())
@@ -211,6 +224,9 @@ model ClientReport {
 model Optimization {
   id              String               @id @default(cuid())
   clientId        String
+  /// What this initiative is called. Older rows have none: they were
+  /// identified by platform and problem, and still are when this is null.
+  title           String?
   platform        String
   observedProblem String
   evidence        String?
@@ -219,21 +235,55 @@ model Optimization {
   expectedMetric  String?
   previousSetting String?
   newSetting      String?
+  /// The measurement either side of the change, as it was read. Distinct from
+  /// previousSetting/newSetting, which are the configuration that was altered.
+  metricBefore    String?
+  metricAfter     String?
+  notes           String?
+  priority        OptimizationPriority @default(MEDIUM)
+  /// Which of the client's services this is meant to improve.
+  serviceType     ServiceType?
+  /// The work, if somebody raised any. An optimization is what we are trying
+  /// to improve; the task is the work. Linked, never duplicated.
+  taskId          String?
   startDate       DateTime?
   endDate         DateTime?
   result          String?
   decision        OptimizationDecision @default(PENDING)
   ownerId         String?
   approvedById    String?
+  createdById     String?
+  /// Set when a decision is recorded, so "who concluded this" survives an
+  /// edit. Cancellation is a timestamp rather than a status value because
+  /// status is derived from these fields and cannot then drift from them.
+  completedAt     DateTime?
+  completedById   String?
+  cancelledAt     DateTime?
+  cancelledById   String?
+  cancelledReason String?
+  /**
+   * One submission of the log form.
+   *
+   * A read-then-write check cannot dedupe two requests that arrive together:
+   * both read before either writes. The unique index can, so the second
+   * insert fails and is handed the first record instead of making a twin.
+   */
+  idempotencyKey  String?              @unique
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
-  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  owner      User?  @relation("OptimizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  approvedBy User?  @relation("OptimizationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  owner       User?         @relation("OptimizationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  approvedBy  User?         @relation("OptimizationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdBy   User?         @relation("OptimizationAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  completedBy User?         @relation("OptimizationCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  cancelledBy User?         @relation("OptimizationCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  task        EmployeeTask? @relation("OptimizationTask", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([clientId, platform])
   @@index([decision])
+  @@index([clientId, priority])
+  @@index([taskId])
 }
 
 /// Permissions are stored as explicit booleans rather than one "approved"

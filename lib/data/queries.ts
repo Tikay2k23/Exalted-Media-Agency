@@ -657,7 +657,14 @@ export async function getClientDetail(user: AppUser, clientId: string) {
         },
         optimizations: {
           orderBy: { createdAt: "desc" },
-          include: { owner: { select: { id: true, name: true } } },
+          include: {
+            owner: { select: { id: true, name: true } },
+            createdBy: { select: { id: true, name: true } },
+            completedBy: { select: { id: true, name: true } },
+            cancelledBy: { select: { id: true, name: true } },
+            /* The linked work, never a copy of it. */
+            task: { select: { id: true, title: true, status: true, dueDate: true } },
+          },
         },
         healthAssessments: {
           orderBy: { assessedAt: "desc" },

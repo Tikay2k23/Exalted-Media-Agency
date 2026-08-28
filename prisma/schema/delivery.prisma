@@ -277,6 +277,10 @@ model EmployeeTask {
   @@index([archivedAt])
   @@index([approvedById])
   @@unique([clientId, templateKey])
+
+  /// Optimizations that point at this task. The task is the work; the
+  /// optimization is what the work is meant to improve.
+  optimizations  Optimization[]     @relation("OptimizationTask")
 }
 
 /// Talking about one piece of work, on the piece of work.

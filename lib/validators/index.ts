@@ -18,6 +18,7 @@ import {
   OffboardingReason,
   OffboardingStatus,
   OptimizationDecision,
+  OptimizationPriority,
   RecoveryPlanStatus,
   ReferralStatus,
   RenewalStage,
@@ -513,6 +514,22 @@ export const healthAssessmentSchema = z.object({
   satisfactionScore: score,
   renewalProbability: score,
   cancellationThreat: z.boolean().optional(),
+  strengths: z.string().max(4000).optional().or(z.literal("")),
+  risks: z.string().max(4000).optional().or(z.literal("")),
+  /* The breakdown the client computed and displayed, stored as it read. */
+  factors: z
+    .array(
+      z.object({
+        key: z.string().max(40),
+        label: z.string().max(80),
+        score: z.number().min(0).max(100).nullable(),
+        weight: z.number(),
+        detail: z.string().max(400),
+        source: z.string().max(80),
+      }),
+    )
+    .max(20)
+    .optional(),
   communicationStatus: z.string().max(200).optional().or(z.literal("")),
   paymentStatus: z.string().max(200).optional().or(z.literal("")),
   performanceStatus: z.string().max(200).optional().or(z.literal("")),
@@ -759,6 +776,15 @@ export const reportReviewSchema = z.discriminatedUnion("action", [
 
 export const optimizationSchema = z.object({
   optimizationId: z.string().optional().or(z.literal("")),
+  /* Named initiatives. Older rows have no title and are still valid. */
+  title: z.string().max(200).optional().or(z.literal("")),
+  priority: z.nativeEnum(OptimizationPriority).optional(),
+  serviceType: z.nativeEnum(ServiceType).optional().or(z.literal("")),
+  taskId: z.string().optional().or(z.literal("")),
+  idempotencyKey: z.string().max(64).optional().or(z.literal("")),
+  metricBefore: z.string().max(200).optional().or(z.literal("")),
+  metricAfter: z.string().max(200).optional().or(z.literal("")),
+  notes: z.string().max(4000).optional().or(z.literal("")),
   platform: z.string().min(1).max(120),
   observedProblem: z.string().min(1).max(2000),
   proposedChange: z.string().min(1).max(2000),
@@ -773,6 +799,22 @@ export const optimizationSchema = z.object({
   decision: z.nativeEnum(OptimizationDecision).optional(),
   ownerId: z.string().optional().or(z.literal("")),
 });
+
+/** The state moves the optimization workspace can ask for. */
+export const optimizationActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("start") }),
+  z.object({ action: z.literal("monitor") }),
+  z.object({
+    action: z.literal("complete"),
+    outcome: z.string().min(1),
+    result: z.string().min(1).max(2000),
+    metricBefore: z.string().min(1).max(200),
+    metricAfter: z.string().min(1).max(200),
+    notes: z.string().max(4000).optional().or(z.literal("")),
+  }),
+  z.object({ action: z.literal("cancel"), reason: z.string().min(3).max(1000) }),
+  z.object({ action: z.literal("note"), note: z.string().min(2).max(2000) }),
+]);
 
 export const recoveryPlanSchema = z.object({
   planId: z.string().optional().or(z.literal("")),

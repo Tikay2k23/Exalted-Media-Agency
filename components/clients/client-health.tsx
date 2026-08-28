@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import {
+  ACCOUNT_HEALTH_LABELS,
+  type AccountHealth,
+} from "@/lib/success/account-health";
 import { formatDate, formatEnumLabel } from "@/lib/utils";
 
 export interface AssessmentRow {
@@ -53,6 +57,20 @@ const HEALTH_TONE: Record<string, "emerald" | "amber" | "rose" | "slate"> = {
   NOT_ASSESSED: "slate",
 };
 
+/**
+ * The computed status, in the vocabulary the client record stores.
+ *
+ * Four calculated states, three stored colours. Critical and at risk are both
+ * red because the record has one red - the distinction lives in the score and
+ * the reasons, not in a fourth colour nothing else would understand.
+ */
+const COMPUTED_TO_COLOUR: Record<string, string> = {
+  GOOD: "GREEN",
+  NEEDS_ATTENTION: "YELLOW",
+  AT_RISK: "RED",
+  CRITICAL: "RED",
+};
+
 const HEALTH_OPTIONS = [
   { value: "GREEN", label: "Green — healthy" },
   { value: "YELLOW", label: "Yellow — needs attention" },
@@ -82,6 +100,7 @@ export function ClientHealth({
   complaints,
   plans,
   owners,
+  computed,
 }: {
   clientId: string;
   canManage: boolean;
@@ -91,6 +110,15 @@ export function ClientHealth({
   complaints: ComplaintRow[];
   plans: RecoveryPlanRow[];
   owners: { id: string; name: string }[];
+  /**
+   * Health read off the systems that already know, category by category.
+   *
+   * This is not a second opinion. Journey, approvals, tasks and invoices each
+   * answered for themselves; this is their answers weighed, so the person
+   * assessing the account starts from what is recorded rather than a blank
+   * box and a guess.
+   */
+  computed: AccountHealth;
 }) {
   const router = useRouter();
   const [panel, setPanel] = useState<"assess" | "complaint" | "plan" | null>(null);
@@ -166,11 +194,83 @@ export function ClientHealth({
           </p>
         ) : null}
 
+        {/*
+          * What the systems say, whether or not anybody has assessed the
+          * account. Shown above the history because it is the live picture and
+          * the history is what people thought on the days they wrote it.
+          */}
+        <div className="rounded-2xl border border-slate-200 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-900">
+              What the systems say right now
+            </p>
+            {computed.score === null ? (
+              <Badge tone="slate">Not assessed</Badge>
+            ) : (
+              <p className="text-sm text-slate-600">
+                <span className="font-semibold text-slate-900">{computed.score} / 100</span>
+                {computed.status ? ` - ${ACCOUNT_HEALTH_LABELS[computed.status]}` : ""}
+              </p>
+            )}
+          </div>
+
+          <dl className="mt-3 space-y-1.5">
+            {computed.categories.map((category) => (
+              <div key={category.key} className="flex items-baseline justify-between gap-3">
+                <dt className="text-sm text-slate-600">{category.label}</dt>
+                <dd className="flex items-baseline gap-2 text-right">
+                  <span className="text-xs text-slate-400">{category.detail}</span>
+                  <span
+                    className={
+                      category.score === null
+                        ? "w-20 shrink-0 text-xs text-slate-400"
+                        : "w-20 shrink-0 text-sm font-semibold text-slate-900"
+                    }
+                  >
+                    {/*
+                      * Not assessed, never zero. A category with nothing to
+                      * read has not scored badly; it has not scored.
+                      */}
+                    {category.score === null ? "Not assessed" : category.score}
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {computed.actions.length > 0 ? (
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Suggested: {computed.actions.map((action) => action.label).join(" - ")}.
+            </p>
+          ) : null}
+        </div>
+
         {assessments.length === 0 ? (
-          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-            Nobody has assessed this account yet. Ongoing management cannot start
-            without one.
-          </p>
+          <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-center">
+            <HeartPulse className="mx-auto h-5 w-5 text-slate-300" aria-hidden />
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              Client health not assessed
+            </p>
+            <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">
+              No health assessment has been completed for this client yet. Complete the first
+              assessment to establish a baseline for this account.
+            </p>
+            {canManage ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-3 gap-2"
+                onClick={() => setPanel("assess")}
+              >
+                <HeartPulse className="h-4 w-4" />
+                Start health assessment
+              </Button>
+            ) : (
+              <p className="mt-3 text-xs text-slate-400">
+                Your seat can read health but not assess it.
+              </p>
+            )}
+          </div>
         ) : (
           <div className="space-y-2">
             {assessments.slice(0, 4).map((item) => (
@@ -334,6 +434,9 @@ export function ClientHealth({
                     ? Number(formData.get("renewalProbability"))
                     : null,
                   cancellationThreat: formData.get("cancellationThreat") === "on",
+                  strengths: computed.strengths.join("\n"),
+                  risks: computed.risks.join("\n"),
+                  factors: computed.categories,
                 },
                 () => setPanel(null),
               )
@@ -343,7 +446,16 @@ export function ClientHealth({
             <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Status</span>
-                <Select name="status" defaultValue={currentStatus === "NOT_ASSESSED" ? "GREEN" : currentStatus}>
+                <Select
+                  name="status"
+                  defaultValue={
+                    computed.status
+                      ? COMPUTED_TO_COLOUR[computed.status]
+                      : currentStatus === "NOT_ASSESSED"
+                        ? "GREEN"
+                        : currentStatus
+                  }
+                >
                   {HEALTH_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -353,7 +465,19 @@ export function ClientHealth({
               </label>
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">Health score 0–100</span>
-                <Input type="number" name="healthScore" min={0} max={100} />
+                {/*
+                  * Filled from the calculation above rather than typed from
+                  * nothing. It can be overridden - a person may know something
+                  * the systems do not - but the starting number is one that
+                  * can be explained.
+                  */}
+                <Input
+                  type="number"
+                  name="healthScore"
+                  min={0}
+                  max={100}
+                  defaultValue={computed.score ?? ""}
+                />
               </label>
               <label className="space-y-1.5">
                 <span className="text-sm font-medium text-slate-600">
@@ -377,7 +501,19 @@ export function ClientHealth({
               <span className="text-sm font-medium text-slate-600">
                 Why is the account this colour?
               </span>
-              <textarea name="summary" rows={3} required className={areaClass} />
+              <textarea
+                name="summary"
+                rows={3}
+                required
+                className={areaClass}
+                defaultValue={
+                  computed.risks.length > 0
+                    ? `Risks: ${computed.risks.join(" ")}`
+                    : computed.strengths.length > 0
+                      ? `Strengths: ${computed.strengths.join(" ")}`
+                      : ""
+                }
+              />
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" name="cancellationThreat" className="h-4 w-4" />

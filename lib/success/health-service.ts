@@ -147,6 +147,10 @@ export interface RecordAssessmentInput {
   summary: string;
   healthScore?: number | null;
   satisfactionScore?: number | null;
+  /** The computed category breakdown, kept with the assessment. */
+  factors?: unknown;
+  strengths?: string | null;
+  risks?: string | null;
   renewalProbability?: number | null;
   cancellationThreat?: boolean;
   communicationStatus?: string | null;
@@ -228,6 +232,14 @@ export async function recordHealthAssessment(input: RecordAssessmentInput) {
         clientId: client.id,
         status,
         summary,
+        /*
+         * The category scores behind the number, frozen as they read today.
+         * Without them an old assessment is a bare score whose reasoning has
+         * already moved on, and nobody can tell why it said what it said.
+         */
+        factorsJson: input.factors ?? undefined,
+        strengths: input.strengths?.trim() || null,
+        risks: input.risks?.trim() || null,
         healthScore: input.healthScore ?? null,
         satisfactionScore: input.satisfactionScore ?? null,
         renewalProbability: input.renewalProbability ?? null,

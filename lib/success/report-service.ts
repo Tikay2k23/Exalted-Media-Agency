@@ -1,4 +1,11 @@
-import { OptimizationDecision, ReportStatus, ReportType } from "@prisma/client";
+import { Prisma, type Optimization } from "@prisma/client";
+import {
+  OptimizationDecision,
+  OptimizationPriority,
+  ReportStatus,
+  ReportType,
+  ServiceType,
+} from "@prisma/client";
 
 import { logActivity } from "@/lib/activity";
 import { type AuthContext } from "@/lib/authz";
@@ -560,6 +567,17 @@ export interface SaveOptimizationInput {
   result?: string | null;
   decision?: OptimizationDecision;
   ownerId?: string | null;
+  title?: string | null;
+  priority?: OptimizationPriority;
+  serviceType?: ServiceType | null;
+  /** An existing task this initiative is meant to drive. Never created here. */
+  taskId?: string | null;
+  /** One submission of the form, so a double-click cannot make two records. */
+  idempotencyKey?: string | null;
+  metricBefore?: string | null;
+  metricAfter?: string | null;
+  notes?: string | null;
+  now?: Date;
 }
 
 /**
@@ -621,7 +639,31 @@ export async function saveOptimization(input: SaveOptimizationInput) {
     return failure("NOT_FOUND", "Client not found.");
   }
 
+  const title = input.title?.trim() || null;
+
+  /*
+   * The task is looked up rather than trusted: an id from another account
+   * would otherwise attach this client's optimization to somebody else's work.
+   * No task is ever created here - an optimization is what we are trying to
+   * improve, a task is the work, and the task system already owns the second.
+   */
+  let taskId: string | null = null;
+
+  if (input.taskId?.trim()) {
+    const task = await prisma.employeeTask.findFirst({
+      where: { id: input.taskId.trim(), clientId: client.id, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!task) {
+      return failure("NOT_FOUND", "That task does not belong to this client.");
+    }
+
+    taskId = task.id;
+  }
+
   const data = {
+    title,
     platform,
     observedProblem,
     proposedChange,
@@ -630,6 +672,12 @@ export async function saveOptimization(input: SaveOptimizationInput) {
     expectedMetric: input.expectedMetric?.trim() || null,
     previousSetting,
     newSetting: input.newSetting?.trim() || null,
+    metricBefore: input.metricBefore?.trim() || null,
+    metricAfter: input.metricAfter?.trim() || null,
+    notes: input.notes?.trim() || null,
+    priority: input.priority ?? OptimizationPriority.MEDIUM,
+    serviceType: input.serviceType ?? null,
+    taskId,
     startDate: input.startDate ?? null,
     endDate: input.endDate ?? null,
     result,
@@ -670,9 +718,52 @@ export async function saveOptimization(input: SaveOptimizationInput) {
     return { ok: true as const, optimization };
   }
 
-  const optimization = await prisma.optimization.create({
-    data: { ...data, clientId: client.id },
-  });
+  /*
+   * A double-click posts twice and both requests are valid on their own.
+   *
+   * Checking for a recent twin before inserting does not work: two requests
+   * that arrive together both read before either writes, and both then write.
+   * The unique index is the only thing that can decide, so the form carries a
+   * key for the submission and the loser of the race is handed the record the
+   * winner made.
+   */
+  const key = input.idempotencyKey?.trim() || null;
+
+  if (key) {
+    const existing = await prisma.optimization.findUnique({ where: { idempotencyKey: key } });
+
+    if (existing) {
+      return { ok: true as const, optimization: existing, deduplicated: true as const };
+    }
+  }
+
+  try {
+    const optimization = await prisma.optimization.create({
+      data: { ...data, clientId: client.id, createdById: actor.id, idempotencyKey: key },
+    });
+
+    return await recordCreation(actor, client, platform, optimization);
+  } catch (error) {
+    /* P2002: the other request won. Hand back what it made. */
+    if (key && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const winner = await prisma.optimization.findUnique({ where: { idempotencyKey: key } });
+
+      if (winner) {
+        return { ok: true as const, optimization: winner, deduplicated: true as const };
+      }
+    }
+
+    throw error;
+  }
+}
+
+/** The activity line for a newly created optimization. */
+async function recordCreation(
+  actor: AuthContext,
+  client: { id: string; companyName: string },
+  platform: string,
+  optimization: Optimization,
+) {
 
   await logActivity({
     actorId: actor.id,

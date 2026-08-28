@@ -52,6 +52,9 @@ import {
   isComplaintOpen,
   isRecoveryPlanLive,
 } from "@/lib/success/health-service";
+import { accountHealth } from "@/lib/success/account-health";
+import { journeyHealth } from "@/lib/journey/journey-health";
+import { stageClock } from "@/lib/journey/client-detail";
 import { REPORT_TYPES } from "@/lib/success/report-service";
 import {
   EXPANSION_STATUSES,
@@ -91,7 +94,7 @@ import { can, canAccessAssignedRecord, canManageClients, teamRoleLabels } from "
 import {
 } from "@/lib/workflow/handoff-engine";
 import { requireUser } from "@/lib/session";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatEnumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -317,6 +320,73 @@ export default async function ClientDetailPage({
     endDate: entry.endDate?.toISOString() ?? null,
   }));
 
+  /*
+   * The same rows, whole, for the workspace the summary tile opens.
+   *
+   * Mapped here rather than fetched again: the tab already loads every
+   * optimization on the account, and a second query for the same rows would
+   * be a second answer to the same question.
+   */
+  const optimizationDetails = client.optimizations.map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    platform: entry.platform,
+    observedProblem: entry.observedProblem,
+    proposedChange: entry.proposedChange,
+    hypothesis: entry.hypothesis,
+    evidence: entry.evidence,
+    expectedMetric: entry.expectedMetric,
+    previousSetting: entry.previousSetting,
+    newSetting: entry.newSetting,
+    metricBefore: entry.metricBefore,
+    metricAfter: entry.metricAfter,
+    notes: entry.notes,
+    priority: entry.priority as string,
+    serviceType: entry.serviceType as string | null,
+    decision: entry.decision as string,
+    result: entry.result,
+    startDate: entry.startDate?.toISOString() ?? null,
+    endDate: entry.endDate?.toISOString() ?? null,
+    cancelledAt: entry.cancelledAt?.toISOString() ?? null,
+    cancelledReason: entry.cancelledReason,
+    completedAt: entry.completedAt?.toISOString() ?? null,
+    ownerId: entry.ownerId,
+    ownerName: entry.owner?.name ?? null,
+    createdByName: entry.createdBy?.name ?? null,
+    completedByName: entry.completedBy?.name ?? null,
+    cancelledByName: entry.cancelledBy?.name ?? null,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+    task: entry.task
+      ? {
+          id: entry.task.id,
+          title: entry.task.title,
+          status: entry.task.status as string,
+          dueDate: entry.task.dueDate.toISOString(),
+        }
+      : null,
+  }));
+
+  /*
+   * What an optimization is allowed to point at.
+   *
+   * Services are the ones this account actually buys - the headline service
+   * plus whatever its projects deliver - so the form cannot name one they do
+   * not have. Tasks are this client's existing work: linking one is allowed,
+   * creating one from here is not, because the task system owns that.
+   */
+  const clientServiceTypes = [
+    ...new Set([client.serviceType, ...client.projects.map((project) => project.serviceType)]),
+  ];
+  const optimizationServices = serviceTypeOptions
+    .filter((option) => clientServiceTypes.includes(option))
+    .map((option) => ({ value: option as string, label: formatEnumLabel(option) }));
+
+  const optimizationTasks = client.agencyTasks
+    .filter((task) => task.status !== "DONE" && task.status !== "CANCELLED")
+    .slice(0, 50)
+    .map((task) => ({ id: task.id, title: task.title }));
+
   const reportsSummary = reportSummary(reportRows, approvalNow);
   const optimizationsSummary = optimizationSummary(optimizationRows);
   const openComplaintCount = client.complaints.filter((c) => isComplaintOpen(c.status)).length;
@@ -372,6 +442,113 @@ export default async function ClientDetailPage({
   });
 
   /*
+   * The journey's own picture, fetched here because account health reads it.
+   * One call, shared by the health calculation and the Journey tab below.
+   */
+  const { detail: journeyDetail } = await getJourneyClientDetail(actor, id);
+
+  /*
+   * Account health, read off the systems that already answered.
+   *
+   * Every number here belongs to somebody else: the journey scores itself,
+   * the approval gate decides whether anything is in the way, the tasks know
+   * what is late, the invoices know what is unpaid. This weighs their answers
+   * so the account has one overall figure instead of five pages disagreeing.
+   *
+   * Journey health is the journey's own calculation, called with the journey's
+   * own inputs - not a copy of its rules.
+   */
+  const healthNow = new Date();
+
+  const journeyStageClock = journeyDetail ? stageClock(journeyDetail.account, healthNow) : null;
+  const oldestWait = journeyDetail
+    ? journeyDetail.flags
+        .filter((flag) => flag.kind === "WAITING_ON_CLIENT" && !flag.resolvedAt)
+        .map((flag) => new Date(flag.raisedAt).getTime())
+        .sort((a, b) => a - b)[0]
+    : undefined;
+
+  const journeyScore =
+    journeyDetail && journeyStageClock
+      ? journeyHealth({
+          requirements: journeyDetail.account.requirements,
+          flags: journeyDetail.flags,
+          tasks: journeyDetail.tasks.map((task) => ({
+            status: task.status,
+            dueDate: task.dueDate,
+          })),
+          dayInStage: journeyStageClock.day,
+          targetDays: journeyStageClock.targetDays,
+          waitingDays:
+            oldestWait === undefined
+              ? null
+              : Math.max(1, Math.round((healthNow.getTime() - oldestWait) / 86_400_000)),
+          now: healthNow,
+        })
+      : null;
+
+  const liveTasks = client.agencyTasks.filter((task) => task.status !== "CANCELLED");
+
+  const computedHealth = accountHealth({
+    journey: journeyScore ? { score: journeyScore.score, label: journeyScore.label } : null,
+    /* The gate's own score and its own blockers, not a second reading of them. */
+    approvals: {
+      score: approvalGateState.healthScore,
+      blockers: approvalGateState.blockers,
+    },
+    delivery: {
+      total: liveTasks.length,
+      overdue: liveTasks.filter(
+        (task) => task.status !== "DONE" && task.dueDate.getTime() < healthNow.getTime(),
+      ).length,
+      blocked: liveTasks.filter((task) => task.status === "BLOCKED").length,
+    },
+    performance: {
+      reportsDue: reportRows.length,
+      reportsOverdue: reportRows.filter(
+        (report) =>
+          !report.sentAt && report.dueAt !== null && Date.parse(report.dueAt) < healthNow.getTime(),
+      ).length,
+      goalsTracked: goalPicture.length,
+      goalsBehind: goalPicture.filter(
+        (goal) => goal.state === "BEHIND" || goal.state === "AT_RISK",
+      ).length,
+    },
+    communication: {
+      openComplaints: openComplaintCount,
+      waitingDays:
+        oldestWait === undefined
+          ? null
+          : Math.max(1, Math.round((healthNow.getTime() - oldestWait) / 86_400_000)),
+      /* Anything ever said either way. Silence with no history is not good news. */
+      hasHistory:
+        client.complaints.length > 0
+        || (journeyDetail?.flags.length ?? 0) > 0
+        || client.healthAssessments.length > 0,
+    },
+    /* Null rather than a score: a seat that cannot see money has not seen good money. */
+    financial: canViewFinance
+      ? {
+          total: client.invoices.length,
+          overdueInvoices: client.invoices.filter(
+            (invoice) =>
+              invoice.status !== "PAID"
+              && invoice.dueAt !== null
+              && invoice.dueAt.getTime() < healthNow.getTime(),
+          ).length,
+          failedInvoices: client.invoices.filter((invoice) => invoice.status === "FAILED").length,
+        }
+      : null,
+    relationship: latestAssessment
+      ? {
+          satisfactionScore: latestAssessment.satisfactionScore,
+          renewalProbability: latestAssessment.renewalProbability,
+          cancellationThreat: latestAssessment.cancellationThreat,
+        }
+      : null,
+  });
+
+  /*
    * The health workspace, handed to the card as a slot.
    *
    * Recording an assessment, raising a complaint and writing a recovery plan
@@ -384,6 +561,7 @@ export default async function ClientDetailPage({
       clientId={client.id}
       canManage={can(actor, "health.manage")}
       currentStatus={client.healthStatus}
+      computed={computedHealth}
       daysSinceAssessment={daysSinceAssessment(client.healthAssessments[0]?.assessedAt ?? null)}
       owners={options.users}
       assessments={client.healthAssessments.map((item) => ({
@@ -534,12 +712,35 @@ export default async function ClientDetailPage({
     owners: options.users,
     reportTypes: REPORT_TYPES.map((option) => ({ value: option.value, label: option.label })),
     openComplaints: openComplaintCount,
+    optimizationDetails,
+    services: optimizationServices,
+    tasks: optimizationTasks,
+    /*
+     * The metrics offered as suggestions rather than a fixed list. There is no
+     * KPI table in this application, so a closed dropdown here would be an
+     * invented catalogue - these are the ones the agency actually names, and
+     * anything else can still be typed.
+     */
+    metrics: [
+      "Conversion rate",
+      "Traffic",
+      "Lead volume",
+      "Form submission rate",
+      "Response time",
+      "Cost per lead",
+      "Cost per acquisition",
+      "Show rate",
+      "Close rate",
+    ],
+    actorId: actor.id,
     growthWorkspace,
     healthWorkspace,
     permissions: {
       canReport: can(actor, "reporting.client"),
       canManageHealth: can(actor, "health.manage"),
       canViewFinance,
+      /* The seats that may move somebody else's optimization, not only theirs. */
+      canManageAllWork: can(actor, "clients.view.all"),
     },
   };
 
@@ -613,7 +814,6 @@ export default async function ClientDetailPage({
    * client was the moment operations added a stage. One workspace, two places
    * to open it.
    */
-  const { detail: journeyDetail } = await getJourneyClientDetail(actor, id);
 
   const requested = typeof query.tab === "string" ? (query.tab as ClientTab) : "overview";
   const initialTab = TAB_KEYS.includes(requested) ? requested : "overview";

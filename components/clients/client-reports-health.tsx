@@ -42,6 +42,8 @@ import { Modal } from "@/components/journey/client/journey-dialogs";
 import { TabLink } from "@/components/clients/client-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OptimizationWorkspace } from "@/components/clients/optimization-workspace";
+import { type OptimizationDetail } from "@/lib/success/optimization-status";
 import {
   GOAL_STATE_LABELS,
   type GoalProgress,
@@ -201,6 +203,20 @@ export interface ReportsHealthProps {
   reportRows: ReportRow[];
   optimizations: OptimizationSummary;
   optimizationRows: OptimizationRow[];
+  /**
+   * The same optimizations, whole, for the workspace behind the tile.
+   *
+   * The summary rows answer "how many are running". These carry the record -
+   * priority, owner, service, the linked task, what was measured - which is
+   * what somebody who clicked through actually came to see.
+   */
+  optimizationDetails: OptimizationDetail[];
+  /** This client's services and open work, for the log form's selectors. */
+  services: { value: string; label: string }[];
+  tasks: { id: string; title: string }[];
+  metrics: string[];
+  /** Who is looking, so "mine to move" is answered without a round trip. */
+  actorId: string;
   health: HealthSummary;
   goals: GoalProgress[];
   renewal: RenewalSummary;
@@ -230,6 +246,8 @@ export interface ReportsHealthProps {
     canReport: boolean;
     canManageHealth: boolean;
     canViewFinance: boolean;
+    /** True for the seats that may move anybody's optimization, not only their own. */
+    canManageAllWork: boolean;
   };
 }
 
@@ -237,9 +255,18 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
   const { reports, optimizations, health, next, permissions } = props;
   const router = useRouter();
   const [dialog, setDialog] = useState<
-    "prepare" | "reports" | "log" | "complete" | "growth" | "health" | null
+    | "prepare"
+    | "reports"
+    | "log"
+    | "complete"
+    | "growth"
+    | "health"
+    | "optimizations"
+    | null
   >(null);
   const [completing, setCompleting] = useState<OptimizationRow | null>(null);
+  /* Set when the workspace hands a record to the log form to edit. */
+  const [editing, setEditing] = useState<OptimizationDetail | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   function refresh() {
@@ -305,13 +332,14 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
               : `${optimizations.concluded.length} concluded to date`
           }
           footer={
-            <a
-              href="#optimization-log"
+            <button
+              type="button"
+              onClick={() => setDialog("optimizations")}
               className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 hover:text-sky-800"
             >
               View optimizations
               <ArrowUpRight className="h-3 w-3" aria-hidden />
-            </a>
+            </button>
           }
         />
 
@@ -328,13 +356,14 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
           value={health.status ? formatEnumLabel(health.status) : "Not assessed"}
           caption={health.score !== null ? `Score: ${health.score} / 100` : "No assessment on file"}
           footer={
-            <a
-              href="#client-health"
+            <button
+              type="button"
+              onClick={() => setDialog("health")}
               className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 hover:text-sky-800"
             >
               View health details
               <ArrowUpRight className="h-3 w-3" aria-hidden />
-            </a>
+            </button>
           }
         />
 
@@ -381,9 +410,9 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
               onClick={() => {
                 if (next.action?.target === "report") setDialog("prepare");
                 else if (next.action?.target === "optimizations")
-                  document.getElementById("optimization-log")?.scrollIntoView({ block: "start" });
+                  setDialog("optimizations");
                 else if (next.action?.target === "health")
-                  document.getElementById("client-health")?.scrollIntoView({ block: "start" });
+                  setDialog("health");
                 else if (next.action?.target === "goals")
                   document.getElementById("goal-progress")?.scrollIntoView({ block: "start" });
                 else document.getElementById("renewal-growth")?.scrollIntoView({ block: "start" });
@@ -403,6 +432,7 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
 
         <OptimizationPanel
           {...props}
+          onAll={() => setDialog("optimizations")}
           onLog={() => setDialog("log")}
           onComplete={(row) => {
             setCompleting(row);
@@ -450,6 +480,33 @@ export function ClientReportsHealth(props: ReportsHealthProps) {
         <LogOptimizationDialog
           clientId={props.clientId}
           owners={props.owners}
+          services={props.services}
+          tasks={props.tasks}
+          metrics={props.metrics}
+          existing={editing}
+          onClose={() => {
+            setEditing(null);
+            setDialog(null);
+          }}
+        />
+      ) : null}
+
+      {dialog === "optimizations" ? (
+        <OptimizationWorkspace
+          clientId={props.clientId}
+          companyName={props.companyName}
+          rows={props.optimizationDetails}
+          canManage={permissions.canReport}
+          canManageAll={permissions.canManageAllWork}
+          actorId={props.actorId}
+          onLog={() => {
+            setEditing(null);
+            setDialog("log");
+          }}
+          onEdit={(row) => {
+            setEditing(row);
+            setDialog("log");
+          }}
           onClose={() => setDialog(null)}
         />
       ) : null}
@@ -615,9 +672,11 @@ function ReportingHistoryPanel({
 function OptimizationPanel({
   optimizations,
   permissions,
+  onAll,
   onLog,
   onComplete,
 }: ReportsHealthProps & {
+  onAll: () => void;
   onLog: () => void;
   onComplete: (row: OptimizationRow) => void;
 }) {
@@ -639,7 +698,17 @@ function OptimizationPanel({
       }
     >
       {shown.length === 0 ? (
-        <Quiet>No active optimizations.</Quiet>
+        <div>
+          <Quiet>No active optimizations.</Quiet>
+          <button
+            type="button"
+            onClick={onAll}
+            className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 hover:text-sky-800"
+          >
+            Open the optimization workspace
+            <ArrowUpRight className="h-3 w-3" aria-hidden />
+          </button>
+        </div>
       ) : (
         <ul className="space-y-2">
           {shown.map((row) => {
@@ -681,6 +750,18 @@ function OptimizationPanel({
           })}
         </ul>
       )}
+
+      {/* Five at most on the card. The rest are one click away, not lost. */}
+      <button
+        type="button"
+        onClick={onAll}
+        className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 hover:text-sky-800"
+      >
+        {optimizations.open.length + optimizations.concluded.length > 5
+          ? `View all ${optimizations.open.length + optimizations.concluded.length} optimizations`
+          : "Open the optimization workspace"}
+        <ArrowUpRight className="h-3 w-3" aria-hidden />
+      </button>
     </Panel>
   );
 }
