@@ -108,7 +108,15 @@ export async function getClientsDashboard(
 
   const [clients, stages, owners] = await Promise.all([
     prisma.client.findMany({
-      where: { ...scope, deletedAt: null, ...(clientId ? { id: clientId } : {}) },
+      /*
+       * Archived accounts leave the directory. Asking for one by id still
+       * returns it, so a link into a filed client keeps working.
+       */
+      where: {
+        ...scope,
+        deletedAt: null,
+        ...(clientId ? { id: clientId } : { archivedAt: null }),
+      },
       orderBy: [{ companyName: "asc" }],
       take: clientId ? 1 : 500,
       select: {

@@ -227,6 +227,8 @@ async function attentionSection(scopedToOwnerId: string | null): Promise<Dashboa
   const clients = await prisma.client.findMany({
     where: {
       deletedAt: null,
+      /* The command centre is about accounts still being run. */
+      archivedAt: null,
       ...(scopedToOwnerId ? { assignedUserId: scopedToOwnerId } : {}),
     },
     select: {
@@ -299,7 +301,7 @@ async function ownerDashboard(): Promise<Omit<DashboardData, "seatLabel" | "isDe
 
   const [clients, openTasks, overdueTasks, overrides, unreadCritical] = await Promise.all([
     prisma.client.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, archivedAt: null },
       select: { monthlyValue: true, healthStatus: true },
     }),
     prisma.employeeTask.count({

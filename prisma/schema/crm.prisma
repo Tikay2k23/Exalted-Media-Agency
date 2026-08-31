@@ -412,6 +412,14 @@ model LeadCallLog {
 
 model Client {
   id             String       @id @default(cuid())
+  /// When the engagement was closed and filed.
+  ///
+  /// Not a delete. Everything the account ever had - contacts, tasks, journey,
+  /// approvals, reports, payments, files, activity - stays exactly where it
+  /// is; this only takes the account out of the views that are about work in
+  /// progress. deletedAt is a different thing and still means deleted.
+  archivedAt     DateTime?
+  archivedById   String?
   /// The person the agency deals with - "Tom Brennan".
   ///
   /// Not a duplicate of companyName and never interchangeable with it: these
@@ -526,6 +534,8 @@ model Client {
   a2pProfile             A2PProfile?
 
   automationRuns StageAutomationRun[]
+
+  archivedBy     User?  @relation("ClientArchiver", fields: [archivedById], references: [id], onDelete: SetNull)
 
   @@index([assignedUserId])
   @@index([status])

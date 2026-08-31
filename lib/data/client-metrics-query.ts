@@ -41,6 +41,8 @@ async function loadAccounts(actor: AuthContext): Promise<JourneyAccount[]> {
     // the accounts assigned to them.
     where: {
       deletedAt: null,
+      /* Counted alongside the board, so the two cannot disagree. */
+      archivedAt: null,
       ...(can(actor, "clients.view.all") ? {} : { assignedUserId: actor.id }),
     },
     select: journeyAccountSelect,

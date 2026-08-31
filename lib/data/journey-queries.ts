@@ -588,6 +588,8 @@ export async function getJourneyWorkspaceData(
         // A team member only ever sees the accounts assigned to them.
         where: {
           deletedAt: null,
+          /* The board is work in progress; a filed account has none. */
+          archivedAt: null,
           ...(seesEverything ? {} : { assignedUserId: actor.id }),
         },
         orderBy: { stageEnteredAt: "asc" },
