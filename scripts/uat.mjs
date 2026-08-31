@@ -1,118 +1,37 @@
 /**
  * One way in to the UAT environment.
  *
- * Every command here loads .env.uat first, and loads all of it. That is not
+ * Every command loads .env.uat first, and loads all of it. That is not
  * tidiness - it is the fix for a bug that cost real time. prisma.config.ts
  * resolves its connection from DIRECT_URL before DATABASE_URL, and dotenv
  * fills in any variable that is merely unset. So exporting DATABASE_URL for
  * UAT and running a migration migrated development instead: DIRECT_URL was
  * still the one from .env, and it outranked the variable that had been set on
- * purpose. Nothing warned, and the migration reported success.
+ * purpose. Nothing warned, and the migration reported "no pending migrations"
+ * while the UAT database sat empty.
  *
- * Pinning every connection variable to the same database removes the
- * precedence question entirely, and assertUatTarget below refuses to act if
- * they ever disagree again.
+ * Targeting is checked twice. Before spawning anything, the environment is
+ * resolved and classified. For commands that connect, `identity` asks the
+ * server what database it is actually in - a string can be right and the
+ * connection still land somewhere else.
  *
+ *   npm run uat:identity    ask the server what it is
  *   npm run uat:migrate     apply migrations
- *   npm run uat:seed        seed configuration and the six seats
+ *   npm run uat:seed        configuration, SOPs, the catalogue and the seats
  *   npm run uat:verify      prove each seat can sign in
  *   npm run uat:dev         run the app against UAT on port 3100
+ *   npm run uat:start       the built app, when a dev server already runs
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+
+import { ENVIRONMENTS, classify, loadEnvFile, resolveTarget } from "./db-identity.mjs";
 
 const ENV_FILE = ".env.uat";
-
-const CONNECTION_VARS = [
-  "DATABASE_URL",
-  "DIRECT_URL",
-  "PRISMA_DATABASE_URL",
-  "POSTGRES_URL",
-  "POSTGRES_URL_NON_POOLING",
-  "POSTGRES_PRISMA_URL",
-];
-
-function loadEnvFile(path) {
-  if (!existsSync(path)) {
-    console.error(`[uat] ${path} is missing. It is git-ignored, so it does not arrive with a clone.`);
-    console.error("[uat] Create it from .env.example, pointing every connection variable at the UAT database.");
-    process.exit(1);
-  }
-
-  for (const raw of readFileSync(path, "utf8").split('\n')) {
-    const line = raw.trim();
-
-    if (!line || line.startsWith("#")) continue;
-
-    const eq = line.indexOf("=");
-
-    if (eq === -1) continue;
-
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-
-    if (value.length > 1 && value[0] === '"' && value[value.length - 1] === '"') {
-      value = value.slice(1, -1);
-    }
-
-    // This file is the authority for this environment, so it wins outright.
-    process.env[key] = value;
-  }
-}
-
-/** Refuses to act unless every connection variable names the same UAT database. */
-function assertUatTarget() {
-  const set = CONNECTION_VARS.map((name) => [name, process.env[name]]).filter(([, v]) => Boolean(v));
-
-  if (!set.length) {
-    console.error("[uat] No database connection is configured.");
-    process.exit(1);
-  }
-
-  const describe = (url) => {
-    try {
-      const parsed = new URL(url);
-      return `${parsed.host}${parsed.pathname}`;
-    } catch {
-      return url;
-    }
-  };
-
-  const targets = new Map();
-
-  for (const [name, url] of set) {
-    const key = describe(url);
-    targets.set(key, [...(targets.get(key) ?? []), name]);
-  }
-
-  if (targets.size > 1) {
-    console.error("[uat] Connection variables disagree about which database to use:");
-
-    for (const [key, names] of targets) {
-      console.error(`        ${key}  <- ${names.join(", ")}`);
-    }
-
-    console.error("[uat] Pin every one of them to the UAT database in .env.uat.");
-    process.exit(1);
-  }
-
-  const [[, url]] = set;
-  const name = new URL(url).pathname.replace("/", "").toLowerCase();
-
-  if (!name.includes("uat")) {
-    console.error(`[uat] Refusing to act on "${name}": it is not a UAT database.`);
-    process.exit(1);
-  }
-
-  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV) {
-    console.error("[uat] Refusing to run in a production environment.");
-    process.exit(1);
-  }
-
-  return name;
-}
+const EXPECTED = "uat";
 
 const COMMANDS = {
+  identity: null,
   migrate: ["npx", ["prisma", "migrate", "deploy"]],
   seed: ["npx", ["tsx", "scripts/seed-environment.ts"]],
   verify: ["npx", ["tsx", "scripts/verify-uat-signin.ts"]],
@@ -130,15 +49,72 @@ if (!command || !(command in COMMANDS)) {
   process.exit(1);
 }
 
+if (!existsSync(ENV_FILE)) {
+  console.error(`[uat] ${ENV_FILE} is missing. It is git-ignored, so it does not arrive with a clone.`);
+  console.error("[uat] Create it from .env.example, pointing every connection variable at the UAT database.");
+  process.exit(1);
+}
+
 loadEnvFile(ENV_FILE);
 
-const database = assertUatTarget();
+let target;
+
+try {
+  target = resolveTarget();
+} catch (error) {
+  console.error(`[uat] ${error.message}`);
+  process.exit(1);
+}
+
+if (target.environment !== EXPECTED) {
+  console.error(
+    `[uat] Refusing to run: expected ${ENVIRONMENTS[EXPECTED].label}, `
+      + `resolved ${ENVIRONMENTS[target.environment]?.label ?? target.environment} `
+      + `("${target.name}" via ${target.decidedBy}). Nothing was run.`,
+  );
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV) {
+  console.error("[uat] Refusing to run in a production environment.");
+  process.exit(1);
+}
+
+/* Ask the server, rather than trusting the string that was configured. */
+if (command === "identity") {
+  const { default: pg } = await import("pg");
+  const client = new pg.Client({ connectionString: target.url });
+
+  await client.connect();
+
+  const { rows } = await client.query(
+    "SELECT current_database() AS database, current_user AS \"user\", "
+      + "inet_server_addr()::text AS host, inet_server_port() AS port, "
+      + "(SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public') AS tables",
+  );
+
+  const [row] = rows;
+  const actual = classify(row.database);
+
+  console.log(`  Expected environment: ${ENVIRONMENTS[EXPECTED].label}`);
+  console.log(`  Expected database:    exalted_uat`);
+  console.log(`  Actual database:      ${row.database}`);
+  console.log(`  Actual environment:   ${ENVIRONMENTS[actual]?.label ?? actual}`);
+  console.log(`  Resolved by variable: ${target.decidedBy}`);
+  console.log(`  Server:               ${row.host ?? "local socket"}:${row.port} as ${row.user}`);
+  console.log(`  Public tables:        ${row.tables}`);
+  console.log(`  Match:                ${actual === EXPECTED ? "YES" : "NO"}`);
+
+  await client.end();
+
+  process.exit(actual === EXPECTED ? 0 : 1);
+}
 
 if (command === "seed") {
   process.env.SEED_TEAM = "1";
 }
 
-console.log(`[uat] ${command} -> ${database}`);
+console.log(`[uat] ${command} -> ${target.name} (resolved by ${target.decidedBy})`);
 
 const [bin, args] = COMMANDS[command];
 const result = spawnSync(bin, args, { stdio: "inherit", shell: true });
