@@ -436,6 +436,24 @@ const CASES: Seed[] = [
       "Every step completes through the interface, with no manual database intervention.",
     severity: "P0",
   },
+
+  /* ----------------------------------------------------------- offboarding -- */
+  /*
+   * Added to the catalogue after the archive feature was built. It is last on
+   * purpose: references are handed out in order, and this case is UAT-0044 in
+   * the workspace it was first raised in.
+   */
+  {
+    module: "Offboarding",
+    name: "Archive files the account without destroying anything",
+    purpose: "Archiving is the step most easily mistaken for a delete.",
+    preconditions: "A client whose offboarding is complete.",
+    steps:
+      "1. Attempt to archive before offboarding exists.\n2. Attempt while offboarding is unfinished.\n3. Attempt as a seat without clients.delete.\n4. Complete offboarding, then archive.\n5. Count related records before and after.\n6. Archive again.\n7. Read the client by id, and check the active scope.\n8. Restore it.",
+    expectedResult:
+      "Refused out of order and without permission; archives only after offboarding completes; every related record survives; a second archive changes and logs nothing; the client leaves the active scope but is still readable by id; restoring works.",
+    severity: "P1",
+  },
 ];
 
 async function main() {
