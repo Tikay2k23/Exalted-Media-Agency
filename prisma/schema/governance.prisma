@@ -207,3 +207,96 @@ model ImprovementRequest {
   @@index([priority])
   @@index([ownerId])
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Internal UAT                                                               */
+/* -------------------------------------------------------------------------- */
+
+enum UatStatus {
+  NOT_TESTED
+  TESTING
+  PASSED
+  FAILED
+  BLOCKED
+  RETEST_REQUIRED
+}
+
+enum UatSeverity {
+  P0
+  P1
+  P2
+  P3
+}
+
+enum UatEnvironment {
+  DEVELOPMENT
+  STAGING
+  UAT
+  PRODUCTION
+}
+
+/// One thing to check, written once and executed as often as it needs to be.
+///
+/// Deliberately not an AuditFinding. An audit finding is a compliance result
+/// against an SOP at a point in time; a test case is a reusable script with an
+/// expected result, and its whole value is being run again after a fix. The
+/// existing audit tables have nowhere to keep a second attempt.
+model UatTestCase {
+  id            String  @id @default(cuid())
+  reference     String  @unique
+  /// Which part of the application, from UAT_MODULES.
+  module        String
+  name          String
+  purpose       String?
+  preconditions String?
+  /// Numbered steps, one per line.
+  steps         String
+  expectedResult String
+  /// How bad it is when this fails, which decides whether it blocks a release.
+  severity      UatSeverity @default(P2)
+  /// Deliberately no status column: a case's status is its latest run's, so
+  /// the two cannot disagree. See uatCaseStatus().
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdBy User?        @relation("UatAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  runs      UatTestRun[]
+
+  @@index([module])
+  @@index([severity])
+}
+
+/// One execution. Never overwritten - run 1 failed, run 2 failed, run 3 passed
+/// is the record that makes a fix auditable.
+model UatTestRun {
+  id           String         @id @default(cuid())
+  testCaseId   String
+  /// 1, 2, 3... within the case.
+  runNumber    Int
+  status       UatStatus
+  actualResult String?
+  /// Set when the run failed, and what makes it a release blocker.
+  severity     UatSeverity?
+  /// Why a blocked run could not be executed. Required when status is BLOCKED.
+  blockedReason String?
+  evidenceUrl  String?
+  notes        String?
+  environment  UatEnvironment @default(DEVELOPMENT)
+  testerId     String?
+  testedAt     DateTime       @default(now())
+  /// The corrective work, in the task system that already exists. Never a
+  /// second task table.
+  taskId       String?
+  createdAt    DateTime       @default(now())
+
+  testCase UatTestCase   @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  tester   User?         @relation("UatTester", fields: [testerId], references: [id], onDelete: SetNull)
+  task     EmployeeTask? @relation("UatFixTask", fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@unique([testCaseId, runNumber])
+  @@index([status])
+  @@index([severity])
+  @@index([testedAt])
+}

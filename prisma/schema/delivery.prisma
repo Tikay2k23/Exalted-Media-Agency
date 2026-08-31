@@ -281,6 +281,10 @@ model EmployeeTask {
   /// Optimizations that point at this task. The task is the work; the
   /// optimization is what the work is meant to improve.
   optimizations  Optimization[]     @relation("OptimizationTask")
+
+  /// UAT runs whose corrective work this task is. The fix lives in the task
+  /// system like any other work; UAT only points at it.
+  uatRuns        UatTestRun[]       @relation("UatFixTask")
 }
 
 /// Talking about one piece of work, on the piece of work.

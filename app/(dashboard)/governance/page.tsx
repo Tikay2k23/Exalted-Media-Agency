@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 
 import { GovernanceWorkspace } from "@/components/governance/governance-workspace";
+import { SystemUat } from "@/components/governance/system-uat";
 import { loadAuthContext } from "@/lib/authz";
 import { getGovernanceOverview } from "@/lib/data/governance-queries";
+import { loadUatCases } from "@/lib/governance/uat-service";
 import {
   AUDIT_TYPES,
   COMPLIANCE_RESULTS,
@@ -56,6 +58,8 @@ export default async function GovernancePage() {
     };
   });
 
+  const uatCases = await loadUatCases();
+
   return (
     <div className="space-y-6">
       <div>
@@ -68,6 +72,13 @@ export default async function GovernancePage() {
           being done about it when they are not.
         </p>
       </div>
+
+      {/*
+        * System UAT lives here rather than in a navigation item of its own:
+        * it is governance, and a QA area beside SOPs and Audits would be a
+        * third place asking the same question about the same system.
+        */}
+      <SystemUat cases={uatCases} canSignOff={can(actor, "governance.audit")} />
 
       <GovernanceWorkspace
         currentUserId={actor.id}

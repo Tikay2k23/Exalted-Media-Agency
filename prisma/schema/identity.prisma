@@ -248,6 +248,8 @@ model User {
   optimizationsAuthored   Optimization[]           @relation("OptimizationAuthor")
   optimizationsCompleted  Optimization[]           @relation("OptimizationCompleter")
   optimizationsCancelled  Optimization[]           @relation("OptimizationCanceller")
+  uatCasesAuthored        UatTestCase[]            @relation("UatAuthor")
+  uatRuns                 UatTestRun[]             @relation("UatTester")
   testimonialsApproved    Testimonial[]            @relation("TestimonialApprover")
   referralsAssigned       Referral[]               @relation("ReferralOwner")
   clientTrainingDelivered TrainingSession[]        @relation("ClientTrainer")
