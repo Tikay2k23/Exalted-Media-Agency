@@ -50,3 +50,4 @@ next-env.d.ts
 
 # Point-in-time database backups. Never committed - they hold client data.
 production-backup.json
+.env.uat
