@@ -78,6 +78,10 @@ async function cleanup() {
   await prisma.clientStageHistory.deleteMany({
     where: { client: { companyName: { startsWith: TEST_PREFIX } } },
   });
+  /* The retired stage one test creates, in case it never reached its finally. */
+  await prisma.pipelineStage.deleteMany({
+    where: { slug: { startsWith: TEST_PREFIX } },
+  });
   await prisma.clientContact.deleteMany({
     where: { client: { companyName: { startsWith: TEST_PREFIX } } },
   });
@@ -520,20 +524,44 @@ describe("client journey stage gate (integration)", { skip: !hasDatabase }, () =
     const actor = await loadAuthContext(fixtures!.managerId);
     assert.ok(actor);
 
-    const retired = await prisma.pipelineStage.findFirstOrThrow({
-      where: { isDeprecated: true },
+    /*
+     * Retired stages are history, not configuration: the seed does not create
+     * any, and a fresh database has none. This used to search for whichever
+     * one happened to exist, which passed on development - where six survive
+     * from an older stage vocabulary - and failed everywhere else. The rule
+     * being tested is about the flag, so the test sets the flag itself.
+     */
+    const journey = await prisma.pipeline.findFirstOrThrow({
+      where: { kind: "FULFILLMENT" },
       select: { id: true },
     });
 
-    const result = await moveClientStage({
-      clientId: fixtures!.clientId,
-      targetStageId: retired.id,
-      actor,
+    const retired = await prisma.pipelineStage.create({
+      data: {
+        pipelineId: journey.id,
+        name: `${TEST_PREFIX} retired stage`,
+        slug: `${TEST_PREFIX}-retired-stage`,
+        stageKey: `${TEST_PREFIX}_retired`,
+        color: "#64748b",
+        position: 999,
+        isDeprecated: true,
+      },
+      select: { id: true },
     });
 
-    assert.equal(result.ok, false);
-    if (result.ok) return;
-    assert.equal(result.code, "STAGE_DEPRECATED");
+    try {
+      const result = await moveClientStage({
+        clientId: fixtures!.clientId,
+        targetStageId: retired.id,
+        actor,
+      });
+
+      assert.equal(result.ok, false);
+      if (result.ok) return;
+      assert.equal(result.code, "STAGE_DEPRECATED");
+    } finally {
+      await prisma.pipelineStage.delete({ where: { id: retired.id } });
+    }
   });
 
   it("refuses to move an account into another pipeline's stage", async () => {

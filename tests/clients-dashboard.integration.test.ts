@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import assert from "node:assert/strict";
-import { after, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 
 import { loadAuthContext } from "@/lib/authz";
 import {
@@ -36,7 +36,29 @@ const hasDatabase = Boolean(process.env.DATABASE_URL ?? process.env.DIRECT_URL);
  * client's data, and health never quietly becomes an operational state. They
  * run against whatever is actually in the workspace, so they catch a bad join
  * or a drifted predicate that a fixture-based test would not.
+ *
+ * The suite brings a few accounts of its own so there is always something to
+ * audit. Before that, three of these tests read data.clients[0] and passed
+ * only because the development database happened to hold clients; on a fresh
+ * Test database they failed. That is a dependency on ambient data, not a
+ * result. Auditing every visible row is still the point - on development
+ * these fixtures are audited alongside the real accounts.
  */
+const TEST_PREFIX = "zz-dashboard-test";
+
+async function cleanup() {
+  const clients = await prisma.client.findMany({
+    where: { companyName: { startsWith: TEST_PREFIX } },
+    select: { id: true },
+  });
+  const ids = clients.map((client) => client.id);
+
+  if (!ids.length) return;
+
+  await prisma.activityLog.deleteMany({ where: { entityId: { in: ids } } });
+  await prisma.client.deleteMany({ where: { id: { in: ids } } });
+}
+
 describe("clients dashboard (integration)", { skip: !hasDatabase }, () => {
   const now = new Date();
 
@@ -52,7 +74,43 @@ describe("clients dashboard (integration)", { skip: !hasDatabase }, () => {
     return { actor, data: await getClientsDashboard(actor) };
   }
 
+  before(async () => {
+    await cleanup();
+
+    const owner = await prisma.user.findFirstOrThrow({
+      where: { teamRole: "AGENCY_OWNER", isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+
+    const stage = await prisma.pipelineStage.findFirstOrThrow({
+      where: { stageKey: "in_production", isDeprecated: false },
+      select: { id: true },
+    });
+
+    /* Three accounts, differing in the fields the filters and search read. */
+    const accounts = [
+      { name: "Northwind", service: "SEO" as const, assigned: owner.id },
+      { name: "Fabrikam", service: "WEBSITE_SUPPORT" as const, assigned: owner.id },
+      /* Unassigned is a real state the owner column has to survive. */
+      { name: "Contoso", service: "SEO" as const, assigned: null },
+    ];
+
+    for (const account of accounts) {
+      await prisma.client.create({
+        data: {
+          clientName: `${account.name} Contact`,
+          companyName: `${TEST_PREFIX} ${account.name}`,
+          contactEmail: `${TEST_PREFIX}-${account.name.toLowerCase()}@example.test`,
+          serviceType: account.service,
+          currentStageId: stage.id,
+          assignedUserId: account.assigned,
+        },
+      });
+    }
+  });
+
   after(async () => {
+    await cleanup();
     await prisma.$disconnect();
   });
 
@@ -368,8 +426,20 @@ describe("clients dashboard (integration)", { skip: !hasDatabase }, () => {
   });
 
   it("shows a specialist only their own accounts", async () => {
+    /*
+     * role, not just teamRole. A seat can carry a specialist's teamRole and an
+     * administrator's access - the default seeded account does exactly that -
+     * and an administrator legitimately sees every account. Selecting on
+     * teamRole alone picked that seat and tested nothing, which went unnoticed
+     * because the loop body never ran on a workspace with no clients in it.
+     */
     const specialist = await prisma.user.findFirst({
-      where: { teamRole: "CREATIVE_SPECIALIST", isActive: true, deletedAt: null },
+      where: {
+        role: "TEAM_MEMBER",
+        teamRole: "CREATIVE_SPECIALIST",
+        isActive: true,
+        deletedAt: null,
+      },
       select: { id: true },
     });
 
