@@ -22,6 +22,7 @@ import { runAutomationStep } from "@/lib/journey/automation-runs";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { archivedBlock } from "@/lib/success/archive-service";
 
 /**
  * Moving an account between journey stages.
@@ -96,6 +97,17 @@ export async function moveClientStage(
       code: "FORBIDDEN",
       message: "You do not have permission to move accounts between stages.",
     };
+  }
+
+  /*
+   * Nothing moves on a filed account. Archived is terminal: advancing the
+   * journey of an account whose engagement ended would put it back on the
+   * board and into everybody's counts.
+   */
+  const archived = await archivedBlock(input.clientId);
+
+  if (archived) {
+    return { ok: false, code: "BLOCKED", message: archived };
   }
 
   const [client, targetStage] = await Promise.all([

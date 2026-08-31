@@ -5,6 +5,7 @@ import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { archivedBlock } from "@/lib/success/archive-service";
 
 /**
  * Renewals and expansion.
@@ -179,6 +180,13 @@ export interface SaveRenewalInput {
  * would stop the next one.
  */
 export async function saveRenewal(input: SaveRenewalInput) {
+  /* A renewal is the start of another term; a filed account is not having one. */
+  const archivedReason = await archivedBlock(input.clientId);
+
+  if (archivedReason) {
+    return { ok: false as const, code: "INVALID" as const, message: archivedReason };
+  }
+
   const { actor, clientId, stage } = input;
 
   if (!can(actor, "renewals.manage")) {

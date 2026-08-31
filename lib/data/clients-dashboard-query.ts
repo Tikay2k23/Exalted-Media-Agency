@@ -88,10 +88,19 @@ export async function getClientRow(
   return dashboard.clients[0] ?? null;
 }
 
+/**
+ * Which accounts the directory is about.
+ *
+ * Active is the working set. Archived is the filed history, which stays
+ * searchable because "what did we do for them" outlives the engagement.
+ */
+export type ClientScope = "active" | "archived" | "all";
+
 export async function getClientsDashboard(
   actor: AuthContext,
   /** Narrow to one account. Visibility is applied either way. */
   clientId?: string,
+  scope: ClientScope = "active",
 ): Promise<ClientsDashboard> {
   const permissions = {
     canCreate: canManageClients(actor.role),
@@ -103,7 +112,7 @@ export async function getClientsDashboard(
     return { ...EMPTY, ...permissions };
   }
 
-  const scope = canViewAllAgencyData(actor.role) ? {} : { assignedUserId: actor.id };
+  const visibility = canViewAllAgencyData(actor.role) ? {} : { assignedUserId: actor.id };
   const now = new Date();
 
   const [clients, stages, owners] = await Promise.all([
@@ -113,9 +122,19 @@ export async function getClientsDashboard(
        * returns it, so a link into a filed client keeps working.
        */
       where: {
-        ...scope,
+        ...visibility,
         deletedAt: null,
-        ...(clientId ? { id: clientId } : { archivedAt: null }),
+        /*
+         * Asking for one by id always returns it, so a link into a filed
+         * account keeps working whatever the directory is showing.
+         */
+        ...(clientId
+          ? { id: clientId }
+          : scope === "active"
+            ? { archivedAt: null }
+            : scope === "archived"
+              ? { archivedAt: { not: null } }
+              : {}),
       },
       orderBy: [{ companyName: "asc" }],
       take: clientId ? 1 : 500,

@@ -199,3 +199,35 @@ export async function unarchiveClient(input: {
  * in the portfolio counts. Spread into a where clause.
  */
 export const ACTIVE_CLIENT_SCOPE = { deletedAt: null, archivedAt: null } as const;
+
+
+/* -------------------------------------------------------------------------- */
+/* Operating on a filed account                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Whether normal delivery work may still happen on this account.
+ *
+ * Archived is the terminal state: the engagement is over, so advancing its
+ * journey, raising new delivery work, starting another offboarding or sending
+ * an intake form are all things that should not happen. The history stays
+ * readable and a note can still be written - what stops is anything that
+ * would carry the account forward as if it were live.
+ *
+ * Returns a reason rather than a boolean, because a refusal that does not say
+ * why is the thing this application keeps not doing.
+ */
+export async function archivedBlock(clientId: string): Promise<string | null> {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { companyName: true, archivedAt: true },
+  });
+
+  if (!client?.archivedAt) return null;
+
+  return (
+    `${client.companyName} was archived on `
+    + `${client.archivedAt.toISOString().slice(0, 10)}. Its history stays readable, but the `
+    + "engagement has ended - restore the account first if this work really needs to happen."
+  );
+}

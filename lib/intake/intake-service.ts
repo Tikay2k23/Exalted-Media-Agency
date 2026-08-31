@@ -13,6 +13,7 @@ import { applyIntakeToA2P } from "@/lib/a2p/intake-mapping";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { archivedBlock } from "@/lib/success/archive-service";
 import { checkForCredential } from "@/lib/security/credential-guard";
 
 /**
@@ -83,6 +84,13 @@ function newToken() {
  * the first link went astray, and leaving it working would defeat the point.
  */
 export async function sendIntakeForm(input: { actor: AuthContext; clientId: string }) {
+  /* Onboarding an account that has already been closed down. */
+  const archivedReason = await archivedBlock(input.clientId);
+
+  if (archivedReason) {
+    return { ok: false as const, code: "INVALID" as const, message: archivedReason };
+  }
+
   const { actor, clientId } = input;
 
   if (!can(actor, "clients.edit")) {

@@ -5,6 +5,7 @@ import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { archivedBlock } from "@/lib/success/archive-service";
 
 /**
  * Offboarding.
@@ -193,6 +194,13 @@ export async function saveOffboarding(input: SaveOffboardingInput) {
 
   if (!client) {
     return failure("NOT_FOUND", "Client not found.");
+  }
+
+  /* Starting a second closure on an account already filed away. */
+  const archived = await archivedBlock(client.id);
+
+  if (archived) {
+    return failure("INVALID", archived);
   }
 
   const existing = await prisma.offboardingRecord.findUnique({

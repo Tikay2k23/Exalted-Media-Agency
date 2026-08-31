@@ -731,6 +731,8 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             milestones: { orderBy: { position: "asc" } },
           },
         },
+        /* Who filed the account away, for the archive card. */
+        archivedBy: { select: { id: true, name: true } },
         agencyTasks: {
           /*
             * Deleted tasks were being loaded, thrown away by the Work tab in

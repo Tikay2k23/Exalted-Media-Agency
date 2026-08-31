@@ -10,6 +10,7 @@ import { ClientWork } from "@/components/clients/client-work";
 import { ClientTabs } from "@/components/clients/client-tabs";
 import { ClientAccess } from "@/components/clients/client-access";
 import { ClientActivity } from "@/components/clients/client-activity";
+import { ClientArchive } from "@/components/clients/client-archive";
 import { ClientBrief } from "@/components/clients/client-brief";
 import { ClientGrowth } from "@/components/clients/client-growth";
 import { ClientHealth } from "@/components/clients/client-health";
@@ -1173,35 +1174,54 @@ export default async function ClientDetailPage({
             const record = client.offboarding;
 
             return (
-              <ClientOffboarding
-                clientId={client.id}
-                canManage={can(actor, "offboarding.manage")}
-                owners={options.users}
-                reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
-                offboarding={{
-                  exists: record !== null,
-                  status: record?.status ?? "REQUESTED",
-                  reason: record?.reason ?? "OTHER",
-                  reasonDetail: record?.reasonDetail ?? null,
-                  remainingWork: record?.remainingWork ?? null,
-                  lessonsLearned: record?.lessonsLearned ?? null,
-                  ownerName: null,
-                  steps: OFFBOARDING_STEPS.map((step) => ({
-                    key: step.key,
-                    label: step.label,
-                    why: step.why,
-                    done: record
-                      ? step.key === "remainingWorkCleared"
-                        ? Boolean(record.remainingWork?.trim())
-                        : record[step.key] !== null
-                      : false,
-                  })),
-                  outstanding: record
-                    ? outstandingOffboardingSteps(record).map((step) => step.label)
-                    : OFFBOARDING_STEPS.map((step) => step.label),
-                  complete: record ? isOffboardingComplete(record) : false,
-                }}
-              />
+              <div className="space-y-4">
+                <ClientOffboarding
+                  clientId={client.id}
+                  canManage={can(actor, "offboarding.manage")}
+                  owners={options.users}
+                  reasons={OFFBOARDING_REASONS.map((o) => ({ value: o.value, label: o.label }))}
+                  offboarding={{
+                    exists: record !== null,
+                    status: record?.status ?? "REQUESTED",
+                    reason: record?.reason ?? "OTHER",
+                    reasonDetail: record?.reasonDetail ?? null,
+                    remainingWork: record?.remainingWork ?? null,
+                    lessonsLearned: record?.lessonsLearned ?? null,
+                    ownerName: null,
+                    steps: OFFBOARDING_STEPS.map((step) => ({
+                      key: step.key,
+                      label: step.label,
+                      why: step.why,
+                      done: record
+                        ? step.key === "remainingWorkCleared"
+                          ? Boolean(record.remainingWork?.trim())
+                          : record[step.key] !== null
+                        : false,
+                    })),
+                    outstanding: record
+                      ? outstandingOffboardingSteps(record).map((step) => step.label)
+                      : OFFBOARDING_STEPS.map((step) => step.label),
+                    complete: record ? isOffboardingComplete(record) : false,
+                  }}
+                />
+
+                {/*
+                  * Archive at the end of offboarding, where the lifecycle
+                  * actually finishes - not on every tab beside the buttons
+                  * people press all day.
+                  */}
+                <ClientArchive
+                  clientId={client.id}
+                  companyName={client.companyName}
+                  canArchive={can(actor, "clients.delete")}
+                  archivedAt={client.archivedAt?.toISOString() ?? null}
+                  archivedByName={client.archivedBy?.name ?? null}
+                  offboardingComplete={record ? isOffboardingComplete(record) : false}
+                  outstanding={
+                    record ? outstandingOffboardingSteps(record).map((step) => step.label) : []
+                  }
+                />
+              </div>
             );
           })(),
 

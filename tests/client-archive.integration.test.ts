@@ -8,6 +8,7 @@ import { ClientStatus, OffboardingStatus, Role, TeamRole } from "@prisma/client"
 import { loadAuthContext } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { archiveClient, unarchiveClient } from "@/lib/success/archive-service";
+import { moveClientStage } from "@/lib/journey/transition";
 import { OFFBOARDING_STEPS, saveOffboarding } from "@/lib/success/offboarding-service";
 
 /**
@@ -279,6 +280,80 @@ describe("client archive (integration)", { skip: !hasDatabase }, () => {
     });
 
     assert.ok(byId, "still there when asked for directly");
+  });
+
+  it("only one of two simultaneous archives takes effect", async () => {
+    const actor = await loadAuthContext(ownerId);
+    assert.ok(actor);
+
+    /* Put it back so the race has something to win. */
+    await unarchiveClient({ actor, clientId });
+
+    const before = await prisma.activityLog.count({
+      where: { entityId: clientId, fieldName: "archivedAt", newValue: { not: null } },
+    });
+
+    /*
+     * Both requests arrive together. The conditional write settles it: one
+     * archives, the other reads zero rows and reports the state it found.
+     */
+    const [a, b] = await Promise.all([
+      archiveClient({ actor, clientId }),
+      archiveClient({ actor, clientId }),
+    ]);
+
+    assert.equal(a.ok, true);
+    assert.equal(b.ok, true);
+
+    const after = await prisma.activityLog.count({
+      where: { entityId: clientId, fieldName: "archivedAt", newValue: { not: null } },
+    });
+
+    assert.equal(after - before, 1, "exactly one archive transition was recorded");
+  });
+
+  it("refuses a client id belonging to somebody else's account", async () => {
+    const actor = await loadAuthContext(outsiderId);
+    assert.ok(actor);
+
+    /*
+     * Beta-critical: an id in a request is not an entitlement. The specialist
+     * is refused on permission before scope is even reached, which is the
+     * stricter of the two answers.
+     */
+    const result = await archiveClient({ actor, clientId });
+
+    assert.equal(result.ok, false);
+  });
+
+  it("stops normal delivery work once the account is filed", async () => {
+    const actor = await loadAuthContext(ownerId);
+    assert.ok(actor);
+
+    const client = await prisma.client.findUniqueOrThrow({
+      where: { id: clientId },
+      select: { archivedAt: true, currentStageId: true },
+    });
+
+    assert.notEqual(client.archivedAt, null, "precondition: it is archived");
+
+    const next = await prisma.pipelineStage.findFirstOrThrow({
+      where: { isDeprecated: false, id: { not: client.currentStageId } },
+      select: { id: true },
+    });
+
+    const moved = await moveClientStage({
+      actor,
+      clientId,
+      targetStageId: next.id,
+    });
+
+    assert.equal(moved.ok, false, "an archived account does not advance");
+
+    if (!moved.ok) {
+      /* And it says why, rather than refusing for an unrelated reason. */
+      assert.match(moved.message, /archiv/i);
+    }
   });
 
   it("can be brought back", async () => {
