@@ -50,4 +50,7 @@ next-env.d.ts
 
 # Point-in-time database backups. Never committed - they hold client data.
 production-backup.json
+# Environment files that name a database and carry its credentials. Never
+# committed: see .env.example for the shape and the commands that use them.
 .env.uat
+.env.test

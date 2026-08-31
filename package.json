@@ -9,12 +9,13 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
+    "test": "node --env-file-if-exists=.env.test --import ./tests/setup/assert-test-database.mjs --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "db:generate": "node scripts/prisma-generate.mjs",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:seed-team": "node scripts/seed-team.mjs",
     "db:seed-env": "node --import tsx scripts/seed-environment.ts",
+    "uat:identity": "node scripts/uat.mjs identity",
     "uat:migrate": "node scripts/uat.mjs migrate",
     "uat:seed": "node scripts/uat.mjs seed",
     "uat:verify": "node scripts/uat.mjs verify",
@@ -25,7 +26,9 @@
     "db:bootstrap": "prisma db push && prisma db seed",
     "postinstall": "node scripts/prisma-generate.mjs",
     "db:inventory": "node --import tsx scripts/inventory.ts",
-    "db:sample": "node --import tsx scripts/seed-sample-data.ts"
+    "db:sample": "node --import tsx scripts/seed-sample-data.ts",
+    "test:migrate": "node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy",
+    "test:seed": "node --env-file=.env.test --import tsx scripts/seed-environment.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
