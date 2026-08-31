@@ -18,6 +18,7 @@
  *   npm run uat:identity    ask the server what it is
  *   npm run uat:migrate     apply migrations
  *   npm run uat:seed        configuration, SOPs, the catalogue and the seats
+ *   npm run uat:clients     the accounts UAT is carried out against
  *   npm run uat:verify      prove each seat can sign in
  *   npm run uat:dev         run the app against UAT on port 3100
  *   npm run uat:start       the built app, when a dev server already runs
@@ -34,6 +35,7 @@ const COMMANDS = {
   identity: null,
   migrate: ["npx", ["prisma", "migrate", "deploy"]],
   seed: ["npx", ["tsx", "scripts/seed-environment.ts"]],
+  clients: ["npx", ["tsx", "scripts/seed-uat-clients.ts"]],
   verify: ["npx", ["tsx", "scripts/verify-uat-signin.ts"]],
   dev: ["npx", ["next", "dev", "-p", "3100"]],
   // For when a dev server is already running from this directory: next refuses

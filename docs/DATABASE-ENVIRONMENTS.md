@@ -69,6 +69,7 @@ it falls back to development and says so.
 npm run uat:identity
 npm run uat:migrate
 npm run uat:seed
+npm run uat:clients
 npm run uat:verify
 npm run uat:dev
 ```
@@ -81,8 +82,12 @@ trusting the string that was configured.
 Standing one up from nothing:
 
 ```bash
-npm run uat:identity && npm run uat:migrate && npm run uat:seed && npm run uat:verify
+npm run uat:identity && npm run uat:migrate && npm run uat:seed   && npm run uat:clients && npm run uat:verify
 ```
+
+`uat:clients` creates the accounts UAT is carried out against. It is safe to
+re-run: an account that already exists is left alone, and it will not close
+work that a tester has open.
 
 ### Production
 

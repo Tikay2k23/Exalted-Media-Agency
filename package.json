@@ -18,6 +18,7 @@
     "uat:identity": "node scripts/uat.mjs identity",
     "uat:migrate": "node scripts/uat.mjs migrate",
     "uat:seed": "node scripts/uat.mjs seed",
+    "uat:clients": "node scripts/uat.mjs clients",
     "uat:verify": "node scripts/uat.mjs verify",
     "uat:dev": "node scripts/uat.mjs dev",
     "uat:start": "node scripts/uat.mjs start",
