@@ -206,6 +206,20 @@ export async function updateDefect(input: {
     return failure("NOT_FOUND", "Defect not found.");
   }
 
+  /*
+   * The permission says this person may work on defects. It does not say
+   * which client's.
+   *
+   * Raising one already went through loadClient; changing one did not, so a
+   * specialist assigned to one account could escalate a defect on an account
+   * they cannot see by passing its id - and severity feeds the approval gate
+   * and the account's health. Same NOT_FOUND either way, so this does not
+   * confirm the record exists to somebody who should not know.
+   */
+  if (!(await loadClient(actor, existing.client.id))) {
+    return failure("NOT_FOUND", "Defect not found.");
+  }
+
   // Closing is a separate, stricter operation. Routing it through here would
   // sidestep the self-verification rule.
   if (data.status && CLOSED_DEFECT_STATUSES.includes(data.status)) {
@@ -288,6 +302,11 @@ export async function closeDefect(input: {
   });
 
   if (!defect) {
+    return failure("NOT_FOUND", "Defect not found.");
+  }
+
+  /* Same reason as updateDefect: the id alone is not an entitlement. */
+  if (!(await loadClient(actor, defect.client.id))) {
     return failure("NOT_FOUND", "Defect not found.");
   }
 
@@ -425,10 +444,20 @@ export async function addQaTest(input: {
 
   const plan = await prisma.qaPlan.findUnique({
     where: { id: planId },
-    select: { id: true, name: true, _count: { select: { tests: true } } },
+    select: {
+      id: true,
+      name: true,
+      clientId: true,
+      _count: { select: { tests: true } },
+    },
   });
 
   if (!plan) {
+    return failure("NOT_FOUND", "QA plan not found.");
+  }
+
+  /* A plan id from another account is not a way into that account's QA. */
+  if (!(await loadClient(actor, plan.clientId))) {
     return failure("NOT_FOUND", "QA plan not found.");
   }
 
