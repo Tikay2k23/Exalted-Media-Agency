@@ -63,6 +63,22 @@ async function cleanup() {
   await prisma.leadCallLog.deleteMany({ where: { leadId: { in: leadIds } } });
   await prisma.lead.deleteMany({ where: { businessName: { startsWith: TEST_PREFIX } } });
 
+  /*
+   * The contacts the leads were matched against.
+   *
+   * Creating a lead creates a Contact for duplicate detection, and
+   * Lead.contactId is ON DELETE SET NULL - so deleting the lead detaches the
+   * contact and leaves it behind rather than taking it with it. Without this
+   * line every run stranded its contacts: 1,682 of them had accumulated over
+   * roughly 187 runs before anybody looked.
+   *
+   * Scoped to this suite's own prefix, like every other delete here. The
+   * production behaviour is deliberate and is not what is being fixed.
+   */
+  await prisma.contact.deleteMany({
+    where: { businessName: { startsWith: TEST_PREFIX } },
+  });
+
   if (allClientIds.length) {
     await prisma.employeeTask.deleteMany({ where: { clientId: { in: allClientIds } } });
     await prisma.clientStageHistory.deleteMany({
@@ -113,6 +129,35 @@ describe("lead service (integration)", { skip: !hasDatabase }, () => {
 
   after(async () => {
     await cleanup();
+
+    /*
+     * Cleanup has to actually clean up.
+     *
+     * This suite quietly stranded a contact per lead for months - the tests
+     * all passed, because passing tests say nothing about what they left
+     * behind. Checking here means the next table somebody forgets fails
+     * loudly on the run that forgets it, rather than being found by counting
+     * rows a year later.
+     */
+    const leftovers = {
+      contacts: await prisma.contact.count({
+        where: { businessName: { startsWith: TEST_PREFIX } },
+      }),
+      leads: await prisma.lead.count({
+        where: { businessName: { startsWith: TEST_PREFIX } },
+      }),
+      clients: await prisma.client.count({
+        where: { companyName: { startsWith: TEST_PREFIX } },
+      }),
+      users: await prisma.user.count({ where: { email: { startsWith: TEST_PREFIX } } }),
+    };
+
+    assert.deepEqual(
+      leftovers,
+      { contacts: 0, leads: 0, clients: 0, users: 0 },
+      "this suite left fixtures behind",
+    );
+
     await prisma.$disconnect();
   });
 
