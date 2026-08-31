@@ -229,6 +229,17 @@ enum UatSeverity {
   P3
 }
 
+/// Which release a test has to pass before that release can ship.
+///
+/// Out of scope is for functionality this product deliberately does not have
+/// yet - never for a core capability that is broken. Security, isolation,
+/// permissions and data integrity are always beta-required, whatever else is.
+enum UatReleaseScope {
+  LIMITED_BETA_REQUIRED
+  PRODUCTION_REQUIRED
+  FUTURE_OUT_OF_SCOPE
+}
+
 enum UatEnvironment {
   DEVELOPMENT
   STAGING
@@ -255,6 +266,9 @@ model UatTestCase {
   expectedResult String
   /// How bad it is when this fails, which decides whether it blocks a release.
   severity      UatSeverity @default(P2)
+  releaseScope  UatReleaseScope @default(LIMITED_BETA_REQUIRED)
+  /// Why something was put out of scope, so the decision can be argued with.
+  scopeReason   String?
   /// Deliberately no status column: a case's status is its latest run's, so
   /// the two cannot disagree. See uatCaseStatus().
   createdById   String?

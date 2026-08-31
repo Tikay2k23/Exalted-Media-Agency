@@ -1,4 +1,10 @@
-import { Prisma, UatEnvironment, UatSeverity, UatStatus } from "@prisma/client";
+import {
+  Prisma,
+  UatEnvironment,
+  UatReleaseScope,
+  UatSeverity,
+  UatStatus,
+} from "@prisma/client";
 
 import { logActivity } from "@/lib/activity";
 import { type AuthContext } from "@/lib/authz";
@@ -54,6 +60,8 @@ export async function createUatCase(input: {
   steps: string;
   expectedResult: string;
   severity?: UatSeverity;
+  releaseScope?: UatReleaseScope;
+  scopeReason?: string | null;
 }) {
   const { actor } = input;
 
@@ -97,6 +105,8 @@ export async function createUatCase(input: {
           steps,
           expectedResult,
           severity: input.severity ?? UatSeverity.P2,
+          releaseScope: input.releaseScope ?? UatReleaseScope.LIMITED_BETA_REQUIRED,
+          scopeReason: input.scopeReason?.trim() || null,
           createdById: actor.id,
         },
       });
@@ -402,6 +412,11 @@ export async function loadUatCases() {
     module: row.module,
     name: row.name,
     severity: row.severity as "P0" | "P1" | "P2" | "P3",
+    releaseScope: row.releaseScope as
+      | "LIMITED_BETA_REQUIRED"
+      | "PRODUCTION_REQUIRED"
+      | "FUTURE_OUT_OF_SCOPE",
+    scopeReason: row.scopeReason,
     runs: row.runs.map((run) => ({
       id: run.id,
       runNumber: run.runNumber,

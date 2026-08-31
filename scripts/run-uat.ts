@@ -4,7 +4,7 @@ import { loadAuthContext } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { recordUatRun } from "@/lib/governance/uat-service";
 import { loadUatCases } from "@/lib/governance/uat-service";
-import { uatReadiness, uatSummary } from "@/lib/governance/uat";
+import { gatesBeta, uatReadiness, uatSummary } from "@/lib/governance/uat";
 
 /**
  * Records the UAT runs that were actually executed.
@@ -180,7 +180,10 @@ async function main() {
   const summary = uatSummary(cases);
   const verdict = uatReadiness(cases);
 
-  console.log("=== UAT ===");
+  const beta = cases.filter(gatesBeta);
+  const betaSummary = uatSummary(beta);
+
+  console.log("=== catalogue ===");
   console.log(`  total       ${summary.total}`);
   console.log(`  passed      ${summary.passed}`);
   console.log(`  failed      ${summary.failed}`);
@@ -189,6 +192,18 @@ async function main() {
   console.log(`  not tested  ${summary.notTested}`);
   console.log(`  pass rate   ${summary.passRate === null ? "n/a" : `${summary.passRate}%`} (of executed)`);
   console.log(`  open        P0 ${summary.open.P0}  P1 ${summary.open.P1}  P2 ${summary.open.P2}  P3 ${summary.open.P3}`);
+  console.log("");
+  console.log("=== limited beta gate ===");
+  console.log(`  required    ${betaSummary.total}`);
+  console.log(`  passed      ${betaSummary.passed}`);
+  console.log(`  failed      ${betaSummary.failed}`);
+  console.log(`  blocked     ${betaSummary.blocked}`);
+  console.log(`  retest      ${betaSummary.retestRequired}`);
+  console.log(`  not tested  ${betaSummary.notTested}`);
+  console.log(
+    `  executed    ${betaSummary.passed + betaSummary.failed + betaSummary.retestRequired} of ${betaSummary.total}`,
+  );
+
   console.log(`\n  readiness   ${verdict.state}`);
 
   for (const blocker of verdict.blockers) console.log(`    - ${blocker}`);

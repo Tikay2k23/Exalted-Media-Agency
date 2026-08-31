@@ -23,6 +23,7 @@ import {
   type UatCase,
   type UatSeverity,
   type UatStatus,
+  gatesBeta,
   openSeverity,
   uatCaseStatus,
   uatReadiness,
@@ -71,6 +72,9 @@ export function SystemUat({
 
   const summary = useMemo(() => uatSummary(cases), [cases]);
   const verdict = useMemo(() => uatReadiness(cases), [cases]);
+  /* The subset that actually gates the release, counted on its own. */
+  const beta = useMemo(() => cases.filter(gatesBeta), [cases]);
+  const betaSummary = useMemo(() => uatSummary(beta), [beta]);
 
   const modules = useMemo(
     () => [...new Set(cases.map((c) => c.module))].sort(),
@@ -155,11 +159,36 @@ export function SystemUat({
               }
             />
           ))}
-          <Tile
-            label="Pass rate"
-            /* Of what was executed. The untested count says the rest. */
-            value={summary.passRate === null ? "n/a" : `${summary.passRate}%`}
-          />
+          {/*
+            * Coverage, not the pass rate.
+            *
+            * "100%" against eight of forty-three is true and useless - it is
+            * 100% of a very small amount of testing. The fraction cannot be
+            * read that way, so it is the one shown large.
+            */}
+          <Tile label="Executed" value={`${summary.passed + summary.failed + summary.retestRequired} / ${summary.total}`} />
+        </div>
+
+        {/* ------------------------------------------- the gate that matters */}
+        <div className="rounded-xl border border-slate-200 p-3">
+          <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-slate-400">
+            Limited Beta gate
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            <span className="font-semibold text-slate-900">
+              {betaSummary.passed + betaSummary.failed + betaSummary.retestRequired} of{" "}
+              {betaSummary.total}
+            </span>{" "}
+            required tests executed, {betaSummary.passed} passed, {betaSummary.failed} failed,{" "}
+            {betaSummary.blocked} blocked, {betaSummary.notTested} not yet run.
+          </p>
+          {cases.length > betaSummary.total ? (
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              {cases.length - betaSummary.total} further case
+              {cases.length - betaSummary.total === 1 ? "" : "s"} are scoped to production or
+              to a later release and are counted separately.
+            </p>
+          ) : null}
         </div>
 
         {/* --------------------------------------------------- the verdict */}

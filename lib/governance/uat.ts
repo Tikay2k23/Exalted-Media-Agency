@@ -23,6 +23,17 @@ export type UatStatus =
 
 export type UatSeverity = "P0" | "P1" | "P2" | "P3";
 
+export type UatReleaseScope =
+  | "LIMITED_BETA_REQUIRED"
+  | "PRODUCTION_REQUIRED"
+  | "FUTURE_OUT_OF_SCOPE";
+
+export const UAT_SCOPE_LABELS: Record<UatReleaseScope, string> = {
+  LIMITED_BETA_REQUIRED: "Beta required",
+  PRODUCTION_REQUIRED: "Production required",
+  FUTURE_OUT_OF_SCOPE: "Future",
+};
+
 export const UAT_STATUS_LABELS: Record<UatStatus, string> = {
   NOT_TESTED: "Not tested",
   TESTING: "Testing",
@@ -111,8 +122,23 @@ export interface UatCase {
   module: string;
   name: string;
   severity: UatSeverity;
+  releaseScope: UatReleaseScope;
+  scopeReason: string | null;
   /** Newest first. */
   runs: UatRun[];
+}
+
+/**
+ * Whether a case gates Limited Beta.
+ *
+ * Severity overrides scope for the P0 class. Cross-client isolation, auth and
+ * data integrity are beta-required whatever anybody marked them, because "out
+ * of scope" must never become a way to ship a hole.
+ */
+export function gatesBeta(testCase: UatCase): boolean {
+  if (testCase.severity === "P0") return true;
+
+  return testCase.releaseScope === "LIMITED_BETA_REQUIRED";
 }
 
 /**
@@ -162,6 +188,13 @@ export interface UatSummary {
   modulesUntested: string[];
 }
 
+/**
+ * The catalogue, and the part of it that gates the release.
+ *
+ * Two counts rather than one, because a suite where most of the untested work
+ * is future scope is in a different position from one where it is not - and a
+ * single pass rate cannot say which.
+ */
 export function uatSummary(cases: UatCase[]): UatSummary {
   const open: Record<UatSeverity, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
   const covered = new Set<string>();
@@ -247,13 +280,27 @@ function plural(count: number, one: string, many: string) {
  * without "because two P1s are open and the permissions module has never been
  * run".
  */
-export function uatReadiness(cases: UatCase[]): ReadinessVerdict {
-  const summary = uatSummary(cases);
-  const blockers: string[] = [];
-
-  if (summary.total === 0) {
+export function uatReadiness(all: UatCase[]): ReadinessVerdict {
+  if (all.length === 0) {
     return { state: "NOT_READY", blockers: ["No test cases have been written yet."] };
   }
+
+  /*
+   * Only what gates this release. A test for something the product has
+   * deliberately not built yet should not hold the release it was never part
+   * of - but a P0 always counts, whatever it was scoped as.
+   */
+  const cases = all.filter(gatesBeta);
+
+  if (cases.length === 0) {
+    return {
+      state: "NOT_READY",
+      blockers: ["No test case is marked as required for Limited Beta."],
+    };
+  }
+
+  const summary = uatSummary(cases);
+  const blockers: string[] = [];
 
   for (const severity of RELEASE_BLOCKING) {
     if (summary.open[severity] > 0) {

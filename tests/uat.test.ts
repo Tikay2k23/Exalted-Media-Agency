@@ -29,6 +29,8 @@ const testCase = (overrides: Partial<UatCase> = {}): UatCase => ({
   module: "Journey",
   name: "A case",
   severity: "P2",
+  releaseScope: "LIMITED_BETA_REQUIRED",
+  scopeReason: null,
   runs: [],
   ...overrides,
 });
@@ -185,6 +187,49 @@ describe("readiness is calculated, never set", () => {
 
     assert.notEqual(verdict.state, "READY_FOR_LIMITED_BETA");
     assert.ok(verdict.blockers.some((b) => b.includes("Permissions")));
+  });
+
+  it("does not let future scope hold up the release", () => {
+    const cases = readySuite();
+
+    cases.push(
+      testCase({
+        id: "future",
+        reference: "UAT-9999",
+        module: "Integrations",
+        name: "Something not built yet",
+        releaseScope: "FUTURE_OUT_OF_SCOPE",
+        scopeReason: "No provider is part of Limited Beta.",
+        runs: [],
+      }),
+    );
+
+    assert.equal(uatReadiness(cases).state, "READY_FOR_LIMITED_BETA");
+  });
+
+  it("will not let out-of-scope hide a P0", () => {
+    /*
+     * The rule that stops scope becoming a way to ship a hole: severity wins.
+     */
+    const cases = readySuite();
+
+    cases.push(
+      testCase({
+        id: "hole",
+        reference: "UAT-9998",
+        module: "Permissions",
+        name: "Cross-client isolation",
+        severity: "P0",
+        releaseScope: "FUTURE_OUT_OF_SCOPE",
+        scopeReason: "Somebody tried to scope this away.",
+        runs: [],
+      }),
+    );
+
+    const verdict = uatReadiness(cases);
+
+    assert.notEqual(verdict.state, "READY_FOR_LIMITED_BETA");
+    assert.ok(verdict.blockers.some((b) => b.includes("never been run")));
   });
 
   it("refuses an empty suite rather than approving a vacuum", () => {
