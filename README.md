@@ -2,6 +2,17 @@
 
 Internal operations platform for a professional digital marketing agency, built with Next.js, TypeScript, Tailwind CSS, Prisma, PostgreSQL, and NextAuth.
 
+## Documentation
+
+New to the app? Start with **[docs/BUTTON-GUIDE.md](docs/BUTTON-GUIDE.md)** — a
+picture of each screen with every button numbered.
+
+- [docs/USER-HANDBOOK.md](docs/USER-HANDBOOK.md) — how to use the system, a section per seat
+- [docs/BUTTON-GUIDE.md](docs/BUTTON-GUIDE.md) — every screen and every button, with screenshots
+- [docs/DATABASE-ENVIRONMENTS.md](docs/DATABASE-ENVIRONMENTS.md) — the four databases and the command for each
+- [docs/UAT-RUNBOOK.md](docs/UAT-RUNBOOK.md) — the Limited Beta testing round
+- [docs/sop/](docs/sop/) — the ten written procedures
+
 ## What This App Covers
 
 - Role-based authentication for admins, managers, and team members
