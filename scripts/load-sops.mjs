@@ -32,6 +32,43 @@ if (!connectionString) {
   process.exit(1);
 }
 
+/*
+ * Says where it is writing, and makes a remote target deliberate.
+ *
+ * This script had no guard at all: it took whatever DATABASE_URL happened to
+ * be set and wrote. That is fine while every database is on this machine and
+ * dangerous the moment one is not - loading a changed document drops the SOP
+ * back to Draft and clears its approval, which on a live workspace means the
+ * procedures the agency is working to are suddenly unapproved.
+ *
+ * Local targets run without ceremony. Anywhere else has to be asked for.
+ */
+function describeTarget(url) {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.host,
+      database: parsed.pathname.replace("/", "") || "(default)",
+      isLocal: ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname.toLowerCase()),
+    };
+  } catch {
+    return { host: "(unparseable)", database: "(unknown)", isLocal: false };
+  }
+}
+
+const target = describeTarget(connectionString);
+
+console.log(`Loading SOPs into ${target.database} at ${target.host}`);
+
+if (!target.isLocal && process.env.LOAD_SOPS_ALLOW_REMOTE !== "1") {
+  console.error(
+    `\n[load-sops] ${target.host} is not a local database, and a changed document`
+      + " drops its SOP back to Draft and clears the approval." + "\n"
+      + "[load-sops] Re-run with LOAD_SOPS_ALLOW_REMOTE=1 if that is what you mean to do.",
+  );
+  process.exit(1);
+}
+
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
 /** "SOP-04-Strategy-Project-Planning..." -> { reference, title } */
