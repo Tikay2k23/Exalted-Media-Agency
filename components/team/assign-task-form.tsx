@@ -4,15 +4,15 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardList,
-  LoaderCircle,
   Plus,
   Sparkles,
   Target,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 
+import { AccountDialog } from "@/components/clients/account-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -96,7 +96,7 @@ function Field({
  * does this, and the person assigning is free to ignore it, because they know
  * things this table does not - like who is on leave.
  */
-export function AssignTaskForm({
+function AssignTaskFields({
   users,
   clients,
   projects,
@@ -107,13 +107,9 @@ export function AssignTaskForm({
   projects: ProjectOption[];
   sops: SopOption[];
 }) {
-  const router = useRouter();
   const [category, setCategory] = useState<string>(CATEGORY_GUIDES[0].value);
   const [clientId, setClientId] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   const guide = categoryGuide(category as never);
 
@@ -137,68 +133,9 @@ export function AssignTaskForm({
     ? users.filter((user) => user.teamRole === guide.specialist)
     : [];
 
-  function submit(formData: FormData) {
-    setError(null);
-    setSuccess(null);
-
-    const payload = {
-      title: String(formData.get("title") ?? "").trim(),
-      assignedToId: String(formData.get("assignedToId") ?? ""),
-      dueDate: String(formData.get("dueDate") ?? ""),
-      priority: String(formData.get("priority") ?? "MEDIUM"),
-      category: String(formData.get("category") ?? ""),
-      estimatedHours: Number(formData.get("estimatedHours") ?? 2),
-      status: String(formData.get("status") ?? "TODO"),
-      clientId: String(formData.get("clientId") ?? ""),
-      projectId: String(formData.get("projectId") ?? ""),
-      platform: String(formData.get("platform") ?? "") || null,
-      objective: String(formData.get("objective") ?? "").trim(),
-      completionCriteria: String(formData.get("completionCriteria") ?? "").trim(),
-      reviewerId: String(formData.get("reviewerId") ?? ""),
-      startDate: String(formData.get("startDate") ?? ""),
-      note: String(formData.get("note") ?? "").trim(),
-      requiredAssets: String(formData.get("requiredAssets") ?? "").trim(),
-      kpi: String(formData.get("kpi") ?? "").trim(),
-      blocker: String(formData.get("blocker") ?? "").trim(),
-      recurrence: String(formData.get("recurrence") ?? "NONE"),
-    };
-
-    if (!payload.title || !payload.assignedToId || !payload.dueDate || !payload.category) {
-      setError("Task title, assignee, category and due date are all needed.");
-      return;
-    }
-
-    startTransition(async () => {
-      const response = await fetch("/api/employee-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = (await response.json().catch(() => null)) as
-        | { error?: string; deduplicated?: boolean }
-        | null;
-
-      if (!response.ok) {
-        setError(data?.error ?? "We couldn't assign that task.");
-        return;
-      }
-
-      const who = users.find((user) => user.id === payload.assignedToId)?.name ?? "the team";
-
-      setSuccess(
-        data?.deduplicated
-          ? `Already assigned to ${who} — nothing was duplicated.`
-          : `Assigned to ${who}. It is on their My Work page and in the queue below.`,
-      );
-
-      router.refresh();
-    });
-  }
-
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-      <form action={submit} className="space-y-4">
+      <div className="space-y-4">
         {/* Row 1 — what, who, when */}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[2fr_1.5fr_1fr]">
           <Field label="Task title" required>
@@ -376,33 +313,7 @@ export function AssignTaskForm({
           </Field>
         </div>
 
-        {error ? (
-          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
-            {error}
-          </p>
-        ) : null}
-
-        {success ? (
-          <p className="flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            {success}
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={isPending} className="gap-2">
-            {isPending ? (
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            Assign task
-          </Button>
-          {isPending ? (
-            <span className="text-sm text-slate-500">Saving…</span>
-          ) : null}
-        </div>
-      </form>
+      </div>
 
       {/* Guidance. Below the form on smaller screens. */}
       <aside className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
@@ -497,5 +408,146 @@ export function AssignTaskForm({
         )}
       </aside>
     </div>
+  );
+}
+
+
+/**
+ * Assigning work, on demand.
+ *
+ * The form used to sit open on My Work permanently, which cost most of a
+ * screen to a thing most people use occasionally. It is the same form - one
+ * implementation, rendered into the shared dialog - behind a button in the
+ * page's action row.
+ *
+ * The fields are keyed on how many times the dialog has been opened, so every
+ * open starts from the component's own defaults. Clearing state by hand is how
+ * a previously created task's values leak into the next one.
+ */
+export function AssignTaskModal({
+  users,
+  clients,
+  projects,
+  sops,
+}: {
+  users: TeamOption[];
+  clients: { id: string; companyName: string }[];
+  projects: ProjectOption[];
+  sops: SopOption[];
+}) {
+  const router = useRouter();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [opened, setOpened] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function close() {
+    setOpen(false);
+    setError(null);
+    setDirty(false);
+    /* Back to the control that opened it, so the keyboard does not lose its place. */
+    triggerRef.current?.focus();
+  }
+
+  function submit(formData: FormData) {
+    setError(null);
+
+    const payload = {
+      title: String(formData.get("title") ?? "").trim(),
+      assignedToId: String(formData.get("assignedToId") ?? ""),
+      dueDate: String(formData.get("dueDate") ?? ""),
+      priority: String(formData.get("priority") ?? "MEDIUM"),
+      category: String(formData.get("category") ?? ""),
+      estimatedHours: Number(formData.get("estimatedHours") ?? 2),
+      status: String(formData.get("status") ?? "TODO"),
+      clientId: String(formData.get("clientId") ?? ""),
+      projectId: String(formData.get("projectId") ?? ""),
+      platform: String(formData.get("platform") ?? "") || null,
+      objective: String(formData.get("objective") ?? "").trim(),
+      completionCriteria: String(formData.get("completionCriteria") ?? "").trim(),
+      reviewerId: String(formData.get("reviewerId") ?? ""),
+      startDate: String(formData.get("startDate") ?? ""),
+      note: String(formData.get("note") ?? "").trim(),
+      requiredAssets: String(formData.get("requiredAssets") ?? "").trim(),
+      kpi: String(formData.get("kpi") ?? "").trim(),
+      blocker: String(formData.get("blocker") ?? "").trim(),
+      recurrence: String(formData.get("recurrence") ?? "NONE"),
+    };
+
+    if (!payload.title || !payload.assignedToId || !payload.dueDate || !payload.category) {
+      setError("Task title, assignee, category and due date are all needed.");
+      return;
+    }
+
+    startTransition(async () => {
+      const response = await fetch("/api/employee-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { error?: string; deduplicated?: boolean }
+        | null;
+
+      /* Failure keeps the dialog open with everything still typed in it. */
+      if (!response.ok) {
+        setError(data?.error ?? "We couldn't assign that task.");
+        return;
+      }
+
+      close();
+      /* The list updates in place; no navigation, no full reload. */
+      router.refresh();
+    });
+  }
+
+  return (
+    <>
+      <Button
+        ref={triggerRef}
+        size="sm"
+        className="gap-1.5"
+        onClick={() => {
+          setOpened((count) => count + 1);
+          setOpen(true);
+        }}
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden />
+        Assign Marketing Task
+      </Button>
+
+      {open ? (
+        <AccountDialog
+          title="Assign Marketing Task"
+          subtitle="Create and assign a marketing task with all the details your team needs to deliver."
+          size="wide"
+          isDirty={dirty}
+          isSaving={isPending}
+          error={error}
+          submitLabel="Assign Task"
+          submittingLabel="Assigning…"
+          onClose={close}
+          onSubmit={submit}
+        >
+          {/*
+            Dirtiness from the events themselves rather than a field-by-field
+            handler: the guard only needs to know whether anything was touched,
+            and every control here bubbles.
+          */}
+          <div onInput={() => setDirty(true)} onChange={() => setDirty(true)}>
+            <AssignTaskFields
+              key={opened}
+              users={users}
+              clients={clients}
+              projects={projects}
+              sops={sops}
+            />
+          </div>
+        </AccountDialog>
+      ) : null}
+    </>
   );
 }

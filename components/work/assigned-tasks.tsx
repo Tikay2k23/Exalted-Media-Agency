@@ -2,7 +2,7 @@
 
 import { Download, ListFilter, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,7 @@ export function AssignedTasks({
   capped,
   serverNow,
   heading = "All My Tasks",
+  headerAction,
   identity,
   overview,
   recentActivity,
@@ -100,6 +101,8 @@ export function AssignedTasks({
   serverNow: string;
   /** Heading on the detailed table below the overview. */
   heading?: string;
+  /** A primary action for the page's action row, beside Export and View all. */
+  headerAction?: ReactNode;
   /** Who is looking, for the page header. Derived from the session, never typed. */
   identity: { eyebrow: string; title: string; subtitle: string };
   /** The daily overview, derived from these same rows on the server. */
@@ -438,9 +441,11 @@ export function AssignedTasks({
             ) : null}
           </div>
 
-          <Button size="sm" onClick={jumpToTable}>
+          <Button variant="secondary" size="sm" onClick={jumpToTable}>
             View All Assigned Tasks
           </Button>
+
+          {headerAction}
         </div>
       </div>
 

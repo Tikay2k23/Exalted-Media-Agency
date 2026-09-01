@@ -1,15 +1,8 @@
 "use client";
 
-import { AssignTaskForm } from "@/components/team/assign-task-form";
+import { AssignTaskModal } from "@/components/team/assign-task-form";
 import { AssignedTasks } from "@/components/work/assigned-tasks";
 import type { TaskEvent, TaskRow, ViewerCapabilities } from "@/components/work/task-types";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import type { MyWorkView } from "@/lib/tasks/my-work-view";
 
 type Option = {
@@ -23,12 +16,13 @@ type Option = {
 
 /**
  * My Work: the daily overview, the task table, and - for whoever hands work out
- * - the form that creates it.
+ * - the way to create it.
  *
- * One screen rather than three, because they are one job: see what needs you,
- * work through it, and assign what somebody else should pick up. The assign
- * form sits below the overview so it does not push the day's work off the top
- * for the people who never use it.
+ * Assigning used to be a form sitting open at the bottom of this page. It cost
+ * most of a screen to something most people use occasionally, and pushed the
+ * day's work further from the top for everyone who never assigns anything. It
+ * is now a button in the page's action row that opens the same form in a
+ * dialog, so the queue starts higher and the page is shorter.
  */
 export function AgencyTaskPanel({
   tasks,
@@ -83,27 +77,21 @@ export function AgencyTaskPanel({
         initialTaskId={initialTaskId}
         initialTodayOnly={initialTodayOnly}
         heading="All My Tasks"
-      />
-
-      {canManageTasks ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Assign Marketing Task</CardTitle>
-            <CardDescription>
-              Create and assign a marketing task with all the details your team needs to
-              deliver.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AssignTaskForm
+        /*
+          The server decides whether this appears at all. Hiding the control is
+          tidiness; POST /api/employee-tasks checks the permission itself.
+        */
+        headerAction={
+          canManageTasks ? (
+            <AssignTaskModal
               users={users}
               clients={clients}
               projects={projects}
               sops={sops}
             />
-          </CardContent>
-        </Card>
-      ) : null}
+          ) : null
+        }
+      />
     </div>
   );
 }

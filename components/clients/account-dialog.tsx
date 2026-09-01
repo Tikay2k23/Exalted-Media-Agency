@@ -37,6 +37,8 @@ export function AccountDialog({
   isSaving,
   error,
   submitLabel = "Save changes",
+  submittingLabel = "Saving…",
+  size = "default",
   onClose,
   onSubmit,
   children,
@@ -47,8 +49,17 @@ export function AccountDialog({
   isSaving: boolean;
   error: string | null;
   submitLabel?: string;
+  /** What the primary button says while the request is in flight. */
+  submittingLabel?: string;
+  /**
+   * "wide" is for a form with genuinely many fields, where squeezing into the
+   * default column would make a long scroll out of something that reads better
+   * in rows. Everything else stays at the size the Account editors use.
+   */
+  size?: "default" | "wide";
   onClose: () => void;
-  onSubmit: () => void;
+  /** Receives the form's data, so a caller can read fields without its own form. */
+  onSubmit: (formData: FormData) => void;
   children: ReactNode;
 }) {
   const [confirmingClose, setConfirmingClose] = useState(false);
@@ -105,7 +116,7 @@ export function AccountDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:rounded-2xl"
+        className={`relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:rounded-2xl ${size === "wide" ? "max-w-[1100px]" : "max-w-xl"}`}
       >
         <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div className="min-w-0">
@@ -125,7 +136,7 @@ export function AccountDialog({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (!isSaving) onSubmit();
+            if (!isSaving) onSubmit(new FormData(event.currentTarget));
           }}
           className="flex min-h-0 flex-1 flex-col"
         >
@@ -149,7 +160,7 @@ export function AccountDialog({
               {isSaving ? (
                 <>
                   <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
-                  Saving…
+                  {submittingLabel}
                 </>
               ) : (
                 submitLabel
