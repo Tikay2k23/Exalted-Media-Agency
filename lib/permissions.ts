@@ -212,6 +212,15 @@ const TEAM_ROLE_PERMISSIONS: Record<TeamRole, readonly Permission[]> = {
     "leads.convert",
     "sales.reporting",
     "clients.view.all",
+    // Same reasoning as the specialist seats, and this row was simply missed:
+    // SOP 10 asks every team member to take part in improving the process, and
+    // SOP-01 and SOP-02 - lead capture, and discovery through to closing - are
+    // this seat's own procedures. Leaving it off made sales the only seat that
+    // could not read the two SOPs describing its job, or record a result when
+    // its part of the system was tested. Deciding what happens to an
+    // improvement, signing off an audit and approving a release all stay with
+    // governance.audit, which this seat does not have.
+    "governance.view",
   ],
 
   // Project Manager / Client Success: runs delivery and owns the client

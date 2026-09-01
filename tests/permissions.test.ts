@@ -41,6 +41,39 @@ describe("the six seats", () => {
     assert.equal(can(sales, "users.manage"), false);
   });
 
+  it("lets every seat read the procedures it is held to", () => {
+    /*
+     * SOP 10 asks every team member to take part in improving the process, and
+     * a seat cannot follow a procedure it cannot open. Sales was the seat this
+     * was missed on - SOP-01 and SOP-02 describe lead capture and closing, and
+     * it was the one seat that could not read them, or record a result when
+     * its own part of the system was tested.
+     */
+    for (const teamRole of Object.values(TeamRole)) {
+      assert.equal(can(seat(teamRole), "governance.view"), true, teamRole);
+    }
+  });
+
+  it("keeps signing things off away from the seats that only read them", () => {
+    /*
+     * The other half of the rule above. Reading the procedures, raising an
+     * improvement and recording a test result are open to everyone; deciding
+     * what happens to an improvement, closing an audit and approving a release
+     * are not.
+     */
+    for (const teamRole of [
+      TeamRole.SALES_REP,
+      TeamRole.AUTOMATION_SPECIALIST,
+      TeamRole.CREATIVE_SPECIALIST,
+      TeamRole.ADS_SPECIALIST,
+    ]) {
+      assert.equal(can(seat(teamRole), "governance.audit"), false, teamRole);
+    }
+
+    assert.equal(can(seat(TeamRole.AGENCY_OWNER), "governance.audit"), true);
+    assert.equal(can(seat(TeamRole.PROJECT_MANAGER), "governance.audit"), true);
+  });
+
   it("gives the project manager the delivery and client-success authority", () => {
     const pm = seat(TeamRole.PROJECT_MANAGER);
 
