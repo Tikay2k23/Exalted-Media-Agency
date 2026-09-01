@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Save, UserPlus } from "lucide-react";
+import { Eye, EyeOff, KeyRound, LoaderCircle, Save, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -66,6 +66,62 @@ export function UserManagementPanel({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  /* The row whose password form is open, plus that form's own state. */
+  const [resetUserId, setResetUserId] = useState<string | null>(null);
+  const [resetValue, setResetValue] = useState("");
+  const [resetShow, setResetShow] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  function openReset(userId: string) {
+    setResetUserId(userId);
+    setResetValue("");
+    setResetShow(false);
+    setResetError(null);
+    setResetMessage(null);
+  }
+
+  function closeReset() {
+    setResetUserId(null);
+    setResetValue("");
+    setResetError(null);
+  }
+
+  async function submitReset(userId: string, userName: string) {
+    if (resetBusy) return;
+
+    if (resetValue.length < 8) {
+      setResetError("A password must be at least 8 characters.");
+      return;
+    }
+
+    setResetBusy(true);
+    setResetError(null);
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: resetValue }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        setResetError(data?.error ?? "Could not reset the password.");
+        return;
+      }
+
+      closeReset();
+      setResetMessage(`Password reset for ${userName}. Share it with them directly.`);
+    } catch (resetRequestError) {
+      console.error("[user-management-panel] Failed to reset password.", resetRequestError);
+      setResetError("Could not reach the server. Nothing was changed.");
+    } finally {
+      setResetBusy(false);
+    }
+  }
 
   function handleCreate(formData: FormData) {
     setCreateError(null);
@@ -223,6 +279,7 @@ export function UserManagementPanel({
           <div className="mb-4 flex flex-wrap items-center gap-3">
             {saveMessage ? <p className="text-sm text-emerald-600">{saveMessage}</p> : null}
             {saveError ? <p className="text-sm text-rose-600">{saveError}</p> : null}
+            {resetMessage ? <p className="text-sm text-emerald-600">{resetMessage}</p> : null}
           </div>
           <Table>
             <TableHeader>
@@ -323,24 +380,122 @@ export function UserManagementPanel({
                       ) : null}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="submit"
-                        form={`user-${user.id}`}
-                        size="sm"
-                        className="gap-2"
-                        disabled={saving}
-                      >
-                        {saving ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="h-4 w-4" />
-                        )}
-                        Save
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          type="submit"
+                          form={`user-${user.id}`}
+                          size="sm"
+                          className="gap-2"
+                          disabled={saving}
+                        >
+                          {saving ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="h-4 w-4" />
+                          )}
+                          Save
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() =>
+                            resetUserId === user.id ? closeReset() : openReset(user.id)
+                          }
+                        >
+                          <KeyRound className="h-4 w-4" />
+                          Password
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
               })}
+              {/* The password form, opened under whichever row asked for it. */}
+              {(() => {
+                const target = users.find((candidate) => candidate.id === resetUserId);
+
+                if (!target) return null;
+
+                return (
+                  <TableRow key={`${target.id}-reset`}>
+                    <TableCell colSpan={10}>
+                      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            Set a new password for {target.name}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {target.email}. They sign in with this immediately. It is never shown
+                            again, so copy it before you close this — hand it over directly, not by
+                            email.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="relative">
+                            <Input
+                              type={resetShow ? "text" : "password"}
+                              value={resetValue}
+                              onChange={(event) => setResetValue(event.target.value)}
+                              placeholder="New password (min 8 characters)"
+                              autoComplete="new-password"
+                              className="w-72 pr-10"
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  void submitReset(target.id, target.name);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setResetShow((shown) => !shown)}
+                              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-600"
+                              aria-label={resetShow ? "Hide password" : "Show password"}
+                            >
+                              {resetShow ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="gap-2"
+                            disabled={resetBusy}
+                            onClick={() => void submitReset(target.id, target.name)}
+                          >
+                            {resetBusy ? (
+                              <LoaderCircle className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <KeyRound className="h-4 w-4" />
+                            )}
+                            Set password
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={resetBusy}
+                            onClick={closeReset}
+                          >
+                            Cancel
+                          </Button>
+
+                          {resetError ? (
+                            <p className="text-sm text-rose-600">{resetError}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })()}
             </TableBody>
           </Table>
         </CardContent>
