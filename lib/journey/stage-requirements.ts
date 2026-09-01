@@ -782,8 +782,9 @@ export const STAGE_REQUIREMENT_SEED: Record<string, string[]> = {
 
   strategy_and_planning: ["account_owner_assigned", "onboarding_tasks_complete"],
 
-  // SOP section 10: payment confirmed, onboarding complete, critical access
-  // available, project brief exists, team assigned.
+  // Payment and access from SOP 03, the approved brief and the assigned team
+  // from SOP 04, the first assigned work from SOP 05. Traced line by line in
+  // docs/sop/STAGE-GATES.md, which a test keeps in step with this table.
   in_production: [
     "payment_confirmed",
     "contract_recorded",
@@ -802,8 +803,10 @@ export const STAGE_REQUIREMENT_SEED: Record<string, string[]> = {
 
   client_approved: ["revisions_complete", "critical_defects_closed"],
 
-  // SOP section 10: QA passed, critical defects closed, client approval
-  // recorded, backups exist, launch owner assigned.
+  // SOP 07 opens with these, in almost this order: confirm final approval,
+  // confirm backup, confirm launch owner - over QA and revisions from SOP 06.
+  // The exception is no_critical_open_work, which no document asks for; see
+  // docs/sop/STAGE-GATES.md.
   ready_for_launch: [
     "qa_tasks_complete",
     "critical_defects_closed",

@@ -30,6 +30,12 @@ between the two.
 | [09 — Renewal, Upsell, Testimonials, Referrals & Offboarding](SOP-09-Renewal-Upsell-Testimonials-Referrals-and-Offboarding.md) | Renewals under More → Renewal & Growth; the offboarding checklist and Archive under More → Offboarding. See the disagreement on offboarding steps below. |
 | [10 — Governance, Auditing, Training & Continuous Improvement](SOP-10-Governance-Auditing-Training-and-Continuous-Improvement.md) | SOPs and Audits, in the sidebar. `lib/governance/` reads `Sop`, `SopVersion`, `Audit`, `AuditFinding`, `CorrectiveAction`, `ImprovementRequest`, `TrainingRecord` and `UatTestCase`. |
 
+## The stage gates
+
+Every exit criterion the journey enforces, traced to the SOP step it comes
+from: **[STAGE-GATES.md](STAGE-GATES.md)**. Kept in step with the code by
+`tests/stage-gate-traceability.test.ts`.
+
 ## Every stage gate is armed
 
 Requirements used to be installed as advisory when the application gave nobody
@@ -78,12 +84,19 @@ granularity, and the system adds an ordering rule the document does not state:
 the client must be confirmed as an administrator of their own platforms before
 agency access can be recorded as removed.
 
-**3. Stage gate provenance.** `lib/journey/stage-requirements.ts` cites
-"SOP section 10" as the source of the gates on `in_production` and
-`ready_for_launch`. No document here contains those lists, so the rules the
-system enforces cannot be traced to this library.
+**3. Stage gate provenance — resolved 2026-09-01.** The code cited an
+"SOP section 10" that does not exist here. All 26 requirements are now traced
+in [STAGE-GATES.md](STAGE-GATES.md), and the citations in
+`lib/journey/stage-requirements.ts` point at the SOP steps they actually come
+from. Three gates turned out to have no written source at all — they are named
+on that page rather than justified after the fact, and each still needs a
+decision: add the step to the SOP, or drop the gate.
 
-**4. Procedures with no document.** These are in daily use and appear in none of
-the ten: System UAT and release sign-off, A2P registration, intake forms,
-optimisations, stage overrides, workstreams, end-of-day entries and weekly
-reports. Some warrant a section in an existing SOP; some may warrant their own.
+**4. Procedures with no document.** In daily use and named in none of the ten:
+System UAT and release sign-off, A2P registration, stage overrides,
+workstreams, and end-of-day entries.
+
+Three near-misses, listed so nobody re-reports them: optimisations are SOP 08
+§9, client-facing weekly updates are SOP 08 §2, and the intake form is SOP 03
+§3 under its older name, *onboarding form*. The system calls it intake; the
+document does not.
