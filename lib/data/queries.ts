@@ -19,7 +19,8 @@ import {
   subDays,
 } from "date-fns";
 
-import { canManageEmployeeTasks, canViewAllAgencyData } from "@/lib/permissions";
+import { type AuthContext } from "@/lib/authz";
+import { can, canManageEmployeeTasks, canViewAllAgencyData } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { FULFILLMENT_PIPELINE_ID } from "@/lib/workspace-defaults";
 
@@ -1246,8 +1247,17 @@ export async function getTeamViewData(user: AppUser) {
   }
 }
 
-export async function getAdminUsersData(user: AppUser) {
-  if (user.role !== "ADMIN") {
+/**
+ * The user directory, for whoever may manage accounts.
+ *
+ * Takes the resolved context rather than an AppUser: AppUser carries the
+ * access tier and not the seat, so a check made from it cannot see an Agency
+ * Owner sitting below ADMIN. This used to refuse anyone whose tier was not
+ * ADMIN, which silently returned an empty directory to the very people the
+ * page had just let in.
+ */
+export async function getAdminUsersData(actor: AuthContext) {
+  if (!can(actor, "users.manage")) {
     return null;
   }
 
