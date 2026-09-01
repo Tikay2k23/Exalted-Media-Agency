@@ -114,21 +114,14 @@ describe("stage gate traceability", () => {
     assert.deepEqual(stale, [], `documented but no longer seeded: ${stale.join(", ")}`);
   });
 
-  it("names the gates that have no written source rather than hiding them", () => {
+  it("keeps the section that would name a gate with no written source", () => {
     /*
-     * Three gates are enforced without any SOP step calling for them. That is
-     * a real finding, and the document is required to say so out loud - if
-     * somebody later justifies one with a citation, this section shrinks,
-     * which is the point.
+     * Three gates were enforced without any SOP step calling for them. The
+     * step was written into the SOP rather than a citation found to fit, so
+     * the section is empty now - but it stays, because the next gate added
+     * without a source belongs in it. Deleting the heading is how that finding
+     * would quietly stop being reported.
      */
     assert.match(doc, /## Gates with no written source/);
-
-    for (const key of ["no_critical_open_work", "renewal_date_set"]) {
-      assert.ok(seeded.has(key), `${key} should still be a real gate`);
-      assert.ok(
-        doc.includes(`**\`${key}\`**`),
-        `${key} is enforced with no source and must be listed as such`,
-      );
-    }
   });
 });
