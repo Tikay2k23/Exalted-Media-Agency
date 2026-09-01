@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getServerAuthSession } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
+import { guardClientWrite } from "@/lib/api/client-guard";
 import { canAccessAssignedRecord, canManageClients } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { clientStatusUpdateSchema } from "@/lib/validators";
@@ -99,33 +100,32 @@ export async function PATCH(
   }
 }
 
+/**
+ * Destroys an account, for good.
+ *
+ * Guarded on clients.delete, through the same helper every other write to an
+ * account uses. It used to check canManageClients, which resolves to
+ * clients.edit - so the destructive route asked for less than archiving does,
+ * and archiving is the reversible one. It also read only the access tier and
+ * ignored the seat, which made this endpoint more permissive than the menu
+ * item in front of it: the interface hides Delete without clients.delete, and
+ * the API let it through anyway.
+ *
+ * guardClientWrite settles all three - it loads the full context, checks the
+ * permission it is given, and applies the visibility scope - which is why this
+ * uses it rather than growing its own preamble.
+ */
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getServerAuthSession();
     const { id } = await params;
+    const guard = await guardClientWrite(id, "clients.delete");
 
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!guard.ok) return guard.response;
 
-    if (!canManageClients(session.user.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const client = await prisma.client.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        companyName: true,
-      },
-    });
-
-    if (!client) {
-      return NextResponse.json({ error: "Client not found" }, { status: 404 });
-    }
+    const { actor, client } = guard;
 
     await prisma.$transaction(async (transaction) => {
       await transaction.employeeTask.updateMany({
@@ -143,7 +143,7 @@ export async function DELETE(
     });
 
     await logActivity({
-      actorId: session.user.id,
+      actorId: actor.id,
       action: `Deleted client ${client.companyName}`,
       entityType: ActivityEntityType.CLIENT,
       entityId: client.id,
