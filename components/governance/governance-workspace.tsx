@@ -1,9 +1,18 @@
 "use client";
 
-import { AlertTriangle, BookOpen, CheckCircle2, LoaderCircle, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  Eye,
+  LoaderCircle,
+  PencilLine,
+  ShieldAlert,
+} from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { SopEditDialog, SopPreviewDialog } from "@/components/governance/sop-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,6 +152,10 @@ export function GovernanceWorkspace({
   const [isPending, startTransition] = useTransition();
 
   const overdueSops = sops.filter((sop) => sop.reviewOverdue);
+
+  /* Which procedure is open, and in which of the two ways. */
+  const [previewSopId, setPreviewSopId] = useState<string | null>(null);
+  const [editSopId, setEditSopId] = useState<string | null>(null);
   const openActions = actions.filter((action) => action.isOpen);
   const overdueActions = actions.filter((action) => action.isOverdue);
   const lapsed = certifications.filter((item) => item.state === "expired");
@@ -247,8 +260,34 @@ export function GovernanceWorkspace({
                       </Badge>
                     </div>
 
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {/* Reading comes first: nobody should approve a document
+                          they cannot open. */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setPreviewSopId(sop.id)}
+                      >
+                        <Eye className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        Preview
+                      </Button>
+
+                      {canManageSops ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setEditSopId(sop.id)}
+                        >
+                          <PencilLine className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                          Edit
+                        </Button>
+                      ) : null}
+                    </div>
+
                     {canManageSops ? (
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         {sop.status !== "ACTIVE" ? (
                           isAuthor ? (
                             <span className="inline-flex items-start gap-2 text-sm leading-6 text-amber-800">
@@ -294,6 +333,21 @@ export function GovernanceWorkspace({
           )}
         </CardContent>
       </Card>
+
+      {previewSopId ? (
+        <SopPreviewDialog sopId={previewSopId} onClose={() => setPreviewSopId(null)} />
+      ) : null}
+
+      {editSopId ? (
+        <SopEditDialog
+          sopId={editSopId}
+          onClose={() => setEditSopId(null)}
+          onSaved={() => {
+            setEditSopId(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       {/* --- Audits --- */}
       <Card>

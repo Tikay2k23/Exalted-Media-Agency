@@ -124,6 +124,7 @@ async function main() {
 
   let added = 0;
   let updated = 0;
+  let blocked = 0;
   let unchanged = 0;
 
   for (const file of files) {
@@ -145,7 +146,7 @@ async function main() {
         versions: {
           orderBy: { publishedAt: "desc" },
           take: 1,
-          select: { content: true },
+          select: { content: true, changeNote: true },
         },
       },
     });
@@ -180,6 +181,28 @@ async function main() {
       continue;
     }
 
+    /*
+     * Stop before overwriting something somebody wrote in the app.
+     *
+     * The library can now be edited from Governance, and an edit there
+     * publishes a version this importer knows nothing about. Left alone, the
+     * next import would publish the file's wording straight over the top and
+     * the person who made the change would never be told. Versions are kept,
+     * so nothing would be destroyed - but the current procedure would silently
+     * revert, which is the part that matters.
+     */
+    const note = existing.versions[0]?.changeNote ?? "";
+    const cameFromAFile = note.startsWith("Imported from") || note.startsWith("Re-imported from");
+
+    if (!cameFromAFile && process.env.LOAD_SOPS_OVERWRITE_APP_EDITS !== "1") {
+      blocked += 1;
+      console.log(
+        `  skipped  ${parsed.reference}  newest version was edited in the app`
+          + ` (${note || "no change note"})`,
+      );
+      continue;
+    }
+
     const [major, minor] = existing.currentVersion.split(".");
     const version = /^\d+$/.test(major ?? "") && /^\d+$/.test(minor ?? "")
       ? `${major}.${Number(minor) + 1}`
@@ -209,7 +232,16 @@ async function main() {
     ]);
 
     updated += 1;
-    console.log(`  updated  ${parsed.reference}  now version ${version}`);
+    if (blocked) {
+    console.log(
+      `
+[load-sops] ${blocked} document(s) left alone because the app has a newer edit.`
+        + `
+[load-sops] Re-run with LOAD_SOPS_OVERWRITE_APP_EDITS=1 to publish the files over them.`,
+    );
+  }
+
+  console.log(`  updated  ${parsed.reference}  now version ${version}`);
   }
 
   console.log(
