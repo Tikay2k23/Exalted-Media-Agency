@@ -82,6 +82,25 @@ if (!target.isLocal && process.env.LOAD_SOPS_ALLOW_REMOTE !== "1") {
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
+/**
+ * The document's Purpose, for the summary column.
+ *
+ * That column is what the detail page falls back to for the line under the
+ * title, so a provenance note there reads as the procedure's purpose. The
+ * provenance belongs in the change note, which already carries it.
+ */
+function parsePurpose(content) {
+  const match = /^##[ \t]+Purpose[ \t]*$([\s\S]*?)(?=^##[ \t]|$(?![\s\S]))/m.exec(
+    content,
+  );
+
+  if (!match) return null;
+
+  const paragraph = match[1].trim().split(/\n[ \t]*\n/)[0] ?? "";
+
+  return paragraph.replace(/\s+/g, " ").trim() || null;
+}
+
 /** "SOP-04-Strategy-Project-Planning..." -> { reference, title } */
 function parseFilename(filename) {
   const match = /^SOP-(\d+)-(.+)\.md$/.exec(filename);
@@ -185,7 +204,7 @@ async function main() {
         data: {
           reference: parsed.reference,
           title,
-          summary: `Loaded from ${file}.`,
+          summary: parsePurpose(content),
           currentVersion: "1.0",
           status: "DRAFT",
           ownerId: author.id,

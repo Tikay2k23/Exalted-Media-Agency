@@ -9,6 +9,7 @@ import {
   PencilLine,
   ShieldAlert,
 } from "lucide-react";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -242,9 +243,15 @@ export function GovernanceWorkspace({
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-semibold text-slate-900">
+                        {/* The title is the way in: a card that only offers
+                            Preview makes the detail page unreachable for
+                            anybody who does not know the URL. */}
+                        <Link
+                          href={`/governance/sops/${encodeURIComponent(sop.reference)}`}
+                          className="font-semibold text-slate-900 hover:text-sky-700 hover:underline"
+                        >
                           {sop.reference} — {sop.title}
-                        </p>
+                        </Link>
                         <p className="mt-1 text-sm text-slate-600">
                           Version {sop.currentVersion} of {sop.versionCount}
                           {sop.ownerName ? ` · owned by ${sop.ownerName}` : ""}
@@ -264,6 +271,14 @@ export function GovernanceWorkspace({
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       {/* Reading comes first: nobody should approve a document
                           they cannot open. */}
+                      <Link
+                        href={`/governance/sops/${encodeURIComponent(sop.reference)}`}
+                        className="inline-flex h-9 items-center rounded-xl bg-slate-950 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                      >
+                        <BookOpen className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        Open
+                      </Link>
+
                       <Button
                         type="button"
                         size="sm"

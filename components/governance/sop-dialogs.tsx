@@ -185,10 +185,17 @@ export function SopEditDialog({
   sopId,
   onClose,
   onSaved,
+  headingVerb = "Edit",
 }: {
   sopId: string;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * What the caller's button said. A button reading "New version" that opens a
+   * dialog headed "Edit SOP-03" makes the reader check they pressed the right
+   * thing - the operation is the same either way.
+   */
+  headingVerb?: string;
 }) {
   const { detail, error: loadError, loading } = useSopDetail(sopId);
   const [title, setTitle] = useState("");
@@ -250,7 +257,7 @@ export function SopEditDialog({
 
   return (
     <AccountDialog
-      title={detail ? `Edit ${detail.reference}` : "Edit procedure"}
+      title={detail ? `${headingVerb} ${detail.reference}` : `${headingVerb} procedure`}
       subtitle="Saving publishes a new version and returns this to Draft for approval."
       size="wide"
       isDirty={dirty}
