@@ -17,6 +17,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SopDetailActions } from "@/components/governance/sop-detail-actions";
+import { SopProcedurePanel } from "@/components/governance/sop-procedure-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { SopDetail } from "@/lib/data/sop-detail";
@@ -31,7 +32,9 @@ import {
   type SopSection,
   type SopTab,
 } from "@/lib/governance/sop-document";
+import { parseProcedureSteps, procedureExceptions } from "@/lib/governance/sop-procedure";
 import { SOP_HOW_TO, SOP_SYSTEM_GUIDE } from "@/lib/governance/sop-system-guide";
+import { NAVIGATION } from "@/lib/navigation";
 import { formatDate, formatEnumLabel } from "@/lib/utils";
 
 /*
@@ -204,6 +207,30 @@ function DocumentSection({ section, index }: { section: SopSection; index?: numb
   );
 }
 
+/**
+ * Where this procedure's work actually happens, as a short list of links.
+ *
+ * Built from the system guide rather than written again, and labelled from the
+ * navigation, so a renamed area renames itself here. Deduplicated by href: five
+ * guide entries for one procedure often point at two screens.
+ */
+function quickActionsFor(reference: string) {
+  const labels = new Map(
+    NAVIGATION.flatMap((group) => group.items).map((item) => [item.href, item.label]),
+  );
+  const seen = new Set<string>();
+
+  return (SOP_SYSTEM_GUIDE[reference] ?? []).flatMap((step) => {
+    const label = step.href ? labels.get(step.href) : undefined;
+
+    if (!step.href || !label || seen.has(step.href)) return [];
+
+    seen.add(step.href);
+
+    return [{ href: step.href, label }];
+  });
+}
+
 /* --- the page --- */
 
 export function SopDetailView({
@@ -222,6 +249,7 @@ export function SopDetailView({
   const number = sopNumber(sop.reference);
   const systemGuide = SOP_SYSTEM_GUIDE[sop.reference] ?? [];
   const howTo = SOP_HOW_TO[sop.reference] ?? [];
+  const quickActions = quickActionsFor(sop.reference);
 
   /*
    * Related procedures, all derived rather than stored.
@@ -366,7 +394,7 @@ export function SopDetailView({
           ) : null}
 
           {tab === "procedure" ? (
-            <ProcedurePanel document={document} canManage={canManage} />
+            <ProcedurePanel document={document} canManage={canManage} nextSop={next} />
           ) : null}
 
           {tab === "system" ? (
@@ -528,6 +556,36 @@ export function SopDetailView({
               </Link>
             </CardContent>
           </Card>
+
+          {/*
+            Quick actions, on the Procedure tab only.
+
+            Somebody reading the workflow is the one about to go and do it, and
+            these are the places the System Guide already names for this
+            procedure - deduplicated and labelled from the navigation, so a
+            renamed section renames itself here too. They navigate, nothing
+            more: reading a procedure must never move a lead.
+          */}
+          {tab === "procedure" && quickActions.length ? (
+            <Card className="mt-4 rounded-2xl shadow-none">
+              <CardContent className="p-5">
+                <h2 className="text-sm font-semibold text-slate-950">Quick actions</h2>
+                <ul className="mt-2 space-y-1">
+                  {quickActions.map((action) => (
+                    <li key={action.href}>
+                      <Link
+                        href={action.href}
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm text-sky-700 transition hover:bg-sky-50"
+                      >
+                        Open {action.label}
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
         </aside>
       </div>
     </div>
@@ -800,37 +858,47 @@ function OverviewPanel({
 function ProcedurePanel({
   document,
   canManage,
+  nextSop,
 }: {
   document: ReturnType<typeof parseSopDocument>;
   canManage: boolean;
+  nextSop: { reference: string; title: string } | null;
 }) {
-  const steps = sectionForSlot(document, "steps");
+  const steps = parseProcedureSteps(document);
   const standards = sectionsForTab(document, "procedure").filter(
     (section) => routeForHeading(section.heading).slot === "standard",
   );
+  const completion = sectionForSlot(document, "completion");
+
+  if (!steps.length) {
+    return (
+      <EmptyPanel
+        title="No procedure has been documented for this SOP yet"
+        what="Nothing here says what the agency actually does, or in what order."
+        heading="Main Process"
+        canEdit={canManage}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <PanelCard
-        title={steps?.heading ?? "Procedure"}
-        hint="What the agency does. Where it is done in the software is on the System Guide tab."
-      >
-        {steps ? (
-          <DocumentSection section={{ ...steps, heading: "" }} />
-        ) : (
-          <EmptyPanel
-            title="No procedure written"
-            what="This SOP has no numbered process."
-            heading="Main Process"
-            canEdit={canManage}
-          />
-        )}
-      </PanelCard>
+      {/*
+        Parsed on the server and handed over whole. The panel needs to be a
+        client component to open and close a step, but that is no reason to ship
+        the markdown and a parser to the browser as well.
+      */}
+      <SopProcedurePanel
+        steps={steps}
+        exceptions={procedureExceptions(document)}
+        completion={completion?.paragraphs.join(" ") || completion?.items.join("; ") || null}
+        nextSop={nextSop}
+      />
 
       {/*
-        Not titled "Agency standard": that is now the Overview's fourth card,
-        and two cards of the same name on different tabs of one document is a
-        way to lose an argument about which one is the rule.
+        Not titled "Agency standard": that is the Overview's fourth card, and
+        two cards of the same name on different tabs of one document is a way to
+        lose an argument about which one is the rule.
       */}
       {standards.length ? (
         <PanelCard

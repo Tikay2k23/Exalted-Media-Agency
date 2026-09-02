@@ -24,7 +24,13 @@ export interface SopSection {
   /** True when the list was numbered, which makes it a sequence of steps. */
   ordered: boolean;
   /** `###` subsections, kept so a nested rule is not flattened into prose. */
-  subsections: { heading: string; paragraphs: string[]; items: string[] }[];
+  subsections: {
+    heading: string;
+    paragraphs: string[];
+    items: string[];
+    /** The lines as written, for parseProcedureSteps to read fields from. */
+    raw: string[];
+  }[];
 }
 
 export interface SopDocument {
@@ -126,8 +132,13 @@ const HEADING_ROUTES: { tab: SopTab; slot: string; headings: string[] }[] = [
     slot: "evidence",
     headings: ["evidence", "evidence and records", "records", "evidence required"],
   },
+  /*
+   * With the procedure, not the exit criteria. It answers "the normal workflow
+   * does not fit, now what" - which is a question somebody asks while working
+   * through the steps, not while checking whether they are finished.
+   */
   {
-    tab: "quality",
+    tab: "procedure",
     slot: "escalation",
     headings: ["exceptions and escalation", "escalation", "exceptions"],
   },
@@ -293,6 +304,7 @@ export function parseSopDocument(content: string): SopDocument {
           heading: sub.heading,
           paragraphs: subBody.paragraphs,
           items: subBody.items,
+          raw: sub.lines,
         };
       }),
     });
