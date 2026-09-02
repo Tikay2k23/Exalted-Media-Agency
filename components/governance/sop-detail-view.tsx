@@ -3,11 +3,14 @@ import {
   ArrowRight,
   CalendarClock,
   CircleCheck,
+  ClipboardCheck,
   ClipboardList,
   ExternalLink,
   FileText,
   GitBranch,
   ShieldCheck,
+  Target,
+  Trophy,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -236,7 +239,14 @@ export function SopDetailView({
       : (sop.neighbours.find((entry) => sopNumber(entry.reference) === number + offset) ?? null);
   const previous = neighbourOf(-1);
   const next = neighbourOf(1);
-  const mentioned = sop.neighbours.filter((entry) => referenced.includes(entry.reference));
+  /* Named in the text, minus the neighbours that already have their own row. */
+  const mentioned = sop.neighbours.filter(
+    (entry) =>
+      referenced.includes(entry.reference)
+      && entry.reference !== next?.reference
+      && entry.reference !== previous?.reference,
+  );
+  const typicalOutcome = sectionForSlot(document, "typicalOutcome");
 
   /*
    * Entry criteria this procedure does not state for itself.
@@ -335,7 +345,7 @@ export function SopDetailView({
                 href={`?tab=${entry.key}`}
                 scroll={false}
                 aria-current={entry.key === tab ? "page" : undefined}
-                className={`whitespace-nowrap border-b-2 px-2.5 py-2.5 text-sm font-medium transition ${
+                className={`whitespace-nowrap border-b-2 px-2 py-2.5 text-sm font-medium transition ${
                   entry.key === tab
                     ? "border-sky-600 text-sky-700"
                     : "border-transparent text-slate-500 hover:text-slate-800"
@@ -396,18 +406,78 @@ export function SopDetailView({
               {number !== null ? (
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Position
+                    Position in lifecycle
                   </p>
                   <p className="mt-0.5 text-sm text-slate-700">
                     Step {number} of {sop.neighbours.length} in the client lifecycle
                   </p>
+                  {/*
+                    The whole lifecycle as one row, so somebody can see where
+                    they are and jump. Every pill is a real procedure - the row
+                    is built from the library rather than from a count, so it
+                    cannot offer a step that does not exist.
+                  */}
+                  <ol className="mt-2 flex flex-wrap gap-1">
+                    {sop.neighbours.map((entry) => {
+                      const step = sopNumber(entry.reference);
+                      const isCurrent = step === number;
+
+                      return (
+                        <li key={entry.reference}>
+                          <Link
+                            href={`/governance/sops/${encodeURIComponent(entry.reference)}`}
+                            aria-current={isCurrent ? "page" : undefined}
+                            title={`${entry.reference} — ${entry.title}`}
+                            className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold transition ${
+                              isCurrent
+                                ? "bg-sky-600 text-white"
+                                : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                            }`}
+                          >
+                            {step ?? "?"}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              ) : null}
+
+              {typicalOutcome ? (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Typical outcome
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-700">
+                    {typicalOutcome.paragraphs.join(" ") || typicalOutcome.items.join(", ")}
+                  </p>
+                </div>
+              ) : null}
+
+              {/*
+                The next procedure gets its own heading rather than sitting in
+                a list of related ones. It is where the account actually goes
+                next, which is a stronger claim than "related".
+              */}
+              {next ? (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Next in lifecycle
+                  </p>
+                  <Link
+                    href={`/governance/sops/${encodeURIComponent(next.reference)}`}
+                    className="mt-1 flex items-start gap-1.5 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-50"
+                  >
+                    <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="min-w-0">
+                      {next.reference} — {next.title}
+                    </span>
+                  </Link>
                 </div>
               ) : null}
 
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                  Related procedures
-                </p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-400">Related SOPs</p>
                 <ul className="mt-1 space-y-1">
                   {previous ? (
                     <li>
@@ -422,44 +492,33 @@ export function SopDetailView({
                       </Link>
                     </li>
                   ) : null}
-                  {next ? (
-                    <li>
+
+                  {/*
+                    Procedures this document actually names, which is the only
+                    relationship there is a record of. Nothing is listed here
+                    because it seemed related.
+                  */}
+                  {mentioned.map((entry) => (
+                    <li key={entry.reference}>
                       <Link
-                        href={`/governance/sops/${encodeURIComponent(next.reference)}`}
+                        href={`/governance/sops/${encodeURIComponent(entry.reference)}`}
                         className="flex items-start gap-1.5 text-sm text-sky-700 hover:underline"
                       >
-                        <ArrowRight className="mt-1 h-3 w-3 shrink-0" aria-hidden />
+                        <ArrowRight className="mt-1 h-3 w-3 shrink-0 rotate-45" aria-hidden />
                         <span>
-                          {next.reference} — {next.title}
+                          {entry.reference} — {entry.title}
                         </span>
                       </Link>
                     </li>
-                  ) : null}
-                  {!previous && !next ? (
-                    <li className="text-sm text-slate-400">None</li>
+                  ))}
+
+                  {!previous && !mentioned.length ? (
+                    <li className="text-sm text-slate-400">
+                      None beyond the next step.
+                    </li>
                   ) : null}
                 </ul>
               </div>
-
-              {mentioned.length ? (
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Named in this procedure
-                  </p>
-                  <ul className="mt-1 space-y-1">
-                    {mentioned.map((entry) => (
-                      <li key={entry.reference}>
-                        <Link
-                          href={`/governance/sops/${encodeURIComponent(entry.reference)}`}
-                          className="text-sm text-sky-700 hover:underline"
-                        >
-                          {entry.reference} — {entry.title}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
 
               <Link
                 href="/governance"
@@ -476,6 +535,97 @@ export function SopDetailView({
 }
 
 /* --- panels --- */
+
+/**
+ * A numbered card on the Overview, with the icon that marks it.
+ *
+ * The numbers are the reading order: why this exists, what it produces, what
+ * has to be true first, and what cannot be ignored. Somebody who reads only
+ * this tab should be able to stop after four cards.
+ */
+function OverviewCard({
+  index,
+  title,
+  icon,
+  children,
+}: {
+  index: number;
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="rounded-2xl shadow-none">
+      <CardContent className="flex h-full flex-col p-5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+            {icon}
+          </span>
+          <h3 className="text-sm font-semibold text-slate-950">
+            {index}. {title}
+          </h3>
+        </div>
+        <div className="mt-4 min-w-0 flex-1">{children}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * One line where a section is missing.
+ *
+ * A reader is told plainly that nothing is recorded. The markdown heading to
+ * add is shown only to somebody who can actually publish a version - to
+ * everybody else it is noise about a system they cannot reach.
+ */
+function MissingLine({
+  what,
+  heading,
+  canManage,
+}: {
+  what: string;
+  heading: string;
+  canManage: boolean;
+}) {
+  return (
+    <p className="mt-1 text-sm leading-6 text-slate-400">
+      No {what} recorded yet.
+      {canManage ? (
+        <span className="text-slate-500">
+          {" "}
+          Add a <code className="rounded bg-slate-100 px-1 text-slate-600">## {heading}</code>{" "}
+          section in a new version.
+        </span>
+      ) : null}
+    </p>
+  );
+}
+
+/** A labelled block inside the first card. */
+function OverviewField({
+  label,
+  section,
+  canManage,
+  heading,
+}: {
+  label: string;
+  section: SopSection | null;
+  canManage: boolean;
+  heading: string;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-700">{label}</p>
+      {section ? (
+        <div className="mt-1">
+          <DocumentSection section={{ ...section, heading: "" }} />
+        </div>
+      ) : (
+        <MissingLine what={label.toLowerCase()} heading={heading} canManage={canManage} />
+      )}
+    </div>
+  );
+}
 
 function OverviewPanel({
   document,
@@ -496,85 +646,153 @@ function OverviewPanel({
   const scope = sectionForSlot(document, "scope");
   const outcomes = sectionForSlot(document, "outcomes");
   const entry = sectionForSlot(document, "entry");
+  const standard = sectionForSlot(document, "agencyStandard");
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <PanelCard title="Purpose, trigger and scope">
-        <div className="space-y-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Purpose
-            </p>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              {purpose ?? <span className="text-slate-400">Not recorded.</span>}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Trigger
-            </p>
-            {trigger ? (
-              <DocumentSection section={{ ...trigger, heading: "" }} />
-            ) : (
-              <p className="mt-1 text-sm leading-6 text-slate-400">
-                Not written down. {canManage ? "Add a ## Trigger section." : ""}
-              </p>
-            )}
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Scope
-            </p>
-            {scope ? (
-              <DocumentSection section={{ ...scope, heading: "" }} />
-            ) : (
-              <p className="mt-1 text-sm leading-6 text-slate-400">
-                Not written down. {canManage ? "Add a ## Scope section." : ""}
-              </p>
-            )}
-          </div>
-        </div>
-      </PanelCard>
+    <div className="space-y-4">
+      {/*
+        Three across only from 2xl. This application spends 208px on the
+        sidebar and 256px on the rail, so a 1280 laptop leaves 629px for this
+        row - three cards of 197px, where every outcome wraps onto three lines
+        and the row runs to 840px tall. Two columns until there is genuinely
+        room for three.
 
-      <PanelCard title="Outcomes" hint="What is true once this procedure has been followed.">
-        {outcomes ? (
-          <DocumentSection section={{ ...outcomes, heading: "" }} />
-        ) : (
-          <EmptyPanel
-            title="No outcomes written"
-            what="This procedure does not list its outcomes separately."
-            heading="Outcomes"
-            canEdit={canManage}
-          />
-        )}
-      </PanelCard>
+        items-stretch so the row reads as one band rather than three cards of
+        different heights; it is still only as tall as its longest card.
+      */}
+      <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">
+        <OverviewCard
+          index={1}
+          title="Purpose, Trigger & Scope"
+          icon={<Target className="h-3.5 w-3.5" aria-hidden />}
+        >
+          <div className="space-y-3.5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                Purpose
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                {purpose ?? <span className="text-slate-400">No purpose recorded yet.</span>}
+              </p>
+            </div>
 
-      <PanelCard title="Entry criteria" hint="What must already be true before this starts.">
-        {entry ? (
-          <DocumentSection section={{ ...entry, heading: "" }} />
-        ) : inheritedEntry?.section ? (
-          <div className="space-y-2">
-            <DocumentSection section={{ ...inheritedEntry.section, heading: "" }} />
-            <p className="border-t border-slate-100 pt-2 text-xs leading-5 text-slate-500">
-              This procedure does not state its own entry criteria. These are what{" "}
-              <Link
-                href={`/governance/sops/${encodeURIComponent(inheritedEntry.reference)}`}
-                className="font-medium text-sky-700 hover:underline"
-              >
-                {inheritedEntry.reference}
-              </Link>{" "}
-              completes on, which is the step before this one.
-            </p>
+            <OverviewField
+              label="Trigger"
+              section={trigger}
+              canManage={canManage}
+              heading="Trigger"
+            />
+
+            <OverviewField label="Scope" section={scope} canManage={canManage} heading="Scope" />
           </div>
-        ) : (
-          <EmptyPanel
-            title="No entry criteria written"
-            what="Nothing is recorded about what has to be true first."
-            heading="Entry Criteria"
-            canEdit={canManage}
-          />
-        )}
-      </PanelCard>
+        </OverviewCard>
+
+        <OverviewCard
+          index={2}
+          title="Outcomes"
+          icon={<Trophy className="h-3.5 w-3.5" aria-hidden />}
+        >
+          {outcomes ? (
+            <DocumentSection section={{ ...outcomes, heading: "" }} />
+          ) : (
+            <MissingLine what="outcomes" heading="Outcomes" canManage={canManage} />
+          )}
+        </OverviewCard>
+
+        <OverviewCard
+          index={3}
+          title="Entry Criteria"
+          icon={<ClipboardCheck className="h-3.5 w-3.5" aria-hidden />}
+        >
+          {entry ? (
+            <DocumentSection section={{ ...entry, heading: "" }} />
+          ) : inheritedEntry?.section ? (
+            <div className="space-y-2">
+              <DocumentSection section={{ ...inheritedEntry.section, heading: "" }} />
+              <p className="border-t border-slate-100 pt-2 text-xs leading-5 text-slate-500">
+                Not stated here. These are what{" "}
+                <Link
+                  href={`/governance/sops/${encodeURIComponent(inheritedEntry.reference)}`}
+                  className="font-medium text-sky-700 hover:underline"
+                >
+                  {inheritedEntry.reference}
+                </Link>{" "}
+                completes on, which is the step before this one.
+              </p>
+            </div>
+          ) : (
+            <MissingLine what="entry criteria" heading="Entry Criteria" canManage={canManage} />
+          )}
+        </OverviewCard>
+      </div>
+
+      {/*
+        Full width, below the row. These are the rules somebody is held to
+        rather than a description of the work, so they get their own band - but
+        a band, not a warning box: a red panel on all ten procedures would stop
+        registering as important at all.
+      */}
+      {standard ? (
+        <OverviewCard
+          index={4}
+          title="Agency Standard (Critical Rules)"
+          icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+        >
+          {standard.paragraphs.length ? (
+            <p className="max-w-4xl text-sm font-medium leading-6 text-slate-800">
+              {standard.paragraphs.join(" ")}
+            </p>
+          ) : null}
+
+          {standard.items.length ? (
+            <ul className="mt-3 space-y-1.5">
+              {standard.items.map((item) => (
+                <li key={item} className="flex gap-2.5 text-sm leading-6 text-slate-700">
+                  <CircleCheck className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
+                  <span className="min-w-0">{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {/*
+            The `###` rules under the standard, side by side. Divided rather
+            than boxed: four bordered cards inside a bordered card is a lot of
+            lines for four sentences.
+          */}
+          {standard.subsections.length ? (
+            <div className="mt-4 grid gap-x-6 gap-y-4 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-slate-100">
+              {standard.subsections.map((rule, position) => (
+                <div key={rule.heading} className={`min-w-0 ${position > 0 ? "lg:pl-6" : ""}`}>
+                  <p className="text-sm font-semibold text-sky-800">{rule.heading}</p>
+                  {rule.paragraphs.map((paragraph) => (
+                    <p key={paragraph} className="mt-1 text-sm leading-6 text-slate-600">
+                      {paragraph}
+                    </p>
+                  ))}
+                  {rule.items.length ? (
+                    <ul className="mt-1 space-y-1">
+                      {rule.items.map((item) => (
+                        <li key={item} className="text-sm leading-6 text-slate-600">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </OverviewCard>
+      ) : (
+        <OverviewCard
+          index={4}
+          title="Agency Standard (Critical Rules)"
+          icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+        >
+          <MissingLine what="critical rules" heading="Agency Standard" canManage={canManage} />
+        </OverviewCard>
+      )}
     </div>
   );
 }
@@ -609,10 +827,15 @@ function ProcedurePanel({
         )}
       </PanelCard>
 
+      {/*
+        Not titled "Agency standard": that is now the Overview's fourth card,
+        and two cards of the same name on different tabs of one document is a
+        way to lose an argument about which one is the rule.
+      */}
       {standards.length ? (
         <PanelCard
-          title="Agency standard"
-          hint="Rules and definitions this procedure depends on."
+          title="Definitions and local rules"
+          hint="Named sections this procedure depends on."
         >
           <div className="space-y-4">
             {standards.map((section) => (

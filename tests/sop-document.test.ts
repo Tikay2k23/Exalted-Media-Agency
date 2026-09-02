@@ -87,6 +87,38 @@ describe("reading an SOP document", () => {
     }
   });
 
+  it("puts the agency standard on the overview, not with the steps", () => {
+    /* It answers "what will I be held to", not "what do I do", and somebody
+       about to follow a procedure needs it before the steps. */
+    for (const heading of ["Agency Standard", "Critical Rules", "agency standard"]) {
+      assert.deepEqual(
+        routeForHeading(heading),
+        { tab: "overview", slot: "agencyStandard" },
+        heading,
+      );
+    }
+  });
+
+  it("reads the standard's rules out of its ### subsections", () => {
+    const document = parseSopDocument(
+      "## Agency Standard\nEvery lead has an owner.\n\n### Ownership\nOne accountable rep.\n\n### Follow-Up\nA dated next follow-up.\n",
+    );
+    const standard = sectionForSlot(document, "agencyStandard");
+
+    assert.deepEqual(standard?.paragraphs, ["Every lead has an owner."]);
+    assert.deepEqual(
+      standard?.subsections.map((rule) => rule.heading),
+      ["Ownership", "Follow-Up"],
+    );
+  });
+
+  it("routes the typical outcome to the overview for the rail", () => {
+    assert.deepEqual(routeForHeading("Typical Outcome"), {
+      tab: "overview",
+      slot: "typicalOutcome",
+    });
+  });
+
   it("sends an unrecognised heading to the procedure rather than dropping it", () => {
     /* The important half. A section nobody anticipated must still reach the
        page: this is an audited document, and silently losing a paragraph of

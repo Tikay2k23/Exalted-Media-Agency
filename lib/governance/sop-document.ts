@@ -74,6 +74,25 @@ const HEADING_ROUTES: { tab: SopTab; slot: string; headings: string[] }[] = [
     slot: "entry",
     headings: ["entry criteria", "preconditions", "before you start"],
   },
+  /*
+   * The rules that cannot be ignored, as opposed to the steps.
+   *
+   * On the Overview rather than with the procedure because it answers a
+   * different question - not "what do I do" but "what will I be held to" - and
+   * somebody skimming a procedure they are about to follow needs it before
+   * the steps, not after them. Its `###` subsections become the rule columns.
+   */
+  {
+    tab: "overview",
+    slot: "agencyStandard",
+    headings: ["agency standard", "critical rules", "agency standard critical rules"],
+  },
+  /* One line for the rail: what the agency ends up with. */
+  {
+    tab: "overview",
+    slot: "typicalOutcome",
+    headings: ["typical outcome", "typical result"],
+  },
 
   {
     tab: "procedure",
