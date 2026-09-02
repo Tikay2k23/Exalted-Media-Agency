@@ -1,12 +1,22 @@
 # The SOP library
 
-The ten standard operating procedures this system was built to enforce. These
-are the source documents: where a procedure and the software disagree, the
-document is right and the software has a bug.
+The ten standard operating procedures this system was built to enforce.
 
-They are kept here in full, unedited. Changing a procedure means editing the
-document *and* changing what the system enforces — the table below is the map
-between the two.
+**The app is the source of truth.** The live procedures are in Governance →
+SOPs, where an edit publishes a new immutable version, drops the SOP back to
+Draft for somebody else to approve, and records who wrote it and when. That
+record — with its versions, approvals and review dates — is what an audit is
+judged against.
+
+These files are the starting content for a new environment and a record of what
+each procedure said on the day it was written. `scripts/load-sops.mjs` seeds an
+empty library from them and then leaves it alone: it will not publish a file
+over a document somebody has edited in the app. Once a procedure is edited
+there, the file next to it is history, and anyone reading the real wording
+should read it in Governance.
+
+Changing a procedure means editing it in Governance *and* changing what the
+system enforces — the table below is the map between the two.
 
 > **Last reviewed against the system: 2026-09-01.**
 >
@@ -35,6 +45,13 @@ between the two.
 Every exit criterion the journey enforces, traced to the SOP step it comes
 from: **[STAGE-GATES.md](STAGE-GATES.md)**. Kept in step with the code by
 `tests/stage-gate-traceability.test.ts`.
+
+Its citations — *SOP 03 §11* and the like — are section numbers in the files
+here, which is where those gates were derived from. They are not re-checked
+against the live library, so renumbering a procedure in the app will leave a
+citation pointing at the step it came from rather than at the step that now
+carries that number. The test proves every gate is traced to something; it
+cannot prove the section number still resolves.
 
 ## Every stage gate is armed
 
@@ -106,7 +123,8 @@ SOP 03 §4. The scan that found them missing used a broken pattern.
 
 ## When you find the next one
 
-List it here rather than editing the document to match the code. This page
-opens by saying the document wins, and a disagreement is a decision — sometimes
-the software is wrong, and quietly rewriting the procedure to match it destroys
-the only record that anyone disagreed.
+List it here rather than quietly editing one side to match the other. A
+disagreement is a decision: sometimes the procedure is wrong and sometimes the
+software is, and changing either one on the spot destroys the only record that
+anybody disagreed. Neither side wins automatically — that is the point of
+writing it down.

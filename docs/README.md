@@ -14,7 +14,7 @@
 | --- | --- |
 | [DATABASE-ENVIRONMENTS.md](DATABASE-ENVIRONMENTS.md) | The four databases, the command for each, and the environment-variable rule that bites if you ignore it. |
 | [GUIDE.md](GUIDE.md) | |
-| [sop/](sop/) | The ten written procedures, SOP-01 to SOP-10. These are the source the SOP library is loaded from. |
+| [sop/](sop/) | The ten written procedures, SOP-01 to SOP-10. They seed a new environment's SOP library; the live text is in Governance → SOPs. |
 
 ## Keeping the screenshots current
 

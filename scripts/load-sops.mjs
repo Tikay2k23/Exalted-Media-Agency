@@ -1,17 +1,26 @@
 /**
- * Loads the SOP documents in docs/sop into the SOP library.
+ * Seeds an empty SOP library from the documents in docs/sop.
  *
- * Idempotent and additive: an SOP whose content already matches the newest
- * stored version is skipped, so running this twice does not manufacture a
- * version 1.1 that changed nothing. Nothing is ever deleted or overwritten -
- * a changed document publishes a new immutable version and drops the SOP back
- * to Draft, because the version somebody approved is not the version now in
- * the box.
+ * The app is the source of truth for procedures. The library is edited in
+ * Governance, where a change publishes a new immutable version and drops the
+ * SOP back to Draft for approval - and that record, with its versions,
+ * approvals and review dates, is the one an audit is judged against.
  *
- * Loaded SOPs start as DRAFT. Activation is a person's decision, made in the
- * app by somebody other than the author.
+ * So this only ever creates. An SOP that already exists is left exactly as it
+ * is, whatever the file next to it now says. It used to update them, which
+ * made sense while the files were authoritative and became a way to silently
+ * revert somebody's edit once they were not.
+ *
+ * The files remain the starting content for a new environment, and a record of
+ * what the procedures said on the day they were written. They are not the live
+ * document.
  *
  *   node scripts/load-sops.mjs
+ *
+ * LOAD_SOPS_REPLACE=1 publishes the files over the library as new versions,
+ * for the rare case where the repository really should win - restoring an
+ * environment somebody has edited into a corner, say. It drops every SOP it
+ * touches back to Draft.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -21,6 +30,8 @@ import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+import { decideSeedAction, nextSeedVersion } from "./sop-seed-rules.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sopDir = join(here, "..", "docs", "sop");
@@ -62,8 +73,8 @@ console.log(`Loading SOPs into ${target.database} at ${target.host}`);
 
 if (!target.isLocal && process.env.LOAD_SOPS_ALLOW_REMOTE !== "1") {
   console.error(
-    `\n[load-sops] ${target.host} is not a local database, and a changed document`
-      + " drops its SOP back to Draft and clears the approval." + "\n"
+    `\n[load-sops] ${target.host} is not a local database. Seeding a live library`
+      + " writes procedures somebody will be held to." + "\n"
       + "[load-sops] Re-run with LOAD_SOPS_ALLOW_REMOTE=1 if that is what you mean to do.",
   );
   process.exit(1);
@@ -98,6 +109,15 @@ function parseTitle(content, fallback) {
   return fallback;
 }
 
+/** The earliest active account matching a shape, or null. */
+function findAuthor(where) {
+  return prisma.user.findFirst({
+    where: { isActive: true, deletedAt: null, ...where },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 async function main() {
   const files = readdirSync(sopDir)
     .filter((name) => name.startsWith("SOP-") && name.endsWith(".md"))
@@ -108,19 +128,28 @@ async function main() {
     process.exit(1);
   }
 
-  // Attribute authorship to the owner seat so the library has a real author
-  // rather than a system placeholder, and so the self-approval rule has
-  // somebody to check against.
-  const author = await prisma.user.findFirst({
-    where: { isActive: true, deletedAt: null, teamRole: "AGENCY_OWNER" },
-    select: { id: true, name: true },
-    orderBy: { createdAt: "asc" },
-  });
+  /*
+   * Attribute authorship to a real person rather than a system placeholder, so
+   * the library has an author and the self-approval rule has somebody to check
+   * against.
+   *
+   * The owner seat first. Falling back to the owner tier matters for the case
+   * this script is now for: a brand new environment, where prisma/seed.ts has
+   * created the accounts but left everybody on the schema's default seat. That
+   * used to stop the seed dead on exactly the database it was meant to fill.
+   */
+  const author =
+    (await findAuthor({ teamRole: "AGENCY_OWNER" }))
+    ?? (await findAuthor({ role: { in: ["OWNER", "ADMIN"] } }));
 
   if (!author) {
-    console.error("No active agency owner to record as the author. Seed the team first.");
+    console.error(
+      "No active owner or admin to record as the author. Run prisma/seed.ts first.",
+    );
     process.exit(1);
   }
+
+  console.log(`Recording ${author.name} as the author.`);
 
   let added = 0;
   let updated = 0;
@@ -176,37 +205,26 @@ async function main() {
       continue;
     }
 
-    if (existing.versions[0]?.content === content) {
+    const action = decideSeedAction({
+      existingContent: existing.versions[0]?.content ?? null,
+      fileContent: content,
+      replace: process.env.LOAD_SOPS_REPLACE === "1",
+    });
+
+    if (action === "unchanged") {
       unchanged += 1;
       continue;
     }
 
-    /*
-     * Stop before overwriting something somebody wrote in the app.
-     *
-     * The library can now be edited from Governance, and an edit there
-     * publishes a version this importer knows nothing about. Left alone, the
-     * next import would publish the file's wording straight over the top and
-     * the person who made the change would never be told. Versions are kept,
-     * so nothing would be destroyed - but the current procedure would silently
-     * revert, which is the part that matters.
-     */
-    const note = existing.versions[0]?.changeNote ?? "";
-    const cameFromAFile = note.startsWith("Imported from") || note.startsWith("Re-imported from");
-
-    if (!cameFromAFile && process.env.LOAD_SOPS_OVERWRITE_APP_EDITS !== "1") {
+    if (action === "leave-alone") {
       blocked += 1;
       console.log(
-        `  skipped  ${parsed.reference}  newest version was edited in the app`
-          + ` (${note || "no change note"})`,
+        `  left alone  ${parsed.reference}  the library has a different version`,
       );
       continue;
     }
 
-    const [major, minor] = existing.currentVersion.split(".");
-    const version = /^\d+$/.test(major ?? "") && /^\d+$/.test(minor ?? "")
-      ? `${major}.${Number(minor) + 1}`
-      : "1.0";
+    const version = nextSeedVersion(existing.currentVersion);
 
     await prisma.$transaction([
       prisma.sop.update({
@@ -225,29 +243,27 @@ async function main() {
           sopId: existing.id,
           version,
           content,
-          changeNote: `Re-imported from ${file}.`,
+          changeNote: `Replaced from ${file}.`,
           authorId: author.id,
         },
       }),
     ]);
 
     updated += 1;
-    if (blocked) {
+    console.log(`  replaced  ${parsed.reference}  now version ${version}`);
+  }
+
+  if (blocked) {
     console.log(
-      `
-[load-sops] ${blocked} document(s) left alone because the app has a newer edit.`
-        + `
-[load-sops] Re-run with LOAD_SOPS_OVERWRITE_APP_EDITS=1 to publish the files over them.`,
+      `\n[load-sops] ${blocked} document(s) left alone: the library is the source of truth and holds a different version.`
+        + `\n[load-sops] Re-run with LOAD_SOPS_REPLACE=1 only if the files should win.`,
     );
   }
 
-  console.log(`  updated  ${parsed.reference}  now version ${version}`);
-  }
-
   console.log(
-    `\nSOP library: ${added} added, ${updated} updated, ${unchanged} already current.`,
+    `\nSOP library: ${added} added, ${updated} replaced, ${unchanged} already current, ${blocked} left alone.`,
   );
-  console.log("All loaded SOPs are drafts. Somebody other than the author activates them.");
+  console.log("Newly seeded SOPs are drafts. Somebody other than the author activates them.");
 
   await prisma.$disconnect();
 }

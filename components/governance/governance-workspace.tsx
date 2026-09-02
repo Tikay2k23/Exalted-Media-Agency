@@ -222,8 +222,9 @@ export function GovernanceWorkspace({
         <CardContent className="space-y-3">
           {sops.length === 0 ? (
             <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-              The library is empty. Run <code>node scripts/load-sops.mjs</code> to import
-              the documents in docs/sop.
+              The library is empty. Run <code>node scripts/load-sops.mjs</code> to seed it
+              from the documents in docs/sop. After that, this library is the source of
+              truth and the files are left alone.
             </p>
           ) : (
             <ul className="space-y-2">

@@ -176,9 +176,10 @@ export function SopPreviewDialog({
 /**
  * Editing a procedure.
  *
- * Saving publishes a new immutable version through the same service the
- * importer uses, and drops the SOP back to Draft - the version somebody
- * approved is not the version now in the box. Nothing is overwritten.
+ * This is where a procedure is actually written. Saving publishes a new
+ * immutable version and drops the SOP back to Draft - the version somebody
+ * approved is not the version now in the box. Nothing is overwritten, and no
+ * later run of the seed script will quietly put the repository's wording back.
  */
 export function SopEditDialog({
   sopId,
@@ -308,10 +309,11 @@ export function SopEditDialog({
             </span>
           </label>
 
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-            This document also exists as <code>docs/sop/{detail.reference}…md</code> in the
-            repository. Editing here publishes a new version in the app; the file is unchanged,
-            and re-running the importer would publish the file&rsquo;s wording over the top.
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+            This is the live procedure. Publishing keeps every earlier version and returns the
+            SOP to Draft for somebody other than you to approve. The copy in{" "}
+            <code>docs/sop</code> is the text this library started from; it is not updated, and
+            it will not be published back over your edit.
           </p>
         </div>
       ) : null}
