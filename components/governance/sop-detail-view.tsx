@@ -4,7 +4,6 @@ import {
   CalendarClock,
   CircleCheck,
   ClipboardCheck,
-  ClipboardList,
   ExternalLink,
   FileText,
   GitBranch,
@@ -18,6 +17,7 @@ import type { ReactNode } from "react";
 
 import { SopDetailActions } from "@/components/governance/sop-detail-actions";
 import { SopProcedurePanel } from "@/components/governance/sop-procedure-panel";
+import { SopResourcesPanel, type ResourceRow } from "@/components/governance/sop-resources-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { SopDetail } from "@/lib/data/sop-detail";
@@ -33,7 +33,7 @@ import {
   type SopTab,
 } from "@/lib/governance/sop-document";
 import { parseProcedureSteps, procedureExceptions } from "@/lib/governance/sop-procedure";
-import { SOP_HOW_TO, SOP_SYSTEM_GUIDE } from "@/lib/governance/sop-system-guide";
+import { SOP_SYSTEM_GUIDE } from "@/lib/governance/sop-system-guide";
 import { NAVIGATION } from "@/lib/navigation";
 import { formatDate, formatEnumLabel } from "@/lib/utils";
 
@@ -248,7 +248,6 @@ export function SopDetailView({
   const purpose = purposeLine(document, sop.summary);
   const number = sopNumber(sop.reference);
   const systemGuide = SOP_SYSTEM_GUIDE[sop.reference] ?? [];
-  const howTo = SOP_HOW_TO[sop.reference] ?? [];
   const quickActions = quickActionsFor(sop.reference);
 
   /*
@@ -408,7 +407,13 @@ export function SopDetailView({
           {tab === "roles" ? <RolesPanel document={document} canManage={canManage} /> : null}
 
           {tab === "resources" ? (
-            <ResourcesPanel document={document} howTo={howTo} canManage={canManage} />
+            <SopResourcesPanel
+              sopId={sop.id}
+              sopReference={sop.reference}
+              initialResources={sop.resources as ResourceRow[]}
+              team={sop.team}
+              canManage={canManage}
+            />
           ) : null}
 
           {tab === "history" ? <HistoryPanel sop={sop} /> : null}
@@ -1058,74 +1063,6 @@ function RolesPanel({
         ))}
       </dl>
     </PanelCard>
-  );
-}
-
-function ResourcesPanel({
-  document,
-  howTo,
-  canManage,
-}: {
-  document: ReturnType<typeof parseSopDocument>;
-  howTo: { title: string; where: string; href?: string }[];
-  canManage: boolean;
-}) {
-  const written = sectionsForTab(document, "resources");
-
-  if (!howTo.length && !written.length) {
-    return (
-      <EmptyPanel
-        title="No resources linked"
-        what="Nothing is linked to this procedure yet."
-        heading="Resources"
-        canEdit={canManage}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {howTo.length ? (
-        <PanelCard
-          title="How-to guides"
-          hint="Where each task is done. Kept out of the procedure so the procedure survives a change to the software."
-        >
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {howTo.map((guide) => (
-              <li key={guide.title}>
-                {guide.href ? (
-                  <Link
-                    href={guide.href}
-                    className="flex items-start gap-2 rounded-xl border border-slate-200 px-3 py-2.5 transition hover:bg-slate-50"
-                  >
-                    <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-slate-900">
-                        {guide.title}
-                      </span>
-                      <span className="block text-xs text-slate-500">{guide.where}</span>
-                    </span>
-                  </Link>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 px-3 py-2.5">
-                    <span className="block text-sm font-medium text-slate-900">
-                      {guide.title}
-                    </span>
-                    <span className="block text-xs text-slate-500">{guide.where}</span>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </PanelCard>
-      ) : null}
-
-      {written.map((section) => (
-        <PanelCard key={section.heading} title={section.heading}>
-          <DocumentSection section={{ ...section, heading: "" }} />
-        </PanelCard>
-      ))}
-    </div>
   );
 }
 

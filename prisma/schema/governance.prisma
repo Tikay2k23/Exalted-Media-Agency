@@ -79,6 +79,7 @@ model Sop {
   approvedBy User?        @relation("SopApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   versions   SopVersion[]
   findings   AuditFinding[]
+  resources  ResourceSopLink[]
 
   @@index([status])
   @@index([nextReviewAt])
@@ -313,4 +314,95 @@ model UatTestRun {
   @@index([status])
   @@index([severity])
   @@index([testedAt])
+}
+
+/// A supporting material for one or more SOPs: a how-to guide, a script, a
+/// template, a checklist, a reference guide, an uploaded file, or a link.
+///
+/// One authoritative record, linked to many SOPs. The same "How to submit an
+/// EOD" guide belongs to SOP-05, SOP-08 and SOP-10 without being copied three
+/// times, so removing it from one SOP is unlinking, not deleting - see
+/// ResourceSopLink. This is agency knowledge, deliberately separate from a
+/// client's own files under AccessRecord / AssetRecord.
+model Resource {
+  id           String         @id @default(cuid())
+  title        String
+  type         ResourceType
+  description  String?
+  status       ResourceStatus @default(ACTIVE)
+  /// Where the content lives, which decides how it is opened.
+  source       ResourceSource
+
+  /// source = DOCUMENT: markdown written in the app.
+  content      String?
+  /// source = FILE: the stored file. fileUrl is a Vercel Blob URL.
+  fileUrl      String?
+  fileName     String?
+  fileMimeType String?
+  fileSize     Int?
+  /// source = LINK: an external URL.
+  externalUrl  String?
+
+  ownerId     String?
+  createdById String?
+  updatedById String?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  owner     User?             @relation("ResourceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy User?             @relation("ResourceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?             @relation("ResourceUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  sops      ResourceSopLink[]
+
+  @@index([type])
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// The many-to-many join between a Resource and a SOP.
+///
+/// Its own model rather than an implicit relation so that a link carries who
+/// made it and when, and so unlinking is a row delete that leaves the Resource
+/// and its other links untouched.
+model ResourceSopLink {
+  id          String   @id @default(cuid())
+  resourceId  String
+  sopId       String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  resource  Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  sop       Sop      @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("ResourceLinkCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// One Resource cannot be linked to the same SOP twice.
+  @@unique([resourceId, sopId])
+  @@index([sopId])
+  @@index([resourceId])
+}
+
+/// The category a Resource is filed under, which drives its badge, its grouping
+/// in the list, and which actions it offers.
+enum ResourceType {
+  HOW_TO_GUIDE
+  SCRIPT
+  TEMPLATE
+  CHECKLIST
+  REFERENCE_GUIDE
+  FILE
+  EXTERNAL_LINK
+}
+
+enum ResourceStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+/// Where a Resource's content actually lives.
+enum ResourceSource {
+  DOCUMENT
+  FILE
+  LINK
 }

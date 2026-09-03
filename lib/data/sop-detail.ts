@@ -1,4 +1,5 @@
 import { sopNumber } from "@/lib/governance/sop-document";
+import { listResourcesForSop, type ResourceListItem } from "@/lib/governance/resource-service";
 import { isSopReviewOverdue } from "@/lib/governance/sop-service";
 import { prisma } from "@/lib/prisma";
 
@@ -128,6 +129,20 @@ export async function getSopDetail(reference: string) {
       : Promise.resolve(null),
   ]);
 
+  /*
+   * Resources for this SOP (metadata only) and the people who could own one.
+   * Both are small and only the Resources tab uses them, but loading them here
+   * keeps the tab a pure render rather than a second round trip on open.
+   */
+  const [resources, team] = await Promise.all([
+    listResourcesForSop(sop.id),
+    prisma.user.findMany({
+      where: { isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
   const versions: SopVersionSummary[] = sop.versions.map((version, index) => ({
     id: version.id,
     version: version.version,
@@ -160,6 +175,21 @@ export async function getSopDetail(reference: string) {
     /* The previous procedure's text, only for its completion section. */
     previousReference,
     previousContent: previous?.content ?? null,
+    resources: (resources as ResourceListItem[]).map((r) => ({
+      id: r.id,
+      title: r.title,
+      type: r.type,
+      description: r.description,
+      status: r.status,
+      source: r.source,
+      fileName: r.fileName,
+      fileMimeType: r.fileMimeType,
+      fileSize: r.fileSize,
+      externalUrl: r.externalUrl,
+      ownerName: r.owner?.name ?? null,
+      updatedAt: r.updatedAt.toISOString(),
+    })),
+    team,
     versions,
     versionCount: versions.length,
     neighbours: neighbours as SopNeighbour[],
