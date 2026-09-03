@@ -2,16 +2,17 @@ import { NextResponse } from "next/server";
 
 import { resourceActor } from "@/lib/governance/resource-auth";
 import { getResourceDetail } from "@/lib/governance/resource-service";
+import { StorageNotConfiguredError, readResourceFile } from "@/lib/storage/resource-blob";
 
 export const runtime = "nodejs";
 
 /**
  * Streams a file resource's bytes with its original filename.
  *
- * Goes through the app rather than handing out the blob URL directly, so the
- * download passes the same governance.view check as everything else and arrives
- * named "Lead Qualification Notes.docx" rather than the random blob path. The
- * bytes are fetched server-side and relayed; nothing is held in the database.
+ * The only way to reach a private blob. The bytes are read server-side with the
+ * store token and relayed, so the download passes the same governance.view check
+ * as everything else and arrives named "Lead Qualification Notes.docx" rather
+ * than the random blob path. The raw blob URL is never handed to the browser.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await resourceActor();
@@ -27,15 +28,24 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "No file to download." }, { status: 404 });
   }
 
-  const upstream = await fetch(resource.fileUrl);
+  let file;
+  try {
+    file = await readResourceFile(resource.fileUrl);
+  } catch (error) {
+    if (error instanceof StorageNotConfiguredError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
+    console.error("[resources/download] read failed", error);
+    return NextResponse.json({ error: "The file could not be retrieved." }, { status: 502 });
+  }
 
-  if (!upstream.ok || !upstream.body) {
+  if (!file) {
     return NextResponse.json({ error: "The file could not be retrieved." }, { status: 502 });
   }
 
   const fileName = (resource.fileName ?? "resource").replace(/"/g, "");
 
-  return new NextResponse(upstream.body, {
+  return new NextResponse(file.stream, {
     status: 200,
     headers: {
       "Content-Type": resource.fileMimeType ?? "application/octet-stream",

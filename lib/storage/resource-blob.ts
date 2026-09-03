@@ -1,4 +1,4 @@
-import { del, put } from "@vercel/blob";
+import { del, get, put } from "@vercel/blob";
 
 /**
  * File storage for SOP resources, on Vercel Blob.
@@ -12,6 +12,13 @@ import { del, put } from "@vercel/blob";
  * store is not reachable, and every function here refuses rather than pretending
  * a file was saved: the upload route turns that refusal into an honest "storage
  * is not configured" instead of a broken resource record pointing at nothing.
+ *
+ * Files are stored PRIVATE. A private blob's own URL returns 403 to anyone
+ * without the store token, so the bytes cannot be reached by guessing or
+ * sharing a link - the only way in is the download route, which streams them
+ * server-side after the same governance.view check as everything else. The raw
+ * URL is never sent to the browser either (see the download route and the
+ * detail endpoint). Login is required at both layers.
  *
  * To turn it on: enable Blob for the project in the Vercel dashboard (Storage →
  * Create → Blob), then `vercel env pull` or add BLOB_READ_WRITE_TOKEN to the
@@ -60,7 +67,9 @@ export async function putResourceFile(file: File): Promise<StoredFile> {
   }
 
   const put_ = await put(`sop-resources/${file.name}`, file, {
-    access: "public",
+    /* Private: the blob's own URL is not anonymously fetchable. Reads go through
+       the download route, which authenticates with the store token. */
+    access: "private",
     addRandomSuffix: true,
     contentType: file.type || "application/octet-stream",
   });
@@ -71,6 +80,27 @@ export async function putResourceFile(file: File): Promise<StoredFile> {
     mimeType: file.type || "application/octet-stream",
     size: file.size,
   };
+}
+
+/**
+ * Reads a stored file for streaming to an authorised caller.
+ *
+ * Uses the SDK's authenticated get() rather than a bare fetch, because a private
+ * blob refuses an unauthenticated request. The token comes from the environment.
+ * Returns null when the blob is gone.
+ */
+export async function readResourceFile(url: string) {
+  if (!isStorageConfigured()) {
+    throw new StorageNotConfiguredError();
+  }
+
+  const result = await get(url, { access: "private" });
+
+  if (!result || result.statusCode !== 200) {
+    return null;
+  }
+
+  return { stream: result.stream, blob: result.blob };
 }
 
 /** Removes a stored file. Best-effort: a delete that fails must not strand the caller. */

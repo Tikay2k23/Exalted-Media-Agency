@@ -27,7 +27,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Resource not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ resource });
+  /*
+   * The raw blob URL never leaves the server. A private blob's URL is useless
+   * without the store token, but there is no reason to hand it to the browser at
+   * all - files are reached only through the download route. `hasFile` tells the
+   * client a file exists without disclosing where it lives.
+   */
+  const { fileUrl, ...clientSafe } = resource;
+
+  return NextResponse.json({ resource: { ...clientSafe, hasFile: Boolean(fileUrl) } });
 }
 
 const patchSchema = z.object({

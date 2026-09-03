@@ -1189,7 +1189,6 @@ interface ResourceDetail {
   status: ResourceStatus;
   source: ResourceSource;
   content: string | null;
-  fileUrl: string | null;
   fileName: string | null;
   fileMimeType: string | null;
   fileSize: number | null;
