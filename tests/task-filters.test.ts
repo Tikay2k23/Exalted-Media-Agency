@@ -293,6 +293,22 @@ describe("filtering and sorting together", () => {
     assert.equal(client.length, 3);
   });
 
+  it("filters a department's work by team member and by project", () => {
+    const team = [
+      task({ id: "j", assignedTo: { id: "john", name: "John" }, project: { id: "p1", name: "CRM" } }),
+      task({ id: "m", assignedTo: { id: "maria", name: "Maria" }, project: null }),
+    ];
+
+    const john = applyFilters(team, { ...EMPTY_FILTERS, assigneeId: "john" }, NOW);
+    assert.deepEqual(john.map((row) => row.id), ["j"]);
+
+    const crm = applyFilters(team, { ...EMPTY_FILTERS, projectId: "p1" }, NOW);
+    assert.deepEqual(crm.map((row) => row.id), ["j"]);
+
+    assert.equal(hasActiveFilters({ ...EMPTY_FILTERS, assigneeId: "john" }), true);
+    assert.equal(hasActiveFilters({ ...EMPTY_FILTERS, projectId: "p1" }), true);
+  });
+
   it("combines a tab with a filter rather than replacing it", () => {
     const result = applyFilters(
       rows,

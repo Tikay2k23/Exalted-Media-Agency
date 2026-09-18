@@ -56,6 +56,17 @@ const FILTER_STATUSES = [
 
 const PAGE_SIZES = [10, 25, 50];
 
+/** Each record once, sorted by name, skipping the rows that have none. */
+function uniqueById(records: ({ id: string; name: string } | null)[]) {
+  const byId = new Map<string, { id: string; name: string }>();
+
+  for (const record of records) {
+    if (record) byId.set(record.id, record);
+  }
+
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function downloadCsv(csv: string, filename: string) {
   // The byte order mark stops Excel mangling anything non-ASCII in a client
   // name, which it does silently and which nobody notices until a report goes
@@ -170,6 +181,14 @@ export function AssignedTasks({
   const summary = useMemo(() => summarise(tasks, now), [tasks, now]);
 
   const tabCounts = useMemo(() => countByTab(tasks), [tasks]);
+
+  /*
+   * People and projects to filter by, read off the rows already here rather
+   * than fetched. Someone who only sees their own work has one assignee, so
+   * the team member filter stays hidden for them and their page is unchanged.
+   */
+  const assigneeOptions = useMemo(() => uniqueById(tasks.map((task) => task.assignedTo)), [tasks]);
+  const projectOptions = useMemo(() => uniqueById(tasks.map((task) => task.project)), [tasks]);
 
   const filtered = useMemo(
     () => applyFilters(tasks, filters, now),
@@ -593,6 +612,38 @@ export function AssignedTasks({
                 </option>
               ))}
             </Select>
+
+            {assigneeOptions.length > 1 ? (
+              <Select
+                className="h-10 min-w-[9rem] flex-1 text-sm"
+                value={filters.assigneeId}
+                onChange={(event) => update("assigneeId", event.target.value)}
+                aria-label="Team member"
+              >
+                <option value="">All Team Members</option>
+                {assigneeOptions.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+
+            {projectOptions.length > 0 ? (
+              <Select
+                className="h-10 min-w-[9rem] flex-1 text-sm"
+                value={filters.projectId}
+                onChange={(event) => update("projectId", event.target.value)}
+                aria-label="Project"
+              >
+                <option value="">All Projects</option>
+                {projectOptions.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
 
             <Select
               className="h-10 min-w-[10rem] flex-1 text-sm"

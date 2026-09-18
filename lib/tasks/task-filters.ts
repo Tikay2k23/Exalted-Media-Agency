@@ -270,6 +270,9 @@ export interface TaskFilterState {
   priority: string;
   category: string;
   clientId: string;
+  /** Whose task it is. Only offered when the list holds more than one person's work. */
+  assigneeId: string;
+  projectId: string;
   datePreset: DatePreset;
   customFrom: string;
   customTo: string;
@@ -285,6 +288,8 @@ export const EMPTY_FILTERS: TaskFilterState = {
   priority: "",
   category: "",
   clientId: "",
+  assigneeId: "",
+  projectId: "",
   datePreset: "any",
   customFrom: "",
   customTo: "",
@@ -300,6 +305,8 @@ export function hasActiveFilters(filters: TaskFilterState) {
     || Boolean(filters.priority)
     || Boolean(filters.category)
     || Boolean(filters.clientId)
+    || Boolean(filters.assigneeId)
+    || Boolean(filters.projectId)
     || filters.datePreset !== "any"
     || filters.todayOnly
     || filters.sort !== "due-asc"
@@ -347,6 +354,9 @@ export function applyFilters<T extends FilterableTask>(
       const key = task.client?.id ?? "internal";
       if (key !== filters.clientId) return false;
     }
+
+    if (filters.assigneeId && task.assignedTo?.id !== filters.assigneeId) return false;
+    if (filters.projectId && task.project?.id !== filters.projectId) return false;
 
     if (range) {
       const due = new Date(task.dueDate);
