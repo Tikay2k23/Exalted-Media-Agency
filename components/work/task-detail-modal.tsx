@@ -32,6 +32,7 @@ import {
 import { parseTaskAssets, relativeDue } from "@/lib/tasks/task-filters";
 import { formatEnumLabel } from "@/lib/utils";
 
+import { ChecklistBlock, ReassignControl } from "@/components/work/task-extras";
 import { EodPanel, type EodEntry } from "./eod-panel";
 import type { TaskComment, TaskEvent, TaskRow, ViewerCapabilities } from "./task-types";
 
@@ -315,6 +316,17 @@ export function TaskDetailModal({
                   <Pair label="Assigned To">{task.assignedTo?.name ?? "—"}</Pair>
                   <Pair label="Assigned By">{task.createdBy?.name ?? "—"}</Pair>
                   <Pair label="Reviewer / Approver">{task.reviewer?.name ?? "None"}</Pair>
+                  {task.sop ? (
+                    <Pair label="Related SOP">
+                      <Link
+                        href={`/governance/sops/${encodeURIComponent(task.sop.reference)}?tab=procedure`}
+                        className="text-sky-700 underline underline-offset-2"
+                        title={task.sop.title}
+                      >
+                        {task.sop.reference}
+                      </Link>
+                    </Pair>
+                  ) : null}
                   <Pair label="Platform / Channel">
                     {task.platform ? formatEnumLabel(task.platform) : "—"}
                   </Pair>
@@ -341,6 +353,9 @@ export function TaskDetailModal({
                 {task.objective ? <Block label="Objective">{task.objective}</Block> : null}
                 {task.completionCriteria ? (
                   <Block label="Deliverable / Outcome">{task.completionCriteria}</Block>
+                ) : null}
+                {task.checklist.length ? (
+                  <ChecklistBlock key={task.id} taskId={task.id} initial={task.checklist} />
                 ) : null}
                 {task.note ? (
                   <Block label="Description / Instructions">
@@ -522,6 +537,18 @@ export function TaskDetailModal({
         <div className="space-y-2 border-t border-slate-100 bg-slate-50/70 p-3">
           {error ? (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
+          ) : null}
+
+          {!isArchived
+          && viewer.reassignOptions?.length
+          && !["DONE", "APPROVED", "CANCELLED"].includes(task.status) ? (
+            <ReassignControl
+              key={task.id}
+              taskId={task.id}
+              currentAssigneeId={task.assignedTo?.id ?? null}
+              options={viewer.reassignOptions}
+              onDone={onClose}
+            />
           ) : null}
 
           {isArchived ? (

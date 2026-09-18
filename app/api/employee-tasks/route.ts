@@ -1,11 +1,14 @@
-import { ActivityEntityType } from "@prisma/client";
+import { ActivityEntityType, Prisma } from "@prisma/client";
 import { startOfWeek } from "date-fns";
 import { NextResponse } from "next/server";
 
 import { getServerAuthSession } from "@/lib/auth";
+import { loadAuthContext } from "@/lib/authz";
 import { logActivity } from "@/lib/activity";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
-import { canManageEmployeeTasks } from "@/lib/permissions";
+import { assigneeScope, ledDepartment } from "@/lib/team/departments";
+import { directReportIds } from "@/lib/team/team-service";
+import { checklistFromLines } from "@/lib/tasks/task-workflow";
 import { prisma } from "@/lib/prisma";
 import { employeeTaskFormSchema } from "@/lib/validators";
 
@@ -32,7 +35,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!canManageEmployeeTasks(session.user.role)) {
+  const actor = await loadAuthContext(session.user.id);
+
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  /*
+   * Who may assign, and to whom.
+   *
+   * Everybody who could assign work before still can, to anybody - that is the
+   * "all" scope, and it is the same tier check this route always made. A
+   * department leader may assign to themselves and their own people. Anybody
+   * else is refused, as before.
+   */
+  const scope = assigneeScope(actor, await directReportIds(actor.id));
+
+  if (scope !== "all" && scope.size === 0) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -48,6 +67,40 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
+  if (scope !== "all") {
+    if (!scope.has(data.assignedToId)) {
+      return NextResponse.json(
+        { error: "You can only assign work to people in your own department." },
+        { status: 403 },
+      );
+    }
+
+    if (data.reviewerId && !scope.has(data.reviewerId)) {
+      return NextResponse.json(
+        { error: "The reviewer has to be somebody in your own department." },
+        { status: 403 },
+      );
+    }
+  }
+
+  /*
+   * A leader reviews their department's work. When a leader hands a task to
+   * one of their people without naming a reviewer, they become it - which is
+   * what makes the member's "submit for review" land with them, and what makes
+   * the task need their approval before it counts as done.
+   */
+  const led = scope === "all" ? null : ledDepartment(actor);
+  const reviewerId =
+    data.reviewerId || (led && data.assignedToId !== actor.id ? actor.id : "");
+
+  const sop = data.sopId
+    ? await prisma.sop.findUnique({ where: { id: data.sopId }, select: { id: true } })
+    : null;
+
+  if (data.sopId && !sop) {
+    return NextResponse.json({ error: "That SOP could not be found." }, { status: 404 });
+  }
+
   const [assignee, client, reviewer, project] = await Promise.all([
     prisma.user.findFirst({
       where: { id: data.assignedToId, deletedAt: null },
@@ -59,9 +112,9 @@ export async function POST(request: Request) {
           select: { id: true, companyName: true },
         })
       : Promise.resolve(null),
-    data.reviewerId
+    reviewerId
       ? prisma.user.findFirst({
-          where: { id: data.reviewerId, deletedAt: null },
+          where: { id: reviewerId, deletedAt: null },
           select: { id: true, name: true },
         })
       : Promise.resolve(null),
@@ -81,7 +134,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That client could not be found." }, { status: 404 });
   }
 
-  if (data.reviewerId && !reviewer) {
+  if (reviewerId && !reviewer) {
     return NextResponse.json({ error: "That reviewer could not be found." }, { status: 404 });
   }
 
@@ -164,6 +217,12 @@ export async function POST(request: Request) {
       recurrence: data.recurrence ?? "NONE",
       // A reviewer named on the task is a request for review, not decoration.
       requiresApproval: Boolean(reviewer),
+      sopId: sop?.id ?? null,
+      checklist: data.checklist?.length
+        ? (checklistFromLines(data.checklist) as unknown as Prisma.InputJsonValue)
+        : undefined,
+      // Filed under the leader's department when a leader assigns it.
+      ...(led ? { department: led.department } : {}),
     },
     include: {
       assignedTo: { select: { id: true, name: true } },

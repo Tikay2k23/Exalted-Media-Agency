@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { teamRoleLabels } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { deriveDashboard } from "@/lib/tasks/my-work-view";
+import { parseChecklist } from "@/lib/tasks/task-workflow";
 import {
   getAssignedTasks,
   getMyRecentActivity,
@@ -104,6 +105,8 @@ export default async function DashboardPage() {
     reviewer: task.reviewer,
     approvedBy: task.approvedBy,
     commentCount: task._count.comments,
+    sop: task.sop,
+    checklist: parseChecklist(task.checklist),
   }));
 
   const view = deriveDashboard(

@@ -22,6 +22,7 @@ const LABELS = {
   AUTOMATION_SPECIALIST: "Automation",
   CREATIVE_SPECIALIST: "Creative",
   ADS_SPECIALIST: "Ads",
+  DEPARTMENT_MEMBER: "Member",
 } as const;
 
 describe("service blueprints", () => {

@@ -29,6 +29,8 @@ export interface TeamOption {
   id: string;
   name: string;
   teamRole?: string;
+  /** Shown instead of the seat for department members, whose title is the useful part. */
+  jobTitle?: string | null;
 }
 
 export interface ProjectOption {
@@ -60,6 +62,7 @@ const ROLE_LABELS: Record<string, string> = {
   AUTOMATION_SPECIALIST: "GoHighLevel and Automation Specialist",
   CREATIVE_SPECIALIST: "Website, Funnel, Design and Copy Specialist",
   ADS_SPECIALIST: "Ads, Tracking and Reporting Specialist",
+  DEPARTMENT_MEMBER: "Team Member",
 };
 
 function Field({
@@ -101,15 +104,17 @@ function AssignTaskFields({
   clients,
   projects,
   sops,
+  initialAssigneeId,
 }: {
   users: TeamOption[];
   clients: { id: string; companyName: string }[];
   projects: ProjectOption[];
   sops: SopOption[];
+  initialAssigneeId?: string;
 }) {
   const [category, setCategory] = useState<string>(CATEGORY_GUIDES[0].value);
   const [clientId, setClientId] = useState("");
-  const [assignedToId, setAssignedToId] = useState("");
+  const [assignedToId, setAssignedToId] = useState(initialAssigneeId ?? "");
 
   const guide = categoryGuide(category as never);
 
@@ -152,7 +157,11 @@ function AssignTaskFields({
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
-                  {user.teamRole ? ` — ${ROLE_LABELS[user.teamRole] ?? user.teamRole}` : ""}
+                  {user.teamRole === "DEPARTMENT_MEMBER" && user.jobTitle
+                    ? ` — ${user.jobTitle}`
+                    : user.teamRole
+                      ? ` — ${ROLE_LABELS[user.teamRole] ?? user.teamRole}`
+                      : ""}
                 </option>
               ))}
             </Select>
@@ -294,6 +303,30 @@ function AssignTaskFields({
           </Field>
         </div>
 
+        {/* Row 5b — the procedure this follows, and the steps to tick off */}
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[1fr_2fr]">
+          <Field label="Related SOP" hint="The procedure this work follows. Opens from the task.">
+            <Select name="sopId" defaultValue="">
+              <option value="">None</option>
+              {sops.map((sop) => (
+                <option key={sop.id} value={sop.id}>
+                  {sop.reference} — {sop.title}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Checklist"
+            hint="One step per line. Ticked off on the task - it never completes a stage, QA test or approval."
+          >
+            <Textarea
+              name="checklist"
+              rows={3}
+              placeholder={"Build the workflow\nTest it with a sample lead\nRecord a walkthrough"}
+            />
+          </Field>
+        </div>
+
         {/* Row 6 — how success is judged, what is in the way, how often */}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-3">
           <Field label="KPI / success metric">
@@ -429,11 +462,17 @@ export function AssignTaskModal({
   clients,
   projects,
   sops,
+  initialAssigneeId,
+  triggerLabel,
 }: {
   users: TeamOption[];
   clients: { id: string; companyName: string }[];
   projects: ProjectOption[];
   sops: SopOption[];
+  /** Opens with this person already chosen - the member row's "Assign task". */
+  initialAssigneeId?: string;
+  /** A smaller, secondary trigger for use inside a list row. */
+  triggerLabel?: string;
 }) {
   const router = useRouter();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -474,6 +513,11 @@ export function AssignTaskModal({
       kpi: String(formData.get("kpi") ?? "").trim(),
       blocker: String(formData.get("blocker") ?? "").trim(),
       recurrence: String(formData.get("recurrence") ?? "NONE"),
+      sopId: String(formData.get("sopId") ?? ""),
+      checklist: String(formData.get("checklist") ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
     };
 
     if (!payload.title || !payload.assignedToId || !payload.dueDate || !payload.category) {
@@ -509,14 +553,15 @@ export function AssignTaskModal({
       <Button
         ref={triggerRef}
         size="sm"
-        className="gap-1.5"
+        variant={triggerLabel ? "secondary" : "primary"}
+        className={triggerLabel ? "h-8 gap-1 px-2.5 text-xs" : "gap-1.5"}
         onClick={() => {
           setOpened((count) => count + 1);
           setOpen(true);
         }}
       >
         <Plus className="h-3.5 w-3.5" aria-hidden />
-        Assign Marketing Task
+        {triggerLabel ?? "Assign Marketing Task"}
       </Button>
 
       {open ? (
@@ -544,6 +589,7 @@ export function AssignTaskModal({
               clients={clients}
               projects={projects}
               sops={sops}
+              initialAssigneeId={initialAssigneeId}
             />
           </div>
         </AccountDialog>

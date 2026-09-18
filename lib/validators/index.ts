@@ -137,6 +137,10 @@ export const employeeTaskFormSchema = z.object({
   kpi: z.string().max(300).optional().or(z.literal("")),
   blocker: z.string().max(1000).optional().or(z.literal("")),
   recurrence: z.nativeEnum(TaskRecurrence).optional(),
+  /** The SOP this work follows, so the person doing it can open it from the task. */
+  sopId: z.string().optional().or(z.literal("")),
+  /** Steps to tick off, one per entry. */
+  checklist: z.array(z.string().max(200)).max(50).optional(),
   /**
    * Sent by the form so a double-click cannot create the task twice. The
    * server treats a repeat within the dedupe window as the same submission.

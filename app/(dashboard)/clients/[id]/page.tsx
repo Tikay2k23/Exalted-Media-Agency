@@ -98,6 +98,7 @@ import {
 } from "@/lib/workflow/handoff-engine";
 import { requireUser } from "@/lib/session";
 import { formatEnumLabel } from "@/lib/utils";
+import { parseChecklist } from "@/lib/tasks/task-workflow";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -1553,6 +1554,8 @@ export default async function ClientDetailPage({
                   reviewer: task.reviewer,
                   approvedBy: task.approvedBy,
                   commentCount: task._count.comments,
+                  sop: task.sop,
+                  checklist: parseChecklist(task.checklist),
                   latestEodDate: task.eodEntries[0]?.entryDate.toISOString() ?? null,
                   reportedProgress: task.eodEntries[0]?.progressPercent ?? null,
                   unmetDependencies: task.blockedBy.filter(

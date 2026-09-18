@@ -80,6 +80,7 @@ model Sop {
   versions   SopVersion[]
   findings   AuditFinding[]
   resources  ResourceSopLink[]
+  tasks      EmployeeTask[]
 
   @@index([status])
   @@index([nextReviewAt])

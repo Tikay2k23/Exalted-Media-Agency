@@ -458,6 +458,13 @@ describe("a task from assignment to archive (integration)", { skip: !hasDatabase
       { assignedToId: specialistId },
       { createdById: specialistId },
       { reviewerId: specialistId },
+      /*
+       * Work assigned to the people who report to them. The specialist seats
+       * lead a department each, so a leader sees their members' tasks. For
+       * somebody with no direct reports it matches nothing - see
+       * department-team.integration.test.ts, "does not widen anybody else's view".
+       */
+      { assignedTo: { managerId: specialistId } },
     ]);
   });
 

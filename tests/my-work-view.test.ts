@@ -26,6 +26,8 @@ function task(overrides: Partial<TaskRow> = {}): TaskRow {
   return {
     id: Math.random().toString(36).slice(2),
     title: "Build the landing page",
+    sop: null,
+    checklist: [],
     status: "TODO",
     priority: "MEDIUM",
     category: "FUNNELS_AND_LANDING_PAGES",

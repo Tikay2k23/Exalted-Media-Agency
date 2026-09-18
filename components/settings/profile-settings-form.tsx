@@ -54,7 +54,7 @@ const AVATAR_QUALITY = 0.85;
  * image everywhere it was shown. Returning null instead lets the caller say so
  * rather than storing something unreadable.
  */
-async function downscaleImage(dataUrl: string): Promise<string | null> {
+export async function downscaleImage(dataUrl: string): Promise<string | null> {
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const element = new Image();

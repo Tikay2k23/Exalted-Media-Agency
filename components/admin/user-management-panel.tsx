@@ -1,6 +1,7 @@
 "use client";
 
 import { Eye, EyeOff, KeyRound, LoaderCircle, Save, UserPlus } from "lucide-react";
+import { teamRoleLabels } from "@/lib/permissions";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -30,6 +31,7 @@ interface UserRow {
   email: string;
   avatarUrl: string | null;
   role: string;
+  teamRole: string;
   department: string;
   jobTitle: string | null;
   weeklyCapacityHours: number;
@@ -177,6 +179,7 @@ export function UserManagementPanel({
             jobTitle: formData.get("jobTitle"),
             weeklyCapacityHours: formData.get("weeklyCapacityHours"),
             isActive: formData.get("isActive") === "true",
+            teamRole: formData.get("teamRole") ?? undefined,
           }),
         });
 
@@ -328,6 +331,20 @@ export function UserManagementPanel({
                           <option value="ADMIN">Admin</option>
                           <option value="MANAGER">Manager</option>
                           <option value="TEAM_MEMBER">Team Member</option>
+                        </Select>
+                        {/* The seat: Creative, Ads & Reporting, Automation and Sales
+                            are the department leaders. */}
+                        <Select
+                          name="teamRole"
+                          defaultValue={user.teamRole}
+                          disabled={isCurrentUser}
+                          aria-label="Seat"
+                        >
+                          {Object.entries(teamRoleLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
                         </Select>
                       </form>
                     </TableCell>

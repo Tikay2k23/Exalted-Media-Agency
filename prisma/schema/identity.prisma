@@ -29,6 +29,12 @@ enum TeamRole {
   CREATIVE_SPECIALIST
   /// Ads, Tracking and Reporting Specialist.
   ADS_SPECIALIST
+  /// Somebody who works under one of the four department leaders above -
+  /// a GHL specialist under Automation, a designer under Creative. Their
+  /// department is whoever they report to (managerId); this seat only says
+  /// they do the work rather than run the department, so it carries the
+  /// specialist floor and none of the leader's team-management rights.
+  DEPARTMENT_MEMBER
 }
 
 /// Descriptive job title. Retained so the detail captured against existing
@@ -82,6 +88,7 @@ enum Department {
   FINANCE
   SECURITY
   HUMAN_RESOURCES
+  AUTOMATION
 }
 
 enum EmploymentType {
@@ -89,6 +96,7 @@ enum EmploymentType {
   PART_TIME
   CONTRACTOR
   AGENCY_PARTNER
+  FREELANCER
 }
 
 /// Competency ladder. Gates who may perform or sign off on regulated work such
@@ -145,6 +153,12 @@ model User {
   certificationLevel  CertificationLevel @default(OBSERVER)
   availability        AvailabilityStatus @default(AVAILABLE)
   managerId           String?
+  /// Contact and working pattern for department members. All optional.
+  phone               String?
+  timezone            String?
+  workingHours        String?
+  startDate           DateTime?
+  notes               String?
   lastLoginAt         DateTime?
   /// Soft delete. Preserves authorship on historical records that must remain
   /// reportable and auditable after someone leaves.

@@ -36,7 +36,13 @@ export async function GET(
 
   const task = await prisma.employeeTask.findFirst({
     where: { id, deletedAt: null },
-    select: { id: true, assignedToId: true, createdById: true, reviewerId: true },
+    select: {
+      id: true,
+      assignedToId: true,
+      createdById: true,
+      reviewerId: true,
+      assignedTo: { select: { managerId: true } },
+    },
   });
 
   // Not found rather than forbidden: telling somebody a task exists but is not

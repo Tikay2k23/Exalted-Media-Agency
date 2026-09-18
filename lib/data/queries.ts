@@ -760,6 +760,7 @@ export async function getClientDetail(user: AppUser, clientId: string) {
             reviewer: { select: { id: true, name: true } },
             createdBy: { select: { id: true, name: true } },
             approvedBy: { select: { id: true, name: true } },
+            sop: { select: { id: true, reference: true, title: true } },
             /* Only the newest: the column asks whether today's update landed. */
             eodEntries: {
               orderBy: { entryDate: "desc" },
@@ -1270,6 +1271,7 @@ export async function getAdminUsersData(actor: AuthContext) {
         email: true,
         avatarUrl: true,
         role: true,
+        teamRole: true,
         department: true,
         jobTitle: true,
         weeklyCapacityHours: true,

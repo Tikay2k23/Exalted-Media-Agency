@@ -24,6 +24,10 @@ export interface TaskRow extends FilterableTask {
   evidenceUrl: string | null;
   approvedBy: { id: string; name: string } | null;
   commentCount: number;
+  /** The SOP this work follows, when one was chosen. */
+  sop: { id: string; reference: string; title: string } | null;
+  /** Steps to tick off. Empty for tasks created without one. */
+  checklist: { id: string; text: string; done: boolean }[];
 }
 
 export interface TaskComment {
@@ -59,4 +63,9 @@ export interface ViewerCapabilities {
   canArchive: boolean;
   canDelete: boolean;
   canAssign: boolean;
+  /**
+   * Who this person may hand a task to. Empty means they cannot reassign.
+   * Worked out on the server from the same rules the reassign endpoint checks.
+   */
+  reassignOptions?: { id: string; name: string }[];
 }

@@ -50,6 +50,7 @@ export const UPDATE_TYPES = [
   "LAUNCH_SCHEDULED",
   "CLIENT_HEALTH_CHANGE",
   "STAGE_OVERRIDE",
+  "TEAM_MEMBER_ADDED",
 ] as const;
 
 const ACTION_SET: ReadonlySet<string> = new Set(ACTION_TYPES);
@@ -113,6 +114,8 @@ export function actionLabelFor(type: string): string | null {
       return "Open Training";
     case "STAGE_OVERRIDE":
       return "View Override";
+    case "TEAM_MEMBER_ADDED":
+      return "View Team";
     default:
       return null;
   }
@@ -135,6 +138,7 @@ export function iconKeyFor(type: string, category: NotificationCategory): string
     case "PAYMENT_FAILED":
       return "payment";
     case "CLIENT_WAITING":
+    case "TEAM_MEMBER_ADDED":
       return "person";
     case "REVISION_REQUEST":
     case "QA_DEFECT":
@@ -370,6 +374,8 @@ export function groupTitleFor(type: string, count: number): string {
       return noun("client health change", "client health changes");
     case "STAGE_OVERRIDE":
       return noun("stage override", "stage overrides");
+    case "TEAM_MEMBER_ADDED":
+      return noun("team member added", "team members added");
     default:
       return noun("notification", "notifications");
   }

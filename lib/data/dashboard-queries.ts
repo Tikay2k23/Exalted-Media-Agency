@@ -618,6 +618,7 @@ const SEAT_INTRO: Record<TeamRole, string> = {
   AUTOMATION_SPECIALIST: "Automation Specialist",
   CREATIVE_SPECIALIST: "Creative Specialist",
   ADS_SPECIALIST: "Ads and Reporting",
+  DEPARTMENT_MEMBER: "Team Member",
 };
 
 export async function getRoleDashboard(actor: AuthContext): Promise<DashboardData> {

@@ -271,8 +271,14 @@ describe("matrix coherence", () => {
     }
   });
 
-  it("has exactly six seats", () => {
-    assert.equal(Object.values(TeamRole).length, 6);
+  /*
+   * A tripwire: adding a seat should be a decision, not an accident. Six job
+   * seats, plus DEPARTMENT_MEMBER for the people who work under the four
+   * department leaders - which carries the specialist floor and no management
+   * rights, and passes every coherence check below.
+   */
+  it("has exactly seven seats", () => {
+    assert.equal(Object.values(TeamRole).length, 7);
   });
 
   it("has no duplicate permission keys", () => {

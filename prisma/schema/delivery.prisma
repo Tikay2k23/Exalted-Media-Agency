@@ -248,6 +248,13 @@ model EmployeeTask {
   /// harmless. Null for anything a person typed, and many rows may be null -
   /// Postgres does not treat nulls as equal in a unique index.
   templateKey    String?
+  /// The procedure this work follows, so whoever does it can open the SOP
+  /// from the task. A reference, not a copy: the SOP keeps its own versions.
+  sopId          String?
+  /// Steps to tick off, as [{ id, text, done }]. A reference aid for the
+  /// person doing the work - ticking an item never completes a stage gate,
+  /// a QA test or an approval; those stay in their own records.
+  checklist      Json?
 
   assignedTo User                   @relation("EmployeeTaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
   client     Client?                @relation(fields: [clientId], references: [id])
@@ -257,6 +264,7 @@ model EmployeeTask {
   approvedBy User?                  @relation("EmployeeTaskApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   archivedBy User?                  @relation("EmployeeTaskArchiver", fields: [archivedById], references: [id], onDelete: SetNull)
   project    Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sop        Sop?                   @relation(fields: [sopId], references: [id], onDelete: SetNull)
   eodEntries EmployeeTaskEodEntry[]
   comments   TaskComment[]
   blockedBy  TaskDependency[]       @relation("DependentTask")

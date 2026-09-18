@@ -1,10 +1,12 @@
-import type { EmployeeTaskStatus } from "@prisma/client";
+import type { EmployeeTaskStatus, Prisma } from "@prisma/client";
 
 import { logActivity } from "@/lib/activity";
 import { type AuthContext } from "@/lib/authz";
 import { createNotifications, resolveRecipients } from "@/lib/notifications";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { assigneeScope } from "@/lib/team/departments";
+import { directReportIds } from "@/lib/team/team-service";
 
 /**
  * Moving one piece of work through its life.
@@ -55,6 +57,7 @@ const TASK_SELECT = {
   estimatedHours: true,
   approvedById: true,
   client: { select: { id: true, companyName: true } },
+  assignedTo: { select: { managerId: true } },
 } as const;
 
 type TaskRow = {
@@ -71,6 +74,7 @@ type TaskRow = {
   estimatedHours: number;
   approvedById: string | null;
   client: { id: string; companyName: string } | null;
+  assignedTo: { managerId: string | null } | null;
 };
 
 /**
@@ -111,7 +115,9 @@ const FINISHED_STATUSES: EmployeeTaskStatus[] = ["APPROVED", "DONE", "CANCELLED"
  */
 export function canViewTask(
   actor: AuthContext,
-  task: Pick<TaskRow, "assignedToId" | "createdById" | "reviewerId">,
+  task: Pick<TaskRow, "assignedToId" | "createdById" | "reviewerId"> & {
+    assignedTo?: { managerId: string | null } | null;
+  },
 ) {
   if (can(actor, "workItems.view.all")) return true;
 
@@ -119,6 +125,8 @@ export function canViewTask(
     task.assignedToId === actor.id
     || task.createdById === actor.id
     || task.reviewerId === actor.id
+    // The department leader of the person doing it. Same rule as taskScopeFor.
+    || (task.assignedTo?.managerId != null && task.assignedTo.managerId === actor.id)
   );
 }
 
@@ -575,4 +583,146 @@ export async function addTaskComment(input: {
   );
 
   return { ok: true as const, comment };
+}
+
+/* --- reassigning --- */
+
+/** Statuses a task is finished in; reassigning one of those means nothing. */
+const FINISHED: EmployeeTaskStatus[] = ["DONE", "APPROVED", "CANCELLED"];
+
+/**
+ * Handing a task to somebody else.
+ *
+ * Two kinds of people may do it. Whoever could already assign work to anyone
+ * keeps that reach, unchanged. A department leader may move work only within
+ * their own department - from one of their people to another, or to
+ * themselves - and cannot pull work in from, or push it out to, anybody else.
+ */
+export async function reassignTask(input: {
+  actor: AuthContext;
+  taskId: string;
+  assigneeId: string;
+}) {
+  const { actor, taskId, assigneeId } = input;
+
+  const task = await loadTask(taskId);
+
+  if (!task || !canViewTask(actor, task)) return failure("NOT_FOUND", "That task could not be found.");
+  if (FINISHED.includes(task.status)) return failure("INVALID", "Finished work cannot be reassigned.");
+  if (task.assignedToId === assigneeId) return failure("INVALID", "That person already has this task.");
+
+  const scope = assigneeScope(actor, await directReportIds(actor.id));
+
+  if (scope !== "all" && (!scope.has(task.assignedToId) || !scope.has(assigneeId))) {
+    return failure("FORBIDDEN", "You can only move work between people in your own department.");
+  }
+
+  const [previous, next] = await Promise.all([
+    prisma.user.findUnique({ where: { id: task.assignedToId }, select: { name: true } }),
+    prisma.user.findFirst({
+      where: { id: assigneeId, isActive: true, deletedAt: null },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  if (!next) return failure("INVALID", "That person is not an active member of the team.");
+
+  await prisma.employeeTask.update({ where: { id: task.id }, data: { assignedToId: next.id } });
+
+  await logActivity({
+    actorId: actor.id,
+    action: `${actor.name} reassigned "${task.title}" from ${previous?.name ?? "somebody"} to ${next.name}`,
+    entityType: "EMPLOYEE_TASK",
+    entityId: task.id,
+    fieldName: "assignedToId",
+    previousValue: task.assignedToId,
+    newValue: next.id,
+  });
+
+  await createNotifications(
+    resolveRecipients([next.id], actor.id).map((recipientId) => ({
+      recipientId,
+      type: "TASK_ASSIGNED" as const,
+      title: `Reassigned to you: ${task.title}`,
+      body: `${actor.name} moved this task to you.`,
+      entityType: "EMPLOYEE_TASK" as const,
+      entityId: task.id,
+      href: `/work?task=${task.id}`,
+    })),
+  );
+
+  return { ok: true as const };
+}
+
+/* --- checklist --- */
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+/** Reads a stored checklist defensively - it is JSON, and JSON can be anything. */
+export function parseChecklist(value: unknown): ChecklistItem[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const { id, text, done } = item as Record<string, unknown>;
+    if (typeof id !== "string" || typeof text !== "string") return [];
+    return [{ id, text, done: done === true }];
+  });
+}
+
+/** Turns "one step per line" into checklist items. */
+export function checklistFromLines(lines: string[]): ChecklistItem[] {
+  return lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 50)
+    .map((text, index) => ({ id: `c${index + 1}`, text: text.slice(0, 200), done: false }));
+}
+
+/**
+ * Ticking one checklist item.
+ *
+ * Anybody who can see the task may tick - the person doing it most of all. Not
+ * written to the activity log: it is a working aid, and a log of every tick
+ * would bury the entries that matter. It completes nothing else either; a
+ * ticked item never moves a stage gate, a QA test or an approval.
+ */
+export async function setChecklistItem(input: {
+  actor: AuthContext;
+  taskId: string;
+  itemId: string;
+  done: boolean;
+}) {
+  const { actor, taskId, itemId, done } = input;
+
+  const row = await prisma.employeeTask.findFirst({
+    where: { id: taskId, deletedAt: null },
+    select: {
+      id: true,
+      assignedToId: true,
+      createdById: true,
+      reviewerId: true,
+      checklist: true,
+      assignedTo: { select: { managerId: true } },
+    },
+  });
+
+  if (!row || !canViewTask(actor, row)) return failure("NOT_FOUND", "That task could not be found.");
+
+  const items = parseChecklist(row.checklist);
+
+  if (!items.some((item) => item.id === itemId)) return failure("NOT_FOUND", "That checklist item is gone.");
+
+  const updated = items.map((item) => (item.id === itemId ? { ...item, done } : item));
+
+  await prisma.employeeTask.update({
+    where: { id: row.id },
+    data: { checklist: updated as unknown as Prisma.InputJsonValue },
+  });
+
+  return { ok: true as const, checklist: updated };
 }

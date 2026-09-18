@@ -47,6 +47,8 @@ export const TASK_LIST_SELECT = {
   createdBy: { select: { id: true, name: true } },
   reviewer: { select: { id: true, name: true } },
   approvedBy: { select: { id: true, name: true } },
+  sop: { select: { id: true, reference: true, title: true } },
+  checklist: true,
   _count: { select: { comments: true } },
 } satisfies Prisma.EmployeeTaskSelect;
 
@@ -73,6 +75,13 @@ export function taskScopeFor(actor: AuthContext): Prisma.EmployeeTaskWhereInput 
       { assignedToId: actor.id },
       { createdById: actor.id },
       { reviewerId: actor.id },
+      /*
+       * Work assigned to the people who report to me - a department leader
+       * sees their department's tasks even when somebody else assigned them.
+       * Matches nobody for anybody without direct reports, so no existing
+       * person's view changes.
+       */
+      { assignedTo: { managerId: actor.id } },
     ],
   };
 }

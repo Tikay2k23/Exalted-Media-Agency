@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { AgencyTaskPanel } from "@/components/team/agency-task-panel";
+import { DepartmentPanel } from "@/components/team/department-panel";
 import { PerformanceTable } from "@/components/team/performance-table";
 import type { TaskRow } from "@/components/work/task-types";
 import { Avatar } from "@/components/ui/avatar";
@@ -14,6 +15,9 @@ import { can, canManageEmployeeTasks, teamRoleLabels } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { deriveMyWork } from "@/lib/tasks/my-work-view";
 import { getAssignedTasks, getMyRecentActivity } from "@/lib/tasks/task-queries";
+import { canManageAllDepartments, ledDepartment } from "@/lib/team/departments";
+import { getLeaderTaskOptions, listDepartments, seesDepartments } from "@/lib/team/team-service";
+import { parseChecklist } from "@/lib/tasks/task-workflow";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,8 +49,27 @@ export default async function WorkPage({
     getMyRecentActivity(actor),
   ]);
 
-  const canManageTasks = canManageEmployeeTasks(user.role);
+  /*
+   * Who may assign work, and from which lists.
+   *
+   * Everybody who could assign before keeps exactly what they had. A
+   * department leader now can too, with the assignee list narrowed to
+   * themselves and their own people - the server enforces the same scope.
+   */
+  const canAssignAll = canManageEmployeeTasks(user.role);
+  const isLeader = Boolean(ledDepartment(actor));
+  const canManageTasks = canAssignAll || isLeader;
   const canSeeTeam = can(actor, "team.view");
+
+  const [leaderOptions, departments] = await Promise.all([
+    !canAssignAll && isLeader ? getLeaderTaskOptions(actor) : Promise.resolve(null),
+    seesDepartments(actor) ? listDepartments(actor) : Promise.resolve([]),
+  ]);
+
+  const taskOptions = leaderOptions ?? data.taskOptions;
+  const reassignOptions = canManageTasks
+    ? taskOptions.users.map((person) => ({ id: person.id, name: person.name }))
+    : [];
 
   /*
    * Dates become strings on the way to the browser, and the client component
@@ -88,6 +111,8 @@ export default async function WorkPage({
     reviewer: task.reviewer,
     approvedBy: task.approvedBy,
     commentCount: task._count.comments,
+    sop: task.sop,
+    checklist: parseChecklist(task.checklist),
   }));
 
   const now = new Date();
@@ -104,11 +129,11 @@ export default async function WorkPage({
     <div className="space-y-6">
       <AgencyTaskPanel
         tasks={tasks}
-        users={data.taskOptions.users}
-        clients={data.taskOptions.clients}
+        users={taskOptions.users}
+        clients={taskOptions.clients}
         taskClients={work.clients}
-        projects={data.taskOptions.projects}
-        sops={data.taskOptions.sops}
+        projects={taskOptions.projects}
+        sops={taskOptions.sops}
         canManageTasks={canManageTasks}
         viewer={{
           id: actor.id,
@@ -117,6 +142,7 @@ export default async function WorkPage({
           canArchive: can(actor, "workItems.archive"),
           canDelete: can(actor, "workItems.delete"),
           canAssign: can(actor, "workItems.assign"),
+          reassignOptions,
         }}
         capped={work.capped}
         serverNow={now.toISOString()}
@@ -149,6 +175,18 @@ export default async function WorkPage({
           actor: event.actor,
         }))}
       />
+
+      {/*
+        The department: its people and their workload. A leader sees their own,
+        the agency owner sees all four. Nobody else sees it.
+      */}
+      {departments.length ? (
+        <DepartmentPanel
+          departments={departments}
+          canManageAll={canManageAllDepartments(actor)}
+          assign={canManageTasks ? taskOptions : null}
+        />
+      ) : null}
 
       {data.isDegraded ? (
         <Card className="border-amber-200 bg-amber-50">

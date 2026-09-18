@@ -100,6 +100,13 @@ export const PERMISSIONS = [
   "team.view",
   "team.manage",
   "team.training",
+  /*
+   * Running one department: adding people to it, and assigning and reviewing
+   * its work. Deliberately scoped - holding this lets a leader act on their own
+   * department's members and nobody else's. The scope is enforced in
+   * lib/team/departments.ts, not here; this key only says "is a leader at all".
+   */
+  "department.lead",
 
   // Governance
   "governance.view",
@@ -205,6 +212,7 @@ const TEAM_ROLE_PERMISSIONS: Record<TeamRole, readonly Permission[]> = {
   // financial reporting, and no sight of unrelated client delivery.
   SALES_REP: [
     ...BASE,
+    "department.lead",
     "leads.view.all",
     "leads.view.assigned",
     "leads.create",
@@ -264,9 +272,18 @@ const TEAM_ROLE_PERMISSIONS: Record<TeamRole, readonly Permission[]> = {
 
   // The three specialist seats share a shape: their own assigned work, plus QA
   // on the part of the build they are responsible for.
-  AUTOMATION_SPECIALIST: [...SPECIALIST, "qa.test", "a2p.submit"],
-  CREATIVE_SPECIALIST: [...SPECIALIST, "qa.test"],
-  ADS_SPECIALIST: [...SPECIALIST, "qa.test", "reporting.client"],
+  AUTOMATION_SPECIALIST: [...SPECIALIST, "qa.test", "a2p.submit", "department.lead"],
+  CREATIVE_SPECIALIST: [...SPECIALIST, "qa.test", "department.lead"],
+  ADS_SPECIALIST: [...SPECIALIST, "qa.test", "reporting.client", "department.lead"],
+
+  /*
+   * Somebody working under a department leader. The specialist floor and
+   * nothing more: their own assigned tasks, the clients and projects those
+   * tasks sit on, and the SOPs and resources they are held to. No team
+   * management, no assigning, no sight of other departments. Anything extra is
+   * granted per person through a permission override, not by widening this.
+   */
+  DEPARTMENT_MEMBER: SPECIALIST,
 };
 
 /**
@@ -361,6 +378,7 @@ export const teamRoleLabels: Record<TeamRole, string> = {
   AUTOMATION_SPECIALIST: "Automation Specialist",
   CREATIVE_SPECIALIST: "Creative Specialist",
   ADS_SPECIALIST: "Ads and Reporting",
+  DEPARTMENT_MEMBER: "Team Member",
 };
 
 /** One-line description of what each seat is responsible for. */
@@ -371,6 +389,7 @@ export const teamRoleDescriptions: Record<TeamRole, string> = {
   AUTOMATION_SPECIALIST: "GoHighLevel, CRM configuration, workflows, and integrations.",
   CREATIVE_SPECIALIST: "Websites, funnels, design, and copy.",
   ADS_SPECIALIST: "Paid campaigns, tracking, and performance reporting.",
+  DEPARTMENT_MEMBER: "Assigned work within a department, under its leader.",
 };
 
 export const roleLabels: Record<Role, string> = {

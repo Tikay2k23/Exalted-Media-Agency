@@ -203,6 +203,7 @@ const BY_SEAT: Record<TeamRole, IntakeSection | null> = {
   PROJECT_MANAGER: null,
   SALES_REP: null,
   AGENCY_OWNER: null,
+  DEPARTMENT_MEMBER: null,
 };
 
 /**

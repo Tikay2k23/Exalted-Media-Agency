@@ -1,11 +1,11 @@
-import { ActivityEntityType, Department, Role } from "@prisma/client";
+import { ActivityEntityType, Department, Role, TeamRole } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getServerAuthSession } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
-import { canManageUsers } from "@/lib/permissions";
+import { canManageUsers, teamRoleLabels } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { userFormSchema } from "@/lib/validators";
 
@@ -18,6 +18,12 @@ const userUpdateSchema = z.object({
   jobTitle: z.string().max(80).optional().or(z.literal("")),
   weeklyCapacityHours: z.coerce.number().int().min(1).max(80),
   isActive: z.boolean(),
+  /**
+   * The seat - what makes somebody a department leader. Optional so older
+   * callers keep working, and ignored for your own account, for the same
+   * reason the role is: nobody should be able to demote themselves by mistake.
+   */
+  teamRole: z.nativeEnum(TeamRole).optional(),
 });
 
 export async function POST(request: Request) {
@@ -102,6 +108,13 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const seatChange =
+      parsed.data.teamRole && parsed.data.id !== session.user.id ? parsed.data.teamRole : null;
+
+    const before = seatChange
+      ? await prisma.user.findUnique({ where: { id: parsed.data.id }, select: { teamRole: true } })
+      : null;
+
     const user = await prisma.user.update({
       where: { id: parsed.data.id },
       data: {
@@ -110,6 +123,7 @@ export async function PATCH(request: Request) {
         jobTitle: parsed.data.jobTitle || null,
         weeklyCapacityHours: parsed.data.weeklyCapacityHours,
         isActive: parsed.data.isActive,
+        ...(seatChange ? { teamRole: seatChange } : {}),
       },
     });
 
@@ -119,6 +133,18 @@ export async function PATCH(request: Request) {
       entityType: ActivityEntityType.USER,
       entityId: user.id,
     });
+
+    if (seatChange && before && before.teamRole !== seatChange) {
+      await logActivity({
+        actorId: session.user.id,
+        action: `Changed ${user.name}'s seat from ${teamRoleLabels[before.teamRole]} to ${teamRoleLabels[seatChange]}`,
+        entityType: ActivityEntityType.USER,
+        entityId: user.id,
+        fieldName: "teamRole",
+        previousValue: before.teamRole,
+        newValue: seatChange,
+      });
+    }
 
     return NextResponse.json(user);
   } catch (error) {
