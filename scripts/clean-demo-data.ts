@@ -9,6 +9,8 @@
  *                         lead during testing (real action, fake source)
  *   --include-unlinked    demo-style tasks with no client, and the weekly
  *                         reports written during the demo period
+ *   --all-notifications   every notification, not only those about the
+ *                         records above - for a clean bell at go-live
  *
  * WHAT COUNTS AS DEMO
  *
@@ -69,6 +71,7 @@ config({ path: envFile, override: true });
 const APPLY = flag("--apply");
 const INCLUDE_CONVERTED = flag("--include-converted");
 const INCLUDE_UNLINKED = flag("--include-unlinked");
+const ALL_NOTIFICATIONS = flag("--all-notifications");
 
 /* --- the manifest --- */
 
@@ -211,8 +214,11 @@ async function main() {
   ]);
   const looseIds = [...deletedEntityIds, ...projects.map((p) => p.id), ...invoices.map((i) => i.id)];
 
+  /* Notifications are a read-once inbox, not a record, so all of them may go. */
+  const notificationWhere = ALL_NOTIFICATIONS ? {} : { entityId: { in: looseIds } };
+
   const [notificationCount, activityCount] = await Promise.all([
-    prisma.notification.count({ where: { entityId: { in: looseIds } } }),
+    prisma.notification.count({ where: notificationWhere }),
     prisma.activityLog.count({ where: { entityId: { in: looseIds } } }),
   ]);
 
@@ -222,7 +228,7 @@ async function main() {
   console.log(`Clients (${clients.length}): ${clients.map((c) => c.companyName).join(", ") || "none"}`);
   console.log(`Tasks (${tasks.length})${INCLUDE_UNLINKED ? ` - ${unlinkedTasks.length} of them unlinked` : ""}`);
   if (INCLUDE_UNLINKED) console.log(`Weekly reports (${weeklyReports.length})`);
-  console.log(`Notifications about them: ${notificationCount}`);
+  console.log(ALL_NOTIFICATIONS ? `Notifications (all): ${notificationCount}` : `Notifications about them: ${notificationCount}`);
   console.log(`Activity log entries about them: ${activityCount}`);
 
   /* Rows the database will cascade, counted so nothing is a surprise. */
@@ -237,7 +243,7 @@ async function main() {
     return;
   }
 
-  if (!deletedEntityIds.length) {
+  if (!deletedEntityIds.length && !notificationCount) {
     console.log("\nNothing to delete.\n");
     return;
   }
@@ -248,7 +254,7 @@ async function main() {
   mkdirSync(backupDir, { recursive: true });
   const backupPath = join(backupDir, `demo-cleanup-${target.db}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
 
-  const backup = await buildBackup(prisma, { clientIds, leadIds, taskIds, reportIds, looseIds });
+  const backup = await buildBackup(prisma, { clientIds, leadIds, taskIds, reportIds, looseIds }, ALL_NOTIFICATIONS);
   writeFileSync(backupPath, JSON.stringify(backup, null, 1));
   console.log(`\nBackup written: ${backupPath}`);
 
@@ -256,7 +262,7 @@ async function main() {
 
   await prisma.$transaction(
     async (tx) => {
-      await tx.notification.deleteMany({ where: { entityId: { in: looseIds } } });
+      await tx.notification.deleteMany({ where: notificationWhere });
       await tx.activityLog.deleteMany({ where: { entityId: { in: looseIds } } });
       /* Tasks first: they only set-null against clients and leads, so they must go explicitly. */
       await tx.employeeTask.deleteMany({ where: { id: { in: taskIds } } });
@@ -294,31 +300,53 @@ async function rowsWhere(prisma: Prisma, table: string, col: string, ids: string
   );
 }
 
-async function cascadeCounts(prisma: Prisma, ids: { clientIds: string[]; leadIds: string[]; taskIds: string[] }) {
-  const counts: Record<string, number> = {};
-  const add = (table: string, n: number) => (counts[table] = (counts[table] ?? 0) + n);
+/**
+ * Every row the database will cascade from the given parents, at every depth -
+ * a client's intake form takes its submissions with it, an invoice its
+ * payments. Counting and the backup both read this one walk, so the backup can
+ * never hold less than the delete removes.
+ */
+async function cascadeRows(prisma: Prisma, ids: { clientIds: string[]; leadIds: string[]; taskIds: string[] }) {
+  const found: Record<string, Map<string, Record<string, unknown>>> = {};
+  const queue: [string, string[]][] = [["Client", ids.clientIds], ["Lead", ids.leadIds], ["EmployeeTask", ids.taskIds]];
 
-  for (const [parent, list] of [["Client", ids.clientIds], ["Lead", ids.leadIds], ["EmployeeTask", ids.taskIds]] as const) {
-    for (const { child, col } of await cascadeChildren(prisma, parent)) {
-      const rows = await rowsWhere(prisma, child, col, list);
-      add(child, rows.length);
+  for (let depth = 0; queue.length && depth < 6; depth += 1) {
+    const level = queue.splice(0);
 
-      /* Second level: payments under invoices, milestones under projects. */
-      if (child === "Invoice" || child === "Project") {
-        const childIds = rows.map((r) => String(r.row.id));
-        for (const grand of await cascadeChildren(prisma, child)) {
-          add(grand.child, (await rowsWhere(prisma, grand.child, grand.col, childIds)).length);
+    for (const [parent, list] of level) {
+      if (!list.length) continue;
+
+      for (const { child, col } of await cascadeChildren(prisma, parent)) {
+        const rows = await rowsWhere(prisma, child, col, list);
+        const seen = (found[child] ??= new Map());
+        const fresh: string[] = [];
+
+        for (const { row } of rows) {
+          const key = row.id ? String(row.id) : JSON.stringify(row);
+          if (!seen.has(key)) {
+            seen.set(key, row);
+            if (row.id) fresh.push(String(row.id));
+          }
         }
+
+        if (fresh.length) queue.push([child, fresh]);
       }
     }
   }
 
-  return counts;
+  return found;
+}
+
+async function cascadeCounts(prisma: Prisma, ids: { clientIds: string[]; leadIds: string[]; taskIds: string[] }) {
+  const found = await cascadeRows(prisma, ids);
+
+  return Object.fromEntries(Object.entries(found).map(([table, rows]) => [table, rows.size]));
 }
 
 async function buildBackup(
   prisma: Prisma,
   ids: { clientIds: string[]; leadIds: string[]; taskIds: string[]; reportIds: string[]; looseIds: string[] },
+  allNotifications: boolean,
 ) {
   const tables: Record<string, Record<string, unknown>[]> = {};
   const push = (table: string, rows: { row: Record<string, unknown> }[]) =>
@@ -328,20 +356,16 @@ async function buildBackup(
   push("Lead", await rowsWhere(prisma, "Lead", "id", ids.leadIds));
   push("EmployeeTask", await rowsWhere(prisma, "EmployeeTask", "id", ids.taskIds));
   push("WeeklyReport", await rowsWhere(prisma, "WeeklyReport", "id", ids.reportIds));
-  push("Notification", await rowsWhere(prisma, "Notification", "entityId", ids.looseIds));
+  push(
+    "Notification",
+    allNotifications
+      ? await prisma.$queryRawUnsafe<{ row: Record<string, unknown> }[]>(`select to_jsonb(t) as row from "Notification" t`)
+      : await rowsWhere(prisma, "Notification", "entityId", ids.looseIds),
+  );
   push("ActivityLog", await rowsWhere(prisma, "ActivityLog", "entityId", ids.looseIds));
 
-  for (const [parent, list] of [["Client", ids.clientIds], ["Lead", ids.leadIds], ["EmployeeTask", ids.taskIds]] as const) {
-    for (const { child, col } of await cascadeChildren(prisma, parent)) {
-      const rows = await rowsWhere(prisma, child, col, list);
-      push(child, rows);
-      if (child === "Invoice" || child === "Project") {
-        const childIds = rows.map((r) => String(r.row.id));
-        for (const grand of await cascadeChildren(prisma, child)) {
-          push(grand.child, await rowsWhere(prisma, grand.child, grand.col, childIds));
-        }
-      }
-    }
+  for (const [table, rows] of Object.entries(await cascadeRows(prisma, ids))) {
+    tables[table] = [...(tables[table] ?? []), ...rows.values()];
   }
 
   return { takenAt: new Date().toISOString(), tables };
